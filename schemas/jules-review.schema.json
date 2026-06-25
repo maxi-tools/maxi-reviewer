@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maxi.tools/schemas/maxi.review.v1.jules-review.schema.json",
+  "title": "Maxi Jules Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "summary", "verdict", "resolvedCommentIds", "comments"],
+  "properties": {
+    "schema": {
+      "const": "maxi.review.v1.jules-review"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "verdict": {
+      "enum": ["approve", "comment", "block"]
+    },
+    "resolvedCommentIds": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "line",
+          "severity",
+          "confidence",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "startLine": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "endLine": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "severity": {
+            "enum": ["Info", "Warning", "High"]
+          },
+          "confidence": {
+            "enum": ["Low", "Medium", "High"]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "promptForAgents": {
+            "type": "string"
+          },
+          "sourceFindingIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "suggestion": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "startLine", "endLine", "replacement"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "startLine": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "endLine": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "replacement": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

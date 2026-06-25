@@ -27,7 +27,9 @@ export function parsePmdXml(text: string): AnalyzerFinding[] {
           toolVersion: version,
           ruleId: violationAttrs.rule ?? "pmd-violation",
           ruleName: violationAttrs.ruleset,
-          severity: normalizeSeverity(priorityToSeverity(violationAttrs.priority)),
+          severity: normalizeSeverity(
+            priorityToSeverity(violationAttrs.priority)
+          ),
           confidence: normalizeConfidence(undefined),
           message: decodeXml(violationMatch[2].trim()),
           path,

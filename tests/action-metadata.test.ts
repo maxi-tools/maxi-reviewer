@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 
 describe("action metadata", () => {
   it("uses the maxi-review identity and Node 24 runtime", () => {
-    const action = readFileSync(new URL("../action.yml", import.meta.url), "utf8");
+    const action = readFileSync(
+      new URL("../action.yml", import.meta.url),
+      "utf8"
+    );
     const pkg = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8")
     ) as {

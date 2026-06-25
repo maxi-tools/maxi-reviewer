@@ -239,7 +239,8 @@ ${findings}`;
 function formatCommentLocation(comment: ReviewComment): string {
   const startLine = comment.startLine || comment.line;
   const endLine = comment.endLine || startLine;
-  const lineSuffix = endLine > startLine ? `${startLine}-${endLine}` : `${startLine}`;
+  const lineSuffix =
+    endLine > startLine ? `${startLine}-${endLine}` : `${startLine}`;
   return `${comment.file}:${lineSuffix}`;
 }
 

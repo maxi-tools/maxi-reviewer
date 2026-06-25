@@ -70,8 +70,7 @@ export function parseOpengrepSarif(text: string): AnalyzerFinding[] {
       const rule = ruleMap.get(ruleId) ?? {};
       const message = asRecord(item.message) ?? {};
       const firstLocation = asRecord(asArray(item.locations)[0]) ?? {};
-      const physicalLocation =
-        asRecord(firstLocation.physicalLocation) ?? {};
+      const physicalLocation = asRecord(firstLocation.physicalLocation) ?? {};
       const artifactLocation =
         asRecord(physicalLocation.artifactLocation) ?? {};
       const region = asRecord(physicalLocation.region) ?? {};

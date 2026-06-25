@@ -108,7 +108,7 @@ describe("runReviewPr orchestration", () => {
     expect(deps.submitReview).toHaveBeenCalled();
     expect(deps.uploadArtifact).toHaveBeenCalledWith(
       "maxi-review-7-head-sha.json",
-      expect.stringContaining("\"analyzerFindings\"")
+      expect.stringContaining('"analyzerFindings"')
     );
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
     expect(artifact).toMatchObject({

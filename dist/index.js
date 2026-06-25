@@ -41832,7 +41832,9 @@ async function runReviewPr(overrides = {}) {
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         error(`Review failed: ${msg}`);
-        await deps.setStatus(octokit, owner, repo, headSha, statusContext, "error", truncate(msg, 140)).catch(() => { });
+        await deps
+            .setStatus(octokit, owner, repo, headSha, statusContext, "error", truncate(msg, 140))
+            .catch(() => { });
         setFailed(`Jules PR review failed: ${msg}`);
     }
 }
@@ -41850,7 +41852,7 @@ async function fetchPullRequestContext(input) {
         openThreads,
     };
 }
-async function runAnalyzers(_input) {
+async function runAnalyzers() {
     return [];
 }
 async function uploadReviewArtifact(name, content) {

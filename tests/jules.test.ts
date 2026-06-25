@@ -236,7 +236,8 @@ describe("jules.ts", () => {
           historyCalls++;
           yield {
             type: "agentMessaged",
-            message: prompted && historyCalls > 1 ? "not json" : badFormatReview,
+            message:
+              prompted && historyCalls > 1 ? "not json" : badFormatReview,
           };
         },
       };

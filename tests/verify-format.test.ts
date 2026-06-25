@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseJulesReview,
-  verifyJulesReview,
-} from "../src/verify-format.js";
+import { parseJulesReview, verifyJulesReview } from "../src/verify-format.js";
 
 describe("Jules review verification", () => {
   it("parses fenced maxi.review.v1 JSON", () => {

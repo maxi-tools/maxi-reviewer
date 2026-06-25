@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  validateAnalyzerFinding,
-  validateJulesReview,
-} from "../src/schema.js";
+import { validateAnalyzerFinding, validateJulesReview } from "../src/schema.js";
 
 describe("maxi.review.v1 schemas", () => {
   it("accepts a normalized analyzer finding", () => {

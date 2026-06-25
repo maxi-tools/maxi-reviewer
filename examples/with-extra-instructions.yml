@@ -1,4 +1,4 @@
-name: Jules PR Review (project rules)
+name: Maxi Review (project rules)
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -7,11 +7,12 @@ jobs:
   review:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
       contents: read
+      pull-requests: write
       statuses: write
+      actions: write
     steps:
-      - uses: thalesraymond/jules-pr-reviewer@v1
+      - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

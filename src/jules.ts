@@ -230,8 +230,8 @@ async function pollForReview(
         if (afterMessage !== undefined && last === afterMessage) {
           core.info(`Latest agentMessaged is unchanged (attempt ${attempt})…`);
         } else {
-        core.info(`Got agentMessaged on attempt ${attempt}.`);
-        return last;
+          core.info(`Got agentMessaged on attempt ${attempt}.`);
+          return last;
         }
       }
       core.info(`No agentMessaged yet (attempt ${attempt})…`);

@@ -14,31 +14,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "pnpm"
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm install
 
       - name: Prettier Check
-        run: pnpm run format:check
+        run: npm run format:check
 
       - name: Lint
-        run: pnpm run lint
+        run: npm run lint
 
       - name: Build
-        run: pnpm run build
+        run: npm run build
 
       - name: Test and generate coverage
-        run: pnpm run coverage
+        run: npm run coverage
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v8.2.0

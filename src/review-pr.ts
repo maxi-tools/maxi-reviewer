@@ -175,7 +175,11 @@ export async function runReviewPr(
         "Jules is reviewing this PR…"
       );
     } catch (err) {
-      throw deps.wrapPermissionError(err, "statuses:write", "createCommitStatus");
+      throw deps.wrapPermissionError(
+        err,
+        "statuses:write",
+        "createCommitStatus"
+      );
     }
 
     // Determine the base SHA for incremental diffing
@@ -210,7 +214,10 @@ export async function runReviewPr(
         ? deps.loadSelectedRules(context.changedFiles)
         : "";
 
-    const { text: diffText, truncatedNote } = truncateDiff(context.diff, 80_000);
+    const { text: diffText, truncatedNote } = truncateDiff(
+      context.diff,
+      80_000
+    );
 
     const prompt = deps.buildReviewPrompt({
       repoFullName: `${owner}/${repo}`,
@@ -307,15 +314,17 @@ export async function runReviewPr(
     const msg = err instanceof Error ? err.message : String(err);
     core.error(`Review failed: ${msg}`);
 
-    await deps.setStatus(
-      octokit,
-      owner,
-      repo,
-      headSha,
-      statusContext,
-      "error",
-      truncate(msg, 140)
-    ).catch(() => {});
+    await deps
+      .setStatus(
+        octokit,
+        owner,
+        repo,
+        headSha,
+        statusContext,
+        "error",
+        truncate(msg, 140)
+      )
+      .catch(() => {});
     core.setFailed(`Jules PR review failed: ${msg}`);
   }
 }
@@ -365,9 +374,7 @@ export async function fetchPullRequestContext(input: {
   };
 }
 
-export async function runAnalyzers(
-  _input: RunAnalyzerInput
-): Promise<AnalyzerFinding[]> {
+export async function runAnalyzers(): Promise<AnalyzerFinding[]> {
   return [];
 }
 

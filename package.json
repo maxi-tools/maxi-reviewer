@@ -17,15 +17,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thalesraymond/jules-pr-reviewer.git"
+    "url": "git+https://github.com/maxi-tools/maxi-reviewer.git"
   },
-  "author": "thalesraymond",
+  "author": "maxi-tools",
   "license": "MIT",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/thalesraymond/jules-pr-reviewer/issues"
+    "url": "https://github.com/maxi-tools/maxi-reviewer/issues"
   },
-  "homepage": "https://github.com/thalesraymond/jules-pr-reviewer#readme",
+  "homepage": "https://github.com/maxi-tools/maxi-reviewer#readme",
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",

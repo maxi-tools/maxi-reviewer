@@ -7,7 +7,7 @@ import {
 import { parseCpdXml, parsePmdXml } from "../src/analyzers/pmd.js";
 
 const fixture = (name: string) =>
-  readFileSync(`tests/fixtures/${name}`, "utf8");
+  readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8");
 
 describe("analyzer parsers", () => {
   it("normalizes Semgrep-compatible JSON", () => {

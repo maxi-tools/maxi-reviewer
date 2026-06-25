@@ -41013,7 +41013,207 @@ ${rawResponse}
 \`\`\``;
 }
 
+;// CONCATENATED MODULE: ./src/schema.ts
+function validateAnalyzerFinding(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "finding");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.analyzer-finding", errors);
+    requireString(record, "id", undefined, errors);
+    requireString(record, "tool", undefined, errors);
+    requireString(record, "ruleId", undefined, errors);
+    requireEnum(record, "severity", ["info", "warning", "error"], errors);
+    requireEnum(record, "confidence", ["low", "medium", "high", "unknown"], errors);
+    requireString(record, "message", undefined, errors);
+    requireString(record, "path", undefined, errors);
+    requirePositiveInt(record, "startLine", errors);
+    requirePositiveInt(record, "endLine", errors);
+    return { ok: errors.length === 0, value: value, errors };
+}
+function schema_validateJulesReview(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "review");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.jules-review", errors);
+    requireString(record, "summary", undefined, errors);
+    requireEnum(record, "verdict", ["approve", "comment", "block"], errors);
+    if (!Array.isArray(record.resolvedCommentIds)) {
+        errors.push("resolvedCommentIds must be an array");
+    }
+    if (!Array.isArray(record.comments)) {
+        errors.push("comments must be an array");
+    }
+    else {
+        record.comments.forEach((comment, index) => {
+            const item = asRecord(comment, errors, `comments[${index}]`);
+            if (!item)
+                return;
+            requireString(item, "id", undefined, errors);
+            requireString(item, "path", undefined, errors);
+            requirePositiveInt(item, "line", errors);
+            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
+            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
+            requireString(item, "message", undefined, errors);
+        });
+    }
+    return { ok: errors.length === 0, value: value, errors };
+}
+function asRecord(value, errors, label) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        return value;
+    }
+    errors.push(`${label} must be an object`);
+    return undefined;
+}
+function requireString(record, key, exact, errors) {
+    if (typeof record[key] !== "string" || record[key] === "") {
+        errors.push(`${key} must be a non-empty string`);
+        return;
+    }
+    if (exact !== undefined && record[key] !== exact) {
+        errors.push(`${key} must be ${exact}`);
+    }
+}
+function requireEnum(record, key, allowed, errors) {
+    if (typeof record[key] !== "string" ||
+        !allowed.includes(record[key])) {
+        errors.push(`${key} must be one of ${allowed.join(", ")}`);
+    }
+}
+function requirePositiveInt(record, key, errors) {
+    if (!Number.isInteger(record[key]) || record[key] < 1) {
+        errors.push(`${key} must be a positive integer`);
+    }
+}
+
+;// CONCATENATED MODULE: ./src/verify-format.ts
+
+function parseJulesReview(message) {
+    const match = message.match(/```json\s*\n([\s\S]*?)\n```/);
+    const text = match ? match[1] : message;
+    const parsed = JSON.parse(text);
+    const validated = schema_validateJulesReview(parsed);
+    if (!validated.ok || !validated.value) {
+        throw new Error(validated.errors.join("; "));
+    }
+    return validated.value;
+}
+function verifyJulesReview(review, context) {
+    const issues = [];
+    const schema = validateJulesReview(review);
+    if (!schema.ok) {
+        issues.push(...schema.errors.map((message) => ({
+            kind: "schema",
+            message,
+        })));
+    }
+    for (const comment of review.comments) {
+        const label = `${comment.id} (${comment.path}:${comment.line})`;
+        const changed = context.changedLines.get(comment.path);
+        if (!changed || !changed.has(comment.line)) {
+            issues.push({
+                kind: "unchanged-line",
+                message: `${label} targets a line that is not in the changed diff.`,
+            });
+        }
+        issues.push(...findSuggestionFenceIssues(comment.message, label));
+        const suggestion = comment.suggestion;
+        if (!suggestion)
+            continue;
+        if (suggestion.path !== comment.path) {
+            issues.push({
+                kind: "invalid-range",
+                message: `${label} suggestion path must match the comment path.`,
+            });
+        }
+        const file = context.files.get(suggestion.path);
+        if (file === undefined) {
+            issues.push({
+                kind: "missing-file",
+                message: `${label} suggestion file is not available: ${suggestion.path}.`,
+            });
+            continue;
+        }
+        const lineCount = Math.max(1, file.split("\n").length - 1);
+        if (suggestion.startLine < 1 ||
+            suggestion.endLine < suggestion.startLine ||
+            suggestion.endLine > lineCount) {
+            issues.push({
+                kind: "invalid-range",
+                message: `${label} suggestion range ${suggestion.startLine}-${suggestion.endLine} is outside ${suggestion.path}.`,
+            });
+        }
+        const suggestionChanged = context.changedLines.get(suggestion.path);
+        for (let line = suggestion.startLine; line <= suggestion.endLine; line++) {
+            if (!suggestionChanged || !suggestionChanged.has(line)) {
+                issues.push({
+                    kind: "unchanged-line",
+                    message: `${label} suggestion targets unchanged line ${line}.`,
+                });
+                break;
+            }
+        }
+        if (!comment.message.includes("```suggestion")) {
+            issues.push({
+                kind: "suggestion-fence",
+                message: `${label} has structured suggestion data but no GitHub suggestion fence in the comment message.`,
+            });
+        }
+    }
+    return issues;
+}
+function buildReviewRepairPrompt(reviewOrRaw, issues) {
+    const previous = typeof reviewOrRaw === "string"
+        ? reviewOrRaw
+        : JSON.stringify(reviewOrRaw, null, 2);
+    return `Fix only the Maxi review JSON.
+
+The previous response failed validation:
+${issues.map((issue) => `- ${issue.kind}: ${issue.message}`).join("\n")}
+
+Return exactly one complete maxi.review.v1.jules-review JSON object, optionally wrapped in a \`\`\`json fence. Preserve valid findings where possible. Do not add prose outside the JSON.
+
+Previous response:
+\`\`\`text
+${previous}
+\`\`\``;
+}
+function findSuggestionFenceIssues(message, label) {
+    const issues = [];
+    const lines = message.split("\n");
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
+        if (line.includes("```suggestion") && !/^```\s*suggestion\s*$/.test(line)) {
+            issues.push({
+                kind: "suggestion-fence",
+                message: `${label} has a malformed suggestion fence on message line ${lineIndex + 1}.`,
+            });
+        }
+        if (!/^```\s*suggestion\s*$/.test(line))
+            continue;
+        const closeIndex = lines.findIndex((candidate, candidateIndex) => candidateIndex > lineIndex && /^```\s*$/.test(candidate));
+        if (closeIndex === -1) {
+            issues.push({
+                kind: "suggestion-fence",
+                message: `${label} has an unclosed suggestion block.`,
+            });
+            continue;
+        }
+        if (closeIndex === lineIndex + 1) {
+            issues.push({
+                kind: "suggestion-fence",
+                message: `${label} has an empty suggestion block.`,
+            });
+        }
+        lineIndex = closeIndex;
+    }
+    return issues;
+}
+
 ;// CONCATENATED MODULE: ./src/jules.ts
+
 
 
 
@@ -41087,6 +41287,12 @@ source, timeoutMinutes) {
     return { reviewResult, sessionId: session.id };
 }
 function parseJulesResponse(message) {
+    try {
+        return convertStructuredReview(parseJulesReview(message));
+    }
+    catch {
+        // Fall back to the legacy Jules response shape while callers migrate.
+    }
     const jsonMatch = message.match(/```json\n([\s\S]*?)\n```/);
     if (jsonMatch) {
         try {
@@ -41103,6 +41309,24 @@ function parseJulesResponse(message) {
     catch (e) {
         throw new Error("Failed to parse Jules response as JSON", { cause: e });
     }
+}
+function convertStructuredReview(review) {
+    return {
+        summary: review.summary,
+        verdict: review.verdict,
+        resolvedCommentIds: review.resolvedCommentIds,
+        newComments: review.comments.map((comment) => ({
+            file: comment.path,
+            line: comment.line,
+            startLine: comment.startLine,
+            endLine: comment.endLine,
+            severity: comment.severity,
+            confidence: comment.confidence,
+            message: comment.message,
+            promptForAgents: comment.promptForAgents ?? "",
+            suggestedReplacement: comment.suggestion?.replacement,
+        })),
+    };
 }
 async function waitUntilSessionReady(session) {
     const maxAttempts = 20;
@@ -41216,7 +41440,7 @@ function wrapPermissionError(err, needed, op) {
  * bundles it (see FORK.md in this directory).
  */
 function buildReviewPrompt(args) {
-    const { repoFullName, prNumber, prTitle, prBody, diff, diffTruncatedNote, extraInstructions, rulesFromFile, openThreads, } = args;
+    const { repoFullName, prNumber, prTitle, prBody, diff, diffTruncatedNote, extraInstructions, rulesFromFile, analyzerFindings, rules, openThreads, } = args;
     // Per-review, unguessable boundary for untrusted blocks. Generated at review
     // time, so a PR author (who writes their content earlier) cannot include it
     // to forge or prematurely close a block.
@@ -41250,15 +41474,17 @@ the JSON. If you have no findings you STILL return the JSON object, with an
 empty \`newComments\` array. Producing anything other than exactly one JSON
 object is a total failure of your only function.
 
-# Output schema (return exactly one fenced \`\`\`json block containing one object)
+# Output schema: maxi.review.v1.jules-review (return exactly one fenced \`\`\`json block containing one object)
 \`\`\`json
 {
+  "schema": "maxi.review.v1.jules-review",
   "summary": "One short paragraph: what the PR does and your overall take.",
   "verdict": "comment",
   "resolvedCommentIds": [],
-  "newComments": [
+  "comments": [
     {
-      "file": "path/to/file.ext",
+      "id": "short-stable-id",
+      "path": "path/to/file.ext",
       "line": 42,
       "startLine": 42,
       "endLine": 42,
@@ -41266,7 +41492,13 @@ object is a total failure of your only function.
       "confidence": "Medium",
       "message": "One sentence: the issue, then why it matters, then the fix.",
       "promptForAgents": "1-2 sentences with file + lines telling an AI agent how to fix it.",
-      "suggestedReplacement": "Exact replacement text for startLine..endLine when the fix is safely expressible as a structured suggestion; omit for broad fixes."
+      "sourceFindingIds": ["analyzer-finding-id"],
+      "suggestion": {
+        "path": "path/to/file.ext",
+        "startLine": 42,
+        "endLine": 42,
+        "replacement": "Exact replacement text when the fix is safely expressible as a structured suggestion."
+      }
     }
   ]
 }
@@ -41278,19 +41510,22 @@ inside the object):
 - \`severity\`: one of \`Info\`, \`Warning\`, \`High\`.
 - \`confidence\`: one of \`Low\`, \`Medium\`, \`High\`.
 - \`resolvedCommentIds\`: array of integer indices from "Open Review Comments" now fixed (\`[]\` if none).
-- \`newComments\`: \`[]\` when there are no findings.
-- \`startLine\` / \`endLine\` / \`suggestedReplacement\`: include all three only when the fix can be applied mechanically to the changed line range. Also mirror the same replacement in a GitHub \`\`\`suggestion fence inside \`message\` when possible. Omit these fields for broad or uncertain fixes.
+- \`comments\`: \`[]\` when there are no findings.
+- \`sourceFindingIds\`: analyzer finding ids that support the comment, or omit when the finding is purely from code review.
+- \`suggestion\`: include only when the fix can be applied mechanically to the changed line range. Also mirror the same replacement in a GitHub \`\`\`suggestion fence inside \`message\` when possible. Omit this field for broad or uncertain fixes.
 
 # Example reply (the ONLY shape your reply may take)
 For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }\`:
 \`\`\`json
 {
+  "schema": "maxi.review.v1.jules-review",
   "summary": "Adds a helper that parses a string into a port number.",
   "verdict": "block",
   "resolvedCommentIds": [],
-  "newComments": [
+  "comments": [
     {
-      "file": "src/net.rs",
+      "id": "panic-on-invalid-port",
+      "path": "src/net.rs",
       "line": 2,
       "startLine": 2,
       "endLine": 2,
@@ -41298,7 +41533,12 @@ For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }
       "confidence": "High",
       "message": "\`unwrap()\` on \`parse()\` panics on any non-numeric input; reachable from external input, it crashes the process. Return a \`Result\` instead.\n\`\`\`suggestion\nfn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }\n\`\`\`",
       "promptForAgents": "In src/net.rs around line 2, change \`fn port\` to return \`Result<u16, _>\` and propagate the parse error instead of calling .unwrap().",
-      "suggestedReplacement": "fn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }"
+      "suggestion": {
+        "path": "src/net.rs",
+        "startLine": 2,
+        "endLine": 2,
+        "replacement": "fn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }"
+      }
     }
   ]
 }
@@ -41306,7 +41546,15 @@ For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }
 A reply that is NOT a single \`\`\`json block — e.g. "Sure! Here is my review:" or
 any prose outside the block — is rejected and wastes the run. Emit only the block.`;
     // ── 2. Rules up front, intact, before the (large) diff ───────────────────
-    const projectRules = [rulesFromFile, extraInstructions]
+    const analyzerSection = analyzerFindings && analyzerFindings.length > 0
+        ? `
+# Analyzer findings (trusted structured context)
+\`\`\`json
+${JSON.stringify(analyzerFindings, null, 2)}
+\`\`\`
+`
+        : "";
+    const projectRules = [rules, rulesFromFile, extraInstructions]
         .filter((s) => s && s.trim())
         .join("\n\n");
     const rulesSection = projectRules
@@ -41359,7 +41607,15 @@ ${threadsContext}`;
 # Reminder
 Now output your review for this PR as exactly one \`\`\`json block matching the
 schema above — and nothing else. No prose. No text outside the block.`;
-    return [header, rulesSection, security, reviewGuidance, payload, closer].join("\n");
+    return [
+        header,
+        analyzerSection,
+        rulesSection,
+        security,
+        reviewGuidance,
+        payload,
+        closer,
+    ].join("\n");
 }
 
 ;// CONCATENATED MODULE: ./src/review-pr.ts

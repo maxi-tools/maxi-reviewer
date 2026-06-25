@@ -35,6 +35,8 @@ type Octokit = ReturnType<typeof github.getOctokit>;
 export interface PullRequestContext {
   diff: string;
   changedFiles: string[];
+  files?: Map<string, string>;
+  changedLines?: Map<string, Set<number>>;
   rulesFromFile?: string;
   openThreads: OpenThread[];
 }
@@ -84,7 +86,13 @@ export interface ReviewPrDeps {
     prompt: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     source: any,
-    timeoutMinutes: number
+    timeoutMinutes: number,
+    options?: {
+      verificationContext?: {
+        files: Map<string, string>;
+        changedLines: Map<string, Set<number>>;
+      };
+    }
   ) => Promise<JulesReviewRunResult>;
   submitReview: typeof submitReview;
   resolveThreads: typeof resolveThreads;
@@ -264,7 +272,8 @@ export async function runReviewPr(
         apiKey,
         prompt,
         { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
-        timeoutMinutes
+        timeoutMinutes,
+        buildJulesReviewOptions(context)
       );
 
     const artifactName = `maxi-review-${prNumber}-${headSha}.json`;
@@ -398,10 +407,19 @@ export async function fetchPullRequestContext(input: {
     input.repo,
     input.pr.number
   );
+  const changedFiles = extractChangedFiles(diff);
 
   return {
     diff,
-    changedFiles: extractChangedFiles(diff),
+    changedFiles,
+    files: await loadHeadFiles(
+      input.octokit,
+      input.owner,
+      input.repo,
+      input.headSha,
+      changedFiles
+    ),
+    changedLines: extractChangedLines(diff),
     rulesFromFile,
     openThreads,
   };
@@ -471,6 +489,90 @@ export function extractChangedFiles(diff: string): string[] {
     paths.add(match[1]);
   }
   return [...paths];
+}
+
+export function extractChangedLines(diff: string): Map<string, Set<number>> {
+  const changedLines = new Map<string, Set<number>>();
+  let currentPath: string | undefined;
+  let newLine = 0;
+
+  for (const line of diff.split("\n")) {
+    const fileMatch = line.match(/^diff --git a\/.* b\/(.+)$/);
+    if (fileMatch) {
+      currentPath = fileMatch[1];
+      if (!changedLines.has(currentPath)) {
+        changedLines.set(currentPath, new Set());
+      }
+      continue;
+    }
+
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      newLine = Number(hunkMatch[1]);
+      continue;
+    }
+
+    if (!currentPath || line.length === 0) continue;
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) {
+      changedLines.get(currentPath)?.add(newLine);
+      newLine++;
+      continue;
+    }
+    if (line.startsWith("-")) continue;
+    newLine++;
+  }
+
+  return new Map([...changedLines].filter(([, lines]) => lines.size > 0));
+}
+
+async function loadHeadFiles(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  headSha: string,
+  paths: string[]
+): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  for (const path of paths) {
+    try {
+      const response = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path,
+        ref: headSha,
+      });
+      if (
+        "content" in response.data &&
+        typeof response.data.content === "string"
+      ) {
+        files.set(
+          path,
+          Buffer.from(response.data.content, "base64").toString("utf8")
+        );
+      }
+    } catch (err) {
+      core.warning(
+        `Failed to load ${path} at PR head for validation: ${String(err)}`
+      );
+    }
+  }
+  return files;
+}
+
+function buildJulesReviewOptions(context: PullRequestContext): {
+  verificationContext?: {
+    files: Map<string, string>;
+    changedLines: Map<string, Set<number>>;
+  };
+} {
+  if (!context.files || !context.changedLines) return {};
+  return {
+    verificationContext: {
+      files: context.files,
+      changedLines: context.changedLines,
+    },
+  };
 }
 
 function parseAnalyzerFile(

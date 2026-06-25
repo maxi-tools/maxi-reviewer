@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { runAnalyzers, runReviewPr } from "../src/review-pr.js";
+import {
+  fetchPullRequestContext,
+  runAnalyzers,
+  runReviewPr,
+} from "../src/review-pr.js";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -63,8 +67,10 @@ describe("runReviewPr orchestration", () => {
     ];
     const deps = {
       fetchPullRequestContext: vi.fn().mockResolvedValue({
-        diff: "diff --git a/src/a.ts b/src/a.ts",
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
         changedFiles: ["src/a.ts", "README.md"],
+        files: new Map([["src/a.ts", "new\n"]]),
+        changedLines: new Map([["src/a.ts", new Set([1])]]),
         rulesFromFile: undefined,
         openThreads: [],
       }),
@@ -102,7 +108,7 @@ describe("runReviewPr orchestration", () => {
     expect(deps.runAnalyzers).toHaveBeenCalledWith(
       expect.objectContaining({
         changedFiles: ["src/a.ts", "README.md"],
-        diff: "diff --git a/src/a.ts b/src/a.ts",
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
       })
     );
     expect(deps.buildReviewPrompt).toHaveBeenCalledWith(
@@ -110,6 +116,18 @@ describe("runReviewPr orchestration", () => {
         analyzerFindings,
         rules: "# TypeScript",
       })
+    );
+    expect(deps.runJulesReview).toHaveBeenCalledWith(
+      "jules-key",
+      "prompt",
+      { github: "maxi/example", baseBranch: "main" },
+      30,
+      {
+        verificationContext: {
+          files: new Map([["src/a.ts", "new\n"]]),
+          changedLines: new Map([["src/a.ts", new Set([1])]]),
+        },
+      }
     );
     expect(deps.submitReview).toHaveBeenCalled();
     expect(deps.uploadArtifact).toHaveBeenCalledWith(
@@ -136,6 +154,69 @@ describe("runReviewPr orchestration", () => {
       validationErrors: ["non-applying suggestion"],
       sessionId: "session-1",
     });
+  });
+});
+
+describe("fetchPullRequestContext", () => {
+  it("loads changed file contents and changed new-side lines for verification", async () => {
+    const diff = [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,2 +1,2 @@",
+      " const a = 1;",
+      "-const b = 2;",
+      "+const b = 3;",
+      "diff --git a/README.md b/README.md",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -10 +10 @@",
+      "-old",
+      "+new",
+      "",
+    ].join("\n");
+    const octokit = {
+      rest: {
+        repos: {
+          compareCommitsWithBasehead: vi.fn().mockResolvedValue({ data: diff }),
+          getContent: vi.fn(async ({ path }: { path: string }) => ({
+            data: {
+              content: Buffer.from(
+                path === "src/a.ts" ? "const a = 1;\nconst b = 3;\n" : "new\n"
+              ).toString("base64"),
+            },
+          })),
+        },
+      },
+      graphql: vi.fn().mockResolvedValue({
+        repository: { pullRequest: { reviewThreads: { nodes: [] } } },
+      }),
+    } as any;
+
+    const context = await fetchPullRequestContext({
+      octokit,
+      owner: "maxi",
+      repo: "example",
+      pr: { number: 7 },
+      baseSha: "base",
+      baseShaForDiff: "base",
+      headSha: "head",
+      rulesFilePath: "",
+    });
+
+    expect(context.changedFiles).toEqual(["src/a.ts", "README.md"]);
+    expect(context.files).toEqual(
+      new Map([
+        ["src/a.ts", "const a = 1;\nconst b = 3;\n"],
+        ["README.md", "new\n"],
+      ])
+    );
+    expect(context.changedLines).toEqual(
+      new Map([
+        ["src/a.ts", new Set([2])],
+        ["README.md", new Set([10])],
+      ])
+    );
   });
 });
 

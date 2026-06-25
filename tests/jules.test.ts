@@ -139,7 +139,7 @@ describe("jules.ts", () => {
       expect(session.prompt).toHaveBeenCalledWith(
         expect.stringContaining("Fix only the review response JSON")
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         reviewResult: {
           summary: "fixed",
           verdict: "comment",
@@ -147,7 +147,11 @@ describe("jules.ts", () => {
           newComments: [],
         },
         sessionId: "test-session-id",
+        rawResponses: [badReview, fixedReview],
       });
+      expect(result.validationErrors?.[0]).toContain(
+        "Failed to parse Jules response"
+      );
     });
 
     it("waits for a new Jules message after requesting JSON repair", async () => {
@@ -341,7 +345,7 @@ describe("jules.ts", () => {
       await vi.advanceTimersByTimeAsync(60 * 1000 + 1000);
 
       const result = await promise;
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         reviewResult: {
           summary:
             "Jules returned an invalid response that could not be parsed after a same-session repair attempt. No valid code review comments are present.",
@@ -350,7 +354,11 @@ describe("jules.ts", () => {
           newComments: [],
         },
         sessionId: "test-session-id",
+        rawResponses: [reviewText, ""],
       });
+      expect(result.validationErrors?.join("\n")).toContain(
+        "Failed to parse repaired Jules response"
+      );
       expect(session.prompt).toHaveBeenCalledWith(
         expect.stringContaining("Fix only the review response JSON")
       );
@@ -372,7 +380,7 @@ describe("jules.ts", () => {
       await vi.advanceTimersByTimeAsync(60 * 1000 + 1000);
 
       const result = await promise;
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         reviewResult: {
           summary:
             "Jules returned an invalid response that could not be parsed after a same-session repair attempt. No valid code review comments are present.",
@@ -381,7 +389,11 @@ describe("jules.ts", () => {
           newComments: [],
         },
         sessionId: "test-session-id",
+        rawResponses: [reviewText, ""],
       });
+      expect(result.validationErrors?.join("\n")).toContain(
+        "Failed to parse repaired Jules response"
+      );
       expect(session.prompt).toHaveBeenCalledWith(
         expect.stringContaining("Fix only the review response JSON")
       );

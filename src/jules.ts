@@ -36,7 +36,12 @@ export async function runJulesReview(
   source: any,
   timeoutMinutes: number,
   options: RunJulesReviewOptions = {}
-): Promise<{ reviewResult: ReviewResult | null; sessionId: string }> {
+): Promise<{
+  reviewResult: ReviewResult | null;
+  sessionId: string;
+  rawResponses?: string[];
+  validationErrors?: string[];
+}> {
   const customJules = jules.with({ apiKey });
 
   core.info("Creating Jules review session…");
@@ -63,10 +68,15 @@ export async function runJulesReview(
   }
 
   let latestReviewMessage = reviewMessage;
+  const rawResponses = [reviewMessage];
+  const validationErrors: string[] = [];
   let reviewResult: ReviewResult;
   try {
     reviewResult = parseJulesResponse(latestReviewMessage);
   } catch (err) {
+    validationErrors.push(
+      `Failed to parse Jules response: ${errorMessage(err)}`
+    );
     core.warning(
       `Failed to parse Jules response; requesting same-session JSON repair: ${err}`
     );
@@ -79,10 +89,14 @@ export async function runJulesReview(
       timeoutMinutes * 60 * 1000,
       reviewMessage
     );
+    rawResponses.push(repairedMessage);
     try {
       reviewResult = parseJulesResponse(repairedMessage);
       latestReviewMessage = repairedMessage;
     } catch (repairErr) {
+      validationErrors.push(
+        `Failed to parse repaired Jules response: ${errorMessage(repairErr)}`
+      );
       core.error(`Failed to parse repaired Jules response: ${repairErr}`);
       return {
         reviewResult: {
@@ -93,12 +107,15 @@ export async function runJulesReview(
           newComments: [],
         },
         sessionId: session.id,
+        rawResponses,
+        validationErrors,
       };
     }
   }
 
   const formatIssues = findReviewFormatIssues(reviewResult);
   if (formatIssues.length > 0) {
+    validationErrors.push(...formatIssues);
     core.warning(
       `Jules response has ${formatIssues.length} suggested-change formatting issue(s); requesting a same-session revision.`
     );
@@ -112,10 +129,12 @@ export async function runJulesReview(
       latestReviewMessage
     );
     if (revisedMessage) {
+      rawResponses.push(revisedMessage);
       try {
         const revisedResult = parseJulesResponse(revisedMessage);
         const remainingIssues = findReviewFormatIssues(revisedResult);
         if (remainingIssues.length > 0) {
+          validationErrors.push(...remainingIssues);
           core.warning(
             `Jules revised response still has suggested-change formatting issue(s): ${remainingIssues.join(" ")}`
           );
@@ -124,6 +143,9 @@ export async function runJulesReview(
           latestReviewMessage = revisedMessage;
         }
       } catch (revisionErr) {
+        validationErrors.push(
+          `Failed to parse Jules formatting revision: ${errorMessage(revisionErr)}`
+        );
         core.warning(
           `Failed to parse Jules formatting revision; keeping previous parsed review result: ${revisionErr}`
         );
@@ -140,10 +162,17 @@ export async function runJulesReview(
     });
     if (verified) {
       reviewResult = verified.reviewResult;
+      rawResponses.push(verified.latestReviewMessage);
+      validationErrors.push(...verified.validationErrors);
     }
   }
 
-  return { reviewResult, sessionId: session.id };
+  return {
+    reviewResult,
+    sessionId: session.id,
+    ...(rawResponses.length > 1 ? { rawResponses } : {}),
+    ...(validationErrors.length > 0 ? { validationErrors } : {}),
+  };
 }
 
 async function requestStructuredValidationRepair(input: {
@@ -154,6 +183,7 @@ async function requestStructuredValidationRepair(input: {
 }): Promise<{
   reviewResult: ReviewResult;
   latestReviewMessage: string;
+  validationErrors: string[];
 } | null> {
   let structuredReview;
   try {
@@ -164,6 +194,9 @@ async function requestStructuredValidationRepair(input: {
 
   const issues = verifyJulesReview(structuredReview, input.verificationContext);
   if (issues.length === 0) return null;
+  const validationErrors = issues.map(
+    (issue) => `${issue.kind}: ${issue.message}`
+  );
 
   core.warning(
     `Jules structured review has ${issues.length} validation issue(s); requesting a same-session revision.`
@@ -184,6 +217,9 @@ async function requestStructuredValidationRepair(input: {
       input.verificationContext
     );
     if (remainingIssues.length > 0) {
+      validationErrors.push(
+        ...remainingIssues.map((issue) => `${issue.kind}: ${issue.message}`)
+      );
       core.warning(
         `Jules revised structured review still has validation issue(s): ${remainingIssues.map((issue) => issue.message).join(" ")}`
       );
@@ -192,8 +228,12 @@ async function requestStructuredValidationRepair(input: {
     return {
       reviewResult: convertStructuredReview(revisedStructuredReview),
       latestReviewMessage: revisedMessage,
+      validationErrors,
     };
   } catch (err) {
+    validationErrors.push(
+      `Failed to parse Jules structured validation revision: ${errorMessage(err)}`
+    );
     core.warning(
       `Failed to parse Jules structured validation revision; keeping previous parsed review result: ${err}`
     );
@@ -273,6 +313,10 @@ function convertStructuredReview(review: {
       suggestedReplacement: comment.suggestion?.replacement,
     })),
   };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 async function waitUntilSessionReady(session: {

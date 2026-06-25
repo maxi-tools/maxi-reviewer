@@ -134,11 +134,55 @@ maxi-review-7-head.json
       owner: "maxi",
       repo: "example",
       branch: "feature",
+      expectedHeadSha: "head-a",
       message: "Apply 1 Maxi suggestion",
       files: new Map([["src/a.ts", "const a = 1;\nconst b = 3;\n"]]),
     });
     expect(deps.comment).toHaveBeenCalledWith(
       "Applied 1 Maxi suggestion. Skipped 0."
+    );
+  });
+
+  it("comments instead of throwing when apply-all commit detects a stale branch", async () => {
+    const deps = {
+      getContext: () => ({
+        body: "/maxi apply-all",
+        owner: "maxi",
+        repo: "example",
+        issueNumber: 7,
+      }),
+      fetchPullRequest: vi.fn().mockResolvedValue({
+        number: 7,
+        headSha: "head-a",
+        headRef: "feature",
+        headRepository: "maxi/example",
+        repository: "maxi/example",
+        tokenPermissions: { contents: "write", pullRequests: "write" },
+      }),
+      listArtifactComments: vi.fn().mockResolvedValue([
+        `<!-- maxi-review artifact -->
+\`\`\`json
+{"schema":"maxi.review.v1.review-artifact","headSha":"head-a","validatedReview":{"comments":[{"id":"c1","path":"src/a.ts","line":2,"severity":"Warning","confidence":"High","message":"Use this.","suggestion":{"path":"src/a.ts","startLine":2,"endLine":2,"replacement":"const b = 3;"}}]}}
+\`\`\``,
+      ]),
+      readFiles: vi
+        .fn()
+        .mockResolvedValue(
+          new Map([["src/a.ts", "const a = 1;\nconst b = 2;\n"]])
+        ),
+      commitFiles: vi
+        .fn()
+        .mockRejectedValue(
+          new Error("stale head SHA: expected head-a, got head-b")
+        ),
+      startHandsOnFix: vi.fn().mockResolvedValue(undefined),
+      comment: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(runReviewCommand(deps)).resolves.toBeUndefined();
+
+    expect(deps.comment).toHaveBeenCalledWith(
+      "Could not apply Maxi suggestions: stale head SHA: expected head-a, got head-b"
     );
   });
 

@@ -73,6 +73,7 @@ export interface ReviewCommandDeps {
     owner: string;
     repo: string;
     branch: string;
+    expectedHeadSha: string;
     message: string;
     files: Map<string, string>;
   }) => Promise<void>;
@@ -221,13 +222,21 @@ async function runApplyAllCommand(
     return;
   }
 
-  await deps.commitFiles({
-    owner: context.owner,
-    repo: context.repo,
-    branch: pr.headRef,
-    message: plan.commitMessage,
-    files: changedFilesOnly(files, plan.result.files),
-  });
+  try {
+    await deps.commitFiles({
+      owner: context.owner,
+      repo: context.repo,
+      branch: pr.headRef,
+      expectedHeadSha: pr.headSha,
+      message: plan.commitMessage,
+      files: changedFilesOnly(files, plan.result.files),
+    });
+  } catch (err) {
+    await deps.comment(
+      `Could not apply Maxi suggestions: ${errorMessage(err)}`
+    );
+    return;
+  }
   await deps.comment(
     `Applied ${plan.result.applied.length} Maxi suggestion${
       plan.result.applied.length === 1 ? "" : "s"
@@ -310,6 +319,10 @@ function changedFilesOnly(
       ([path, content]) => before.get(path) !== content
     )
   );
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -398,7 +411,14 @@ function defaultReviewCommandDeps(): ReviewCommandDeps {
       }
       return files;
     },
-    commitFiles: async ({ owner, repo, branch, message, files }) => {
+    commitFiles: async ({
+      owner,
+      repo,
+      branch,
+      expectedHeadSha,
+      message,
+      files,
+    }) => {
       if (files.size === 0) return;
       const ref = await octokit.rest.git.getRef({
         owner,
@@ -406,6 +426,11 @@ function defaultReviewCommandDeps(): ReviewCommandDeps {
         ref: `heads/${branch}`,
       });
       const latestCommitSha = ref.data.object.sha;
+      if (latestCommitSha !== expectedHeadSha) {
+        throw new Error(
+          `stale head SHA: expected ${expectedHeadSha}, got ${latestCommitSha}`
+        );
+      }
       const latestCommit = await octokit.rest.git.getCommit({
         owner,
         repo,

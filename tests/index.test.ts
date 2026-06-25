@@ -377,7 +377,7 @@ describe("truncate", () => {
   let truncate: any;
 
   beforeEach(async () => {
-    const mod = await import("../src/index.js");
+    const mod = await import("../src/review-pr.js");
     truncate = mod.truncate;
   });
 
@@ -407,7 +407,7 @@ describe("truncate", () => {
   let truncate: any;
 
   beforeEach(async () => {
-    const mod = await import("../src/index.js");
+    const mod = await import("../src/review-pr.js");
     truncate = mod.truncate;
   });
 

@@ -1,6 +1,6 @@
-name: "Advanced Jules PR Reviewer"
-description: "Review pull requests with Google Jules and post the review as a PR comment. Optionally gate merges based on review verdict."
-author: "thalesraymond"
+name: "Maxi Review"
+description: "Review pull requests with Maxi analyzer context and Jules feedback."
+author: "maxi-tools"
 
 branding:
   icon: "check-circle"
@@ -47,5 +47,5 @@ inputs:
     default: "30"
 
 runs:
-  using: "node20"
+  using: "node24"
   main: "dist/index.js"

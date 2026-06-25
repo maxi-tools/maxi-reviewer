@@ -131,6 +131,13 @@ describe("index.ts", () => {
     expect(mockReviewCommand.runReviewCommand).toHaveBeenCalled();
   });
 
+  it("routes workflow dispatch events to the review command handler", async () => {
+    (github as any).context.eventName = "workflow_dispatch";
+    (github as any).context.payload = { inputs: {} };
+    await loadIndex();
+    expect(mockReviewCommand.runReviewCommand).toHaveBeenCalled();
+  });
+
   it("fails if no pull_request payload", async () => {
     (github as any).context.payload.pull_request = undefined;
     await loadIndex();
@@ -225,14 +232,9 @@ describe("index.ts", () => {
     const hugeDiff = "x".repeat(81_000);
     mockGithubHelper.fetchDiff.mockResolvedValue(hugeDiff);
     await loadIndex();
-    // Verify prompt contains truncation note
-    expect(mockJulesHelper.runJulesReview).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.stringContaining(
-        "NOTE: The diff was truncated: original 81000 chars, kept first 80000."
-      ),
-      expect.anything(),
-      expect.anything()
+    const prompt = mockJulesHelper.runJulesReview.mock.calls[0][1];
+    expect(prompt).toContain(
+      "NOTE: The diff was truncated: original 81000 chars, kept first 80000."
     );
   });
 

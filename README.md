@@ -17,9 +17,17 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number
+        required: true
+      command:
+        description: Maxi command, for example /maxi apply-all
+        required: true
 
 concurrency:
-  group: maxi-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: maxi-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
@@ -40,7 +48,7 @@ jobs:
           fail_on: blocking
 
   command:
-    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    if: (github.event_name == 'issue_comment' && github.event.issue.pull_request) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -51,6 +59,8 @@ jobs:
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          command: ${{ inputs.command }}
+          pr_number: ${{ inputs.pr_number }}
 ```
 
 Add `JULES_API_KEY` as a repository Actions secret. The default `GITHUB_TOKEN` should be used with the permissions above.
@@ -127,12 +137,14 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `opengrep_sarif`     |                                 | Path to Opengrep/Semgrep-compatible SARIF output.             |
 | `pmd_xml`            |                                 | Path to PMD XML output.                                       |
 | `cpd_xml`            |                                 | Path to CPD XML output.                                       |
+| `command`            |                                 | `/maxi ...` command for `workflow_dispatch`.                  |
+| `pr_number`          |                                 | Pull request number for `workflow_dispatch` commands.         |
 
 ## Apply-All And Hands-On Fixes
 
 Structured suggestions can be applied as a batch only when the head SHA is still fresh. Broader findings can be routed to a hands-on Jules fix session only after an explicit `/maxi fix <finding-id>` command, on a same-repository PR branch, with write permissions available.
 
-Supported PR comment commands:
+Supported PR comment or `workflow_dispatch` commands:
 
 - `/maxi apply-all`
 - `/maxi fix <finding-id>`

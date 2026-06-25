@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import * as core from "@actions/core";
+import * as github from "@actions/github";
 import {
   buildApplyAllPlan,
+  defaultReviewCommandDeps,
   extractReviewArtifact,
   parseReviewCommand,
   runReviewCommand,
 } from "../src/review-command.js";
+
+vi.mock("@actions/core");
+vi.mock("@actions/github");
+
+type MutableGithubModule = typeof github & { context: typeof github.context };
 
 describe("review command handling", () => {
   it("parses apply-all and hands-on fix commands", () => {
@@ -35,6 +43,73 @@ maxi-review-7-head.json
     expect(artifact).toMatchObject({
       schema: "maxi.review.v1.review-artifact",
       headSha: "head",
+    });
+  });
+
+  it("builds workflow dispatch command context from action inputs", () => {
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      if (name === "github_token") return "token";
+      if (name === "command") return "/maxi apply-all";
+      if (name === "pr_number") return "7";
+      return "";
+    });
+    vi.mocked(github.getOctokit).mockReturnValue(
+      {} as ReturnType<typeof github.getOctokit>
+    );
+    (github as MutableGithubModule).context = {
+      eventName: "workflow_dispatch",
+      repo: { owner: "maxi", repo: "example" },
+      payload: { inputs: {} },
+    } as typeof github.context;
+
+    const deps = defaultReviewCommandDeps();
+
+    expect(deps.getContext()).toEqual({
+      body: "/maxi apply-all",
+      owner: "maxi",
+      repo: "example",
+      issueNumber: 7,
+    });
+  });
+
+  it("fetches workflow dispatch pull request by pr_number input", async () => {
+    const pullsGet = vi.fn().mockResolvedValue({
+      data: {
+        number: 7,
+        head: {
+          sha: "head-a",
+          ref: "feature",
+          repo: { full_name: "maxi/example" },
+        },
+      },
+    });
+    vi.mocked(core.getInput).mockImplementation((name: string) => {
+      if (name === "github_token") return "token";
+      return "";
+    });
+    vi.mocked(github.getOctokit).mockReturnValue({
+      rest: { pulls: { get: pullsGet } },
+    } as ReturnType<typeof github.getOctokit>);
+    (github as MutableGithubModule).context = {
+      eventName: "workflow_dispatch",
+      repo: { owner: "maxi", repo: "example" },
+      payload: { inputs: {} },
+    } as typeof github.context;
+
+    const deps = defaultReviewCommandDeps();
+    const pr = await deps.fetchPullRequest("maxi", "example", 7);
+
+    expect(pullsGet).toHaveBeenCalledWith({
+      owner: "maxi",
+      repo: "example",
+      pull_number: 7,
+    });
+    expect(pr).toMatchObject({
+      number: 7,
+      headSha: "head-a",
+      headRef: "feature",
+      headRepository: "maxi/example",
+      repository: "maxi/example",
     });
   });
 

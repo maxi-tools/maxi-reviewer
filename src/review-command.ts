@@ -374,22 +374,32 @@ function hasAllReviewCommandDeps(
   ].every(Boolean);
 }
 
-function defaultReviewCommandDeps(): ReviewCommandDeps {
+export function defaultReviewCommandDeps(): ReviewCommandDeps {
   const token = core.getInput("github_token", { required: true });
   const octokit = github.getOctokit(token);
   return {
     getContext: () => {
       const ctx = github.context;
+      const isWorkflowDispatch = ctx.eventName === "workflow_dispatch";
       return {
-        body: String(ctx.payload.comment?.body || ""),
+        body: isWorkflowDispatch
+          ? core.getInput("command", { required: true })
+          : String(ctx.payload.comment?.body || ""),
         owner: ctx.repo.owner,
         repo: ctx.repo.repo,
-        issueNumber: Number(ctx.payload.issue?.number || 0),
+        issueNumber: isWorkflowDispatch
+          ? Number(core.getInput("pr_number", { required: true }))
+          : Number(ctx.payload.issue?.number || 0),
       };
     },
     fetchPullRequest: async (owner, repo, issueNumber) => {
       const issue = github.context.payload.issue;
-      if (!issue?.pull_request) return null;
+      if (
+        github.context.eventName !== "workflow_dispatch" &&
+        !issue?.pull_request
+      ) {
+        return null;
+      }
       const response = await octokit.rest.pulls.get({
         owner,
         repo,

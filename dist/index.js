@@ -36391,6 +36391,8 @@ function getOctokit(token, options, ...additionalPlugins) {
     return new GitHubWithPlugins(getOctokitOptions(token, options));
 }
 //# sourceMappingURL=github.js.map
+;// CONCATENATED MODULE: external "node:fs"
+const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
 ;// CONCATENATED MODULE: ./src/github.ts
 
 async function fetchDiff(octokit, owner, repo, pr, baseShaForDiff, headSha) {
@@ -36599,8 +36601,6 @@ async function setStatus(octokit, owner, repo, sha, context, state, description)
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 ;// CONCATENATED MODULE: external "node:os"
 const external_node_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:os");
-;// CONCATENATED MODULE: external "node:fs"
-const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
 ;// CONCATENATED MODULE: external "fs/promises"
 const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
 ;// CONCATENATED MODULE: external "readline"
@@ -41670,7 +41670,231 @@ function buildReviewArtifact(input) {
     }, null, 2);
 }
 
+;// CONCATENATED MODULE: ./src/analyzers/normalize.ts
+
+function normalizeSeverity(raw) {
+    const text = String(raw || "").toLowerCase();
+    if (["error", "high", "critical"].includes(text))
+        return "error";
+    if (["warning", "warn", "medium"].includes(text))
+        return "warning";
+    return "info";
+}
+function normalizeConfidence(raw) {
+    const text = String(raw || "").toLowerCase();
+    if (["high", "medium", "low"].includes(text)) {
+        return text;
+    }
+    return "unknown";
+}
+function findingId(parts) {
+    return (0,external_node_crypto_.createHash)("sha256")
+        .update(`${parts.tool}\0${parts.ruleId}\0${parts.path}\0${parts.startLine}\0${parts.message}`)
+        .digest("hex")
+        .slice(0, 24);
+}
+function buildFinding(input) {
+    const startLine = Math.max(1, input.startLine);
+    const endLine = Math.max(startLine, input.endLine);
+    return {
+        ...input,
+        schema: "maxi.review.v1.analyzer-finding",
+        id: input.id ??
+            findingId({
+                tool: input.tool,
+                ruleId: input.ruleId,
+                path: input.path,
+                startLine,
+                message: input.message,
+            }),
+        startLine,
+        endLine,
+    };
+}
+function normalize_asRecord(value) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        return value;
+    }
+    return undefined;
+}
+function asArray(value) {
+    return Array.isArray(value) ? value : [];
+}
+function asPositiveInt(value, fallback = 1) {
+    return Number.isInteger(value) && value > 0
+        ? value
+        : fallback;
+}
+function asText(value, fallback = "") {
+    return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+;// CONCATENATED MODULE: ./src/analyzers/opengrep.ts
+
+function parseOpengrepJson(text) {
+    const root = normalize_asRecord(JSON.parse(text));
+    if (!root)
+        return [];
+    return asArray(root.results).flatMap((result) => {
+        const item = normalize_asRecord(result);
+        if (!item)
+            return [];
+        const extra = normalize_asRecord(item.extra) ?? {};
+        const metadata = normalize_asRecord(extra.metadata) ?? {};
+        const path = asText(item.path);
+        const ruleId = asText(item.check_id, "unknown-rule");
+        const start = normalize_asRecord(item.start) ?? {};
+        const end = normalize_asRecord(item.end) ?? {};
+        const message = asText(extra.message, ruleId);
+        return [
+            buildFinding({
+                tool: "opengrep",
+                toolVersion: asText(root.version, undefined),
+                ruleId,
+                severity: normalizeSeverity(extra.severity),
+                confidence: normalizeConfidence(metadata.confidence),
+                message,
+                path,
+                startLine: asPositiveInt(start.line),
+                endLine: asPositiveInt(end.line, asPositiveInt(start.line)),
+                helpUri: asText(metadata.source, undefined),
+                license: asText(metadata.license, undefined),
+                raw: item,
+            }),
+        ];
+    });
+}
+function parseOpengrepSarif(text) {
+    const root = normalize_asRecord(JSON.parse(text));
+    if (!root)
+        return [];
+    return asArray(root.runs).flatMap((run) => {
+        const runRecord = normalize_asRecord(run);
+        if (!runRecord)
+            return [];
+        const tool = normalize_asRecord(runRecord.tool) ?? {};
+        const driver = normalize_asRecord(tool.driver) ?? {};
+        const ruleMap = new Map();
+        for (const rule of asArray(driver.rules)) {
+            const record = normalize_asRecord(rule);
+            if (!record)
+                continue;
+            const id = asText(record.id);
+            if (id)
+                ruleMap.set(id, record);
+        }
+        return asArray(runRecord.results).flatMap((result) => {
+            const item = normalize_asRecord(result);
+            if (!item)
+                return [];
+            const ruleId = asText(item.ruleId, "unknown-rule");
+            const rule = ruleMap.get(ruleId) ?? {};
+            const message = normalize_asRecord(item.message) ?? {};
+            const firstLocation = normalize_asRecord(asArray(item.locations)[0]) ?? {};
+            const physicalLocation = normalize_asRecord(firstLocation.physicalLocation) ?? {};
+            const artifactLocation = normalize_asRecord(physicalLocation.artifactLocation) ?? {};
+            const region = normalize_asRecord(physicalLocation.region) ?? {};
+            const startLine = asPositiveInt(region.startLine);
+            return [
+                buildFinding({
+                    tool: "opengrep",
+                    toolVersion: asText(driver.version, undefined),
+                    ruleId,
+                    ruleName: asText(rule.name, undefined),
+                    severity: normalizeSeverity(item.level),
+                    confidence: normalizeConfidence(normalize_asRecord(rule.properties)?.precision),
+                    message: asText(message.text, ruleId),
+                    path: asText(artifactLocation.uri),
+                    startLine,
+                    endLine: asPositiveInt(region.endLine, startLine),
+                    helpUri: asText(rule.helpUri, undefined),
+                    raw: item,
+                }),
+            ];
+        });
+    });
+}
+
+;// CONCATENATED MODULE: ./src/analyzers/pmd.ts
+
+function parsePmdXml(text) {
+    const version = attrs(text.match(/<pmd\b[^>]*>/)?.[0] ?? "").version;
+    const findings = [];
+    const filePattern = /<file\b([^>]*)>([\s\S]*?)<\/file>/g;
+    for (const fileMatch of text.matchAll(filePattern)) {
+        const fileAttrs = attrs(fileMatch[1]);
+        const path = fileAttrs.name ?? "";
+        const body = fileMatch[2];
+        for (const violationMatch of body.matchAll(/<violation\b([^>]*)>([\s\S]*?)<\/violation>/g)) {
+            const violationAttrs = attrs(violationMatch[1]);
+            const startLine = asPositiveInt(Number(violationAttrs.beginline));
+            findings.push(buildFinding({
+                tool: "pmd",
+                toolVersion: version,
+                ruleId: violationAttrs.rule ?? "pmd-violation",
+                ruleName: violationAttrs.ruleset,
+                severity: normalizeSeverity(priorityToSeverity(violationAttrs.priority)),
+                confidence: normalizeConfidence(undefined),
+                message: decodeXml(violationMatch[2].trim()),
+                path,
+                startLine,
+                endLine: asPositiveInt(Number(violationAttrs.endline), startLine),
+                helpUri: violationAttrs.externalInfoUrl,
+                raw: { file: fileAttrs, violation: violationAttrs },
+            }));
+        }
+    }
+    return findings;
+}
+function parseCpdXml(text) {
+    const findings = [];
+    for (const duplicationMatch of text.matchAll(/<duplication\b([^>]*)>([\s\S]*?)<\/duplication>/g)) {
+        const duplicationAttrs = attrs(duplicationMatch[1]);
+        const firstFile = duplicationMatch[2].match(/<file\b([^>]*)\/?>/);
+        const fileAttrs = attrs(firstFile?.[1] ?? "");
+        const startLine = asPositiveInt(Number(fileAttrs.line));
+        const lines = asPositiveInt(Number(duplicationAttrs.lines), 1);
+        findings.push(buildFinding({
+            tool: "cpd",
+            ruleId: "copy-paste-duplicate",
+            severity: "warning",
+            confidence: "medium",
+            message: `Duplicate code block spans ${lines} lines.`,
+            path: fileAttrs.path ?? "",
+            startLine,
+            endLine: startLine + lines - 1,
+            raw: { duplication: duplicationAttrs },
+        }));
+    }
+    return findings;
+}
+function attrs(tag) {
+    const out = {};
+    for (const match of tag.matchAll(/([A-Za-z_:][-A-Za-z0-9_:]*)="([^"]*)"/g)) {
+        out[match[1]] = decodeXml(match[2]);
+    }
+    return out;
+}
+function priorityToSeverity(priority) {
+    if (priority === "1" || priority === "2")
+        return "error";
+    if (priority === "3")
+        return "warning";
+    return "info";
+}
+function decodeXml(value) {
+    return value
+        .replaceAll("&quot;", '"')
+        .replaceAll("&apos;", "'")
+        .replaceAll("&lt;", "<")
+        .replaceAll("&gt;", ">")
+        .replaceAll("&amp;", "&");
+}
+
 ;// CONCATENATED MODULE: ./src/review-pr.ts
+
+
+
 
 
 
@@ -41710,6 +41934,13 @@ async function runReviewPr(overrides = {}) {
     const statusContext = getInput("status_context");
     const extraInstructions = getInput("extra_instructions");
     const rulesFilePath = getInput("rules_file");
+    const analyzerMode = getInput("analyzer_mode") || "auto";
+    const analyzerOutputPaths = {
+        opengrepJson: getInput("opengrep_json") || undefined,
+        opengrepSarif: getInput("opengrep_sarif") || undefined,
+        pmdXml: getInput("pmd_xml") || undefined,
+        cpdXml: getInput("cpd_xml") || undefined,
+    };
     const timeoutMinutesRaw = getInput("timeout_minutes") || "30";
     const timeoutMinutes = Math.max(1, parseInt(timeoutMinutesRaw, 10) || 30);
     const ctx = github_context;
@@ -41776,6 +42007,8 @@ async function runReviewPr(overrides = {}) {
         const analyzerFindings = await deps.runAnalyzers({
             changedFiles: context.changedFiles,
             diff: context.diff,
+            analyzerMode,
+            analyzerOutputPaths,
         });
         const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
         const selectedRules = selectedRuleFiles.length > 0
@@ -41852,8 +42085,16 @@ async function fetchPullRequestContext(input) {
         openThreads,
     };
 }
-async function runAnalyzers() {
-    return [];
+async function runAnalyzers(input) {
+    if (input.analyzerMode === "off")
+        return [];
+    const findings = [];
+    const paths = input.analyzerOutputPaths || {};
+    findings.push(...parseAnalyzerFile(paths.opengrepJson, parseOpengrepJson));
+    findings.push(...parseAnalyzerFile(paths.opengrepSarif, parseOpengrepSarif));
+    findings.push(...parseAnalyzerFile(paths.pmdXml, parsePmdXml));
+    findings.push(...parseAnalyzerFile(paths.cpdXml, parseCpdXml));
+    return findings;
 }
 async function uploadReviewArtifact(name, content) {
     info(`Prepared review artifact ${name} (${content.length} bytes).`);
@@ -41864,6 +42105,21 @@ function extractChangedFiles(diff) {
         paths.add(match[1]);
     }
     return [...paths];
+}
+function parseAnalyzerFile(path, parser) {
+    if (!path)
+        return [];
+    if (!(0,external_node_fs_namespaceObject.existsSync)(path)) {
+        warning(`Analyzer output path does not exist: ${path}`);
+        return [];
+    }
+    try {
+        return parser((0,external_node_fs_namespaceObject.readFileSync)(path, "utf8"));
+    }
+    catch (err) {
+        warning(`Failed to parse analyzer output ${path}: ${String(err)}`);
+        return [];
+    }
 }
 function truncateDiff(diff, maxChars) {
     if (diff.length <= maxChars)

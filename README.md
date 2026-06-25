@@ -30,11 +30,18 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Opengrep
+        run: opengrep scan --json --output opengrep.json .
+        continue-on-error: true
+
       - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           fail_on: blocking
+          opengrep_json: opengrep.json
 ```
 
 Add `JULES_API_KEY` as a repository Actions secret. The default `GITHUB_TOKEN` should be used with the permissions above.
@@ -59,6 +66,17 @@ Maxi Review is designed to consume fast, open-source analyzer output in the PR-t
 - CPD XML duplicate findings.
 
 Analyzers are treated as external tools. Maxi Review consumes their machine-readable output and preserves tool name, rule id, help URL, and license metadata where available.
+
+Configured analyzer output inputs:
+
+| Input            | Format                              |
+| ---------------- | ----------------------------------- |
+| `opengrep_json`  | Opengrep/Semgrep-compatible JSON    |
+| `opengrep_sarif` | Opengrep/Semgrep-compatible SARIF   |
+| `pmd_xml`        | PMD XML                             |
+| `cpd_xml`        | CPD XML duplicate-detection results |
+
+Set `analyzer_mode: off` to skip analyzer ingestion.
 
 Qodana is intentionally not run during PR-time review. It is more expensive and belongs in nightly or self-hosted checks. Later Maxi-authored Qodana-inspired guidance can live in Maxi-owned rule files, but this repository does not bulk-copy JetBrains Inspectopedia or Qodana documentation.
 
@@ -91,6 +109,11 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `extra_instructions` |                                 | Markdown appended to the review prompt.                       |
 | `rules_file`         | `.github/jules-review-rules.md` | Repo file loaded from the base SHA. Set empty to disable.     |
 | `timeout_minutes`    | `30`                            | How long to wait for Jules review output.                     |
+| `analyzer_mode`      | `auto`                          | `auto` or `off`.                                              |
+| `opengrep_json`      |                                 | Path to Opengrep/Semgrep-compatible JSON output.              |
+| `opengrep_sarif`     |                                 | Path to Opengrep/Semgrep-compatible SARIF output.             |
+| `pmd_xml`            |                                 | Path to PMD XML output.                                       |
+| `cpd_xml`            |                                 | Path to CPD XML output.                                       |
 
 ## Apply-All And Hands-On Fixes
 

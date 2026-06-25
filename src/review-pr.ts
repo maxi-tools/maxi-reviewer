@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { existsSync, readFileSync } from "node:fs";
 import {
   AnalyzerFinding,
   FailOn,
@@ -19,6 +20,8 @@ import { runJulesReview, wrapPermissionError } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
+import { parseOpengrepJson, parseOpengrepSarif } from "./analyzers/opengrep.js";
+import { parseCpdXml, parsePmdXml } from "./analyzers/pmd.js";
 
 const COMMENT_MARKER = "<!-- jules-pr-reviewer -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
@@ -35,6 +38,13 @@ export interface PullRequestContext {
 export interface RunAnalyzerInput {
   changedFiles: string[];
   diff: string;
+  analyzerMode?: string;
+  analyzerOutputPaths?: {
+    opengrepJson?: string;
+    opengrepSarif?: string;
+    pmdXml?: string;
+    cpdXml?: string;
+  };
 }
 
 export interface JulesReviewRunResult {
@@ -114,6 +124,13 @@ export async function runReviewPr(
   const statusContext = core.getInput("status_context");
   const extraInstructions = core.getInput("extra_instructions");
   const rulesFilePath = core.getInput("rules_file");
+  const analyzerMode = core.getInput("analyzer_mode") || "auto";
+  const analyzerOutputPaths = {
+    opengrepJson: core.getInput("opengrep_json") || undefined,
+    opengrepSarif: core.getInput("opengrep_sarif") || undefined,
+    pmdXml: core.getInput("pmd_xml") || undefined,
+    cpdXml: core.getInput("cpd_xml") || undefined,
+  };
   const timeoutMinutesRaw = core.getInput("timeout_minutes") || "30";
   const timeoutMinutes = Math.max(1, parseInt(timeoutMinutesRaw, 10) || 30);
 
@@ -207,6 +224,8 @@ export async function runReviewPr(
     const analyzerFindings = await deps.runAnalyzers({
       changedFiles: context.changedFiles,
       diff: context.diff,
+      analyzerMode,
+      analyzerOutputPaths,
     });
     const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
     const selectedRules =
@@ -374,8 +393,18 @@ export async function fetchPullRequestContext(input: {
   };
 }
 
-export async function runAnalyzers(): Promise<AnalyzerFinding[]> {
-  return [];
+export async function runAnalyzers(
+  input: RunAnalyzerInput
+): Promise<AnalyzerFinding[]> {
+  if (input.analyzerMode === "off") return [];
+
+  const findings: AnalyzerFinding[] = [];
+  const paths = input.analyzerOutputPaths || {};
+  findings.push(...parseAnalyzerFile(paths.opengrepJson, parseOpengrepJson));
+  findings.push(...parseAnalyzerFile(paths.opengrepSarif, parseOpengrepSarif));
+  findings.push(...parseAnalyzerFile(paths.pmdXml, parsePmdXml));
+  findings.push(...parseAnalyzerFile(paths.cpdXml, parseCpdXml));
+  return findings;
 }
 
 export async function uploadReviewArtifact(
@@ -391,6 +420,23 @@ export function extractChangedFiles(diff: string): string[] {
     paths.add(match[1]);
   }
   return [...paths];
+}
+
+function parseAnalyzerFile(
+  path: string | undefined,
+  parser: (text: string) => AnalyzerFinding[]
+): AnalyzerFinding[] {
+  if (!path) return [];
+  if (!existsSync(path)) {
+    core.warning(`Analyzer output path does not exist: ${path}`);
+    return [];
+  }
+  try {
+    return parser(readFileSync(path, "utf8"));
+  } catch (err) {
+    core.warning(`Failed to parse analyzer output ${path}: ${String(err)}`);
+    return [];
+  }
 }
 
 function truncateDiff(

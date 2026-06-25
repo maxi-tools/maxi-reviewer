@@ -1,8 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { runReviewPr } from "../src/review-pr.js";
+import { runAnalyzers, runReviewPr } from "../src/review-pr.js";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -95,10 +98,12 @@ describe("runReviewPr orchestration", () => {
       "src/a.ts",
       "README.md",
     ]);
-    expect(deps.runAnalyzers).toHaveBeenCalledWith({
-      changedFiles: ["src/a.ts", "README.md"],
-      diff: "diff --git a/src/a.ts b/src/a.ts",
-    });
+    expect(deps.runAnalyzers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changedFiles: ["src/a.ts", "README.md"],
+        diff: "diff --git a/src/a.ts b/src/a.ts",
+      })
+    );
     expect(deps.buildReviewPrompt).toHaveBeenCalledWith(
       expect.objectContaining({
         analyzerFindings,
@@ -122,5 +127,32 @@ describe("runReviewPr orchestration", () => {
       validationErrors: ["non-applying suggestion"],
       sessionId: "session-1",
     });
+  });
+});
+
+describe("runAnalyzers", () => {
+  it("normalizes configured analyzer output files", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "maxi-review-analyzers-"));
+    const semgrepJson = join(dir, "semgrep.json");
+    const pmdXml = join(dir, "pmd.xml");
+    writeFileSync(
+      semgrepJson,
+      readFileSync(new URL("fixtures/semgrep.json", import.meta.url), "utf8")
+    );
+    writeFileSync(
+      pmdXml,
+      readFileSync(new URL("fixtures/pmd.xml", import.meta.url), "utf8")
+    );
+
+    const findings = await runAnalyzers({
+      changedFiles: ["src/a.ts", "src/Main.java"],
+      diff: "",
+      analyzerOutputPaths: { opengrepJson: semgrepJson, pmdXml },
+    });
+
+    expect(findings.map((finding) => finding.tool)).toEqual([
+      "opengrep",
+      "pmd",
+    ]);
   });
 });

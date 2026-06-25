@@ -12,10 +12,17 @@ jobs:
       statuses: write
       actions: write
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Opengrep
+        run: opengrep scan --json --output opengrep.json .
+        continue-on-error: true
+
       - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          opengrep_json: opengrep.json
           extra_instructions: |
             This repo is a Node/TypeScript service.
 

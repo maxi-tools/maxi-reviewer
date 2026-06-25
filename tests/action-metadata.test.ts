@@ -16,6 +16,7 @@ describe("action metadata", () => {
     expect(pkg.name).toBe("maxi-review");
     expect(action).toContain('name: "Maxi Review"');
     expect(action).toContain('using: "node24"');
+    expect(action).toContain("analyzer_mode:");
     expect(action).not.toContain("jules-pr-reviewer");
     expect(action).not.toContain("node20");
   });

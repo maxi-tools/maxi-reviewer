@@ -41618,7 +41618,61 @@ schema above — and nothing else. No prose. No text outside the block.`;
     ].join("\n");
 }
 
+;// CONCATENATED MODULE: ./src/rules/select.ts
+
+
+const ORDER = [
+    "javascript",
+    "typescript",
+    "python",
+    "rust",
+    "go",
+    "shell",
+    "markdown",
+    "github-actions",
+];
+function selectRuleFiles(paths) {
+    const langs = new Set();
+    for (const path of paths) {
+        if (/^\.github\/workflows\/.+\.ya?ml$/.test(path)) {
+            langs.add("github-actions");
+        }
+        if (/\.(js|jsx|mjs|cjs)$/.test(path))
+            langs.add("javascript");
+        if (/\.(ts|tsx)$/.test(path))
+            langs.add("typescript");
+        if (/\.py$/.test(path))
+            langs.add("python");
+        if (/\.rs$/.test(path))
+            langs.add("rust");
+        if (/\.go$/.test(path))
+            langs.add("go");
+        if (/\.(sh|bash|zsh)$/.test(path))
+            langs.add("shell");
+        if (/\.(md|markdown)$/.test(path))
+            langs.add("markdown");
+    }
+    return ORDER.filter((lang) => langs.has(lang)).map((lang) => `rules/${lang}.md`);
+}
+function loadSelectedRules(paths, root = ".") {
+    return selectRuleFiles(paths)
+        .map((file) => (0,external_node_fs_namespaceObject.readFileSync)((0,external_node_path_namespaceObject.join)(root, file), "utf8").trim())
+        .filter(Boolean)
+        .join("\n\n");
+}
+
+;// CONCATENATED MODULE: ./src/late-feedback-harvest.ts
+function buildReviewArtifact(input) {
+    return JSON.stringify({
+        schema: "maxi.review.v1.review-artifact",
+        createdAt: new Date().toISOString(),
+        ...input,
+    }, null, 2);
+}
+
 ;// CONCATENATED MODULE: ./src/review-pr.ts
+
+
 
 
 
@@ -41626,7 +41680,21 @@ schema above — and nothing else. No prose. No text outside the block.`;
 
 const COMMENT_MARKER = "<!-- jules-pr-reviewer -->";
 const VALID_FAIL_ON = ["never", "blocking", "any"];
-async function runReviewPr() {
+const defaultDeps = {
+    fetchPullRequestContext,
+    selectRuleFiles: selectRuleFiles,
+    loadSelectedRules: loadSelectedRules,
+    runAnalyzers,
+    buildReviewPrompt: buildReviewPrompt,
+    runJulesReview: runJulesReview,
+    submitReview: submitReview,
+    resolveThreads: resolveThreads,
+    setStatus: setStatus,
+    uploadArtifact: uploadReviewArtifact,
+    wrapPermissionError: wrapPermissionError,
+};
+async function runReviewPr(overrides = {}) {
+    const deps = { ...defaultDeps, ...overrides };
     const apiKey = getInput("jules_api_key", { required: true });
     core_setSecret(apiKey);
     const token = getInput("github_token", { required: true });
@@ -41681,10 +41749,10 @@ async function runReviewPr() {
     }
     try {
         try {
-            await setStatus(octokit, owner, repo, headSha, statusContext, "pending", "Jules is reviewing this PR…");
+            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", "Jules is reviewing this PR…");
         }
         catch (err) {
-            throw wrapPermissionError(err, "statuses:write", "createCommitStatus");
+            throw deps.wrapPermissionError(err, "statuses:write", "createCommitStatus");
         }
         // Determine the base SHA for incremental diffing
         let baseShaForDiff = baseSha;
@@ -41695,14 +41763,26 @@ async function runReviewPr() {
         else {
             info(`Reviewing full PR diff from ${baseShaForDiff} to ${headSha}`);
         }
-        const diff = await fetchDiff(octokit, owner, repo, pr, baseShaForDiff, headSha);
-        let rulesFromFile;
-        if (rulesFilePath) {
-            rulesFromFile = await loadRulesFromBase(octokit, owner, repo, rulesFilePath, baseSha);
-        }
-        const { text: diffText, truncatedNote } = truncateDiff(diff, 80_000);
-        const openThreads = await fetchOpenThreads(octokit, owner, repo, prNumber);
-        const prompt = buildReviewPrompt({
+        const context = await deps.fetchPullRequestContext({
+            octokit,
+            owner,
+            repo,
+            pr,
+            baseSha,
+            baseShaForDiff,
+            headSha,
+            rulesFilePath,
+        });
+        const analyzerFindings = await deps.runAnalyzers({
+            changedFiles: context.changedFiles,
+            diff: context.diff,
+        });
+        const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
+        const selectedRules = selectedRuleFiles.length > 0
+            ? deps.loadSelectedRules(context.changedFiles)
+            : "";
+        const { text: diffText, truncatedNote } = truncateDiff(context.diff, 80_000);
+        const prompt = deps.buildReviewPrompt({
             repoFullName: `${owner}/${repo}`,
             prNumber,
             prTitle: pr.title || "",
@@ -41710,38 +41790,78 @@ async function runReviewPr() {
             diff: diffText,
             diffTruncatedNote: truncatedNote,
             extraInstructions: extraInstructions || undefined,
-            rulesFromFile,
-            openThreads,
+            rulesFromFile: context.rulesFromFile,
+            analyzerFindings,
+            rules: selectedRules || undefined,
+            openThreads: context.openThreads,
         });
-        const { reviewResult, sessionId } = await runJulesReview(apiKey, prompt, { github: `${owner}/${repo}`, baseBranch: pr.base.ref }, timeoutMinutes);
+        const { reviewResult, sessionId, rawResponses, validationErrors } = await deps.runJulesReview(apiKey, prompt, { github: `${owner}/${repo}`, baseBranch: pr.base.ref }, timeoutMinutes);
+        await deps.uploadArtifact(`maxi-review-${prNumber}-${headSha}.json`, buildReviewArtifact({
+            repoFullName: `${owner}/${repo}`,
+            prNumber,
+            headSha,
+            baseSha,
+            analyzerFindings,
+            rawJulesResponses: rawResponses || [],
+            validatedReview: reviewResult,
+            validationErrors: validationErrors || [],
+            sessionId,
+        }));
         if (!reviewResult) {
-            await setStatus(octokit, owner, repo, headSha, statusContext, "error", "Jules did not return a valid review in time");
+            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "error", "Jules did not return a valid review in time");
             setFailed(`Jules returned no review message within ${timeoutMinutes} minutes.`);
             return;
         }
         const { verdict, summary, resolvedCommentIds, newComments } = reviewResult;
         // Resolve threads that the LLM identified as fixed
         if (resolvedCommentIds && resolvedCommentIds.length > 0) {
-            const threadIdsToResolve = openThreads
+            const threadIdsToResolve = context.openThreads
                 .filter((t) => resolvedCommentIds.includes(t.index))
                 .map((t) => t.threadId);
             if (threadIdsToResolve.length > 0) {
-                await resolveThreads(octokit, threadIdsToResolve);
+                await deps.resolveThreads(octokit, threadIdsToResolve);
             }
         }
         // Prepare body for the PR review
         const finalBody = `${COMMENT_MARKER}\n## 🤖 Jules Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
-        await submitReview(octokit, owner, repo, prNumber, headSha, finalBody, newComments || []);
+        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody, newComments || []);
         const { state, description } = statusFromVerdict(verdict, failOn);
-        await setStatus(octokit, owner, repo, headSha, statusContext, state, description);
+        await deps.setStatus(octokit, owner, repo, headSha, statusContext, state, description);
         info(`Verdict: ${verdict}. Status check: ${state}.`);
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         error(`Review failed: ${msg}`);
-        await setStatus(octokit, owner, repo, headSha, statusContext, "error", truncate(msg, 140)).catch(() => { });
+        await deps.setStatus(octokit, owner, repo, headSha, statusContext, "error", truncate(msg, 140)).catch(() => { });
         setFailed(`Jules PR review failed: ${msg}`);
     }
+}
+async function fetchPullRequestContext(input) {
+    const diff = await fetchDiff(input.octokit, input.owner, input.repo, input.pr, input.baseShaForDiff, input.headSha);
+    let rulesFromFile;
+    if (input.rulesFilePath) {
+        rulesFromFile = await loadRulesFromBase(input.octokit, input.owner, input.repo, input.rulesFilePath, input.baseSha);
+    }
+    const openThreads = await fetchOpenThreads(input.octokit, input.owner, input.repo, input.pr.number);
+    return {
+        diff,
+        changedFiles: extractChangedFiles(diff),
+        rulesFromFile,
+        openThreads,
+    };
+}
+async function runAnalyzers(_input) {
+    return [];
+}
+async function uploadReviewArtifact(name, content) {
+    info(`Prepared review artifact ${name} (${content.length} bytes).`);
+}
+function extractChangedFiles(diff) {
+    const paths = new Set();
+    for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
+        paths.add(match[1]);
+    }
+    return [...paths];
 }
 function truncateDiff(diff, maxChars) {
     if (diff.length <= maxChars)

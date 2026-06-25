@@ -1,6 +1,12 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { FailOn, Verdict } from "./types.js";
+import {
+  AnalyzerFinding,
+  FailOn,
+  OpenThread,
+  ReviewComment,
+  Verdict,
+} from "./types.js";
 import {
   fetchDiff,
   loadRulesFromBase,
@@ -11,11 +17,85 @@ import {
 } from "./github.js";
 import { runJulesReview, wrapPermissionError } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
+import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
+import { buildReviewArtifact } from "./late-feedback-harvest.js";
 
 const COMMENT_MARKER = "<!-- jules-pr-reviewer -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
 
-export async function runReviewPr(): Promise<void> {
+type Octokit = ReturnType<typeof github.getOctokit>;
+
+export interface PullRequestContext {
+  diff: string;
+  changedFiles: string[];
+  rulesFromFile?: string;
+  openThreads: OpenThread[];
+}
+
+export interface RunAnalyzerInput {
+  changedFiles: string[];
+  diff: string;
+}
+
+export interface JulesReviewRunResult {
+  reviewResult: {
+    verdict: Verdict;
+    summary: string;
+    resolvedCommentIds?: number[];
+    newComments?: ReviewComment[];
+  } | null;
+  sessionId: string;
+  rawResponses?: string[];
+  validationErrors?: string[];
+}
+
+export interface ReviewPrDeps {
+  fetchPullRequestContext: (input: {
+    octokit: Octokit;
+    owner: string;
+    repo: string;
+    pr: { number: number };
+    baseSha: string;
+    baseShaForDiff: string;
+    headSha: string;
+    rulesFilePath: string;
+  }) => Promise<PullRequestContext>;
+  selectRuleFiles: typeof selectRuleFiles;
+  loadSelectedRules: typeof loadSelectedRules;
+  runAnalyzers: (input: RunAnalyzerInput) => Promise<AnalyzerFinding[]>;
+  buildReviewPrompt: typeof buildReviewPrompt;
+  runJulesReview: (
+    apiKey: string,
+    prompt: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    source: any,
+    timeoutMinutes: number
+  ) => Promise<JulesReviewRunResult>;
+  submitReview: typeof submitReview;
+  resolveThreads: typeof resolveThreads;
+  setStatus: typeof setStatus;
+  uploadArtifact: (name: string, content: string) => Promise<void>;
+  wrapPermissionError: typeof wrapPermissionError;
+}
+
+const defaultDeps: ReviewPrDeps = {
+  fetchPullRequestContext,
+  selectRuleFiles,
+  loadSelectedRules,
+  runAnalyzers,
+  buildReviewPrompt,
+  runJulesReview,
+  submitReview,
+  resolveThreads,
+  setStatus,
+  uploadArtifact: uploadReviewArtifact,
+  wrapPermissionError,
+};
+
+export async function runReviewPr(
+  overrides: Partial<ReviewPrDeps> = {}
+): Promise<void> {
+  const deps = { ...defaultDeps, ...overrides };
   const apiKey = core.getInput("jules_api_key", { required: true });
   core.setSecret(apiKey);
 
@@ -85,7 +165,7 @@ export async function runReviewPr(): Promise<void> {
 
   try {
     try {
-      await setStatus(
+      await deps.setStatus(
         octokit,
         owner,
         repo,
@@ -95,7 +175,7 @@ export async function runReviewPr(): Promise<void> {
         "Jules is reviewing this PR…"
       );
     } catch (err) {
-      throw wrapPermissionError(err, "statuses:write", "createCommitStatus");
+      throw deps.wrapPermissionError(err, "statuses:write", "createCommitStatus");
     }
 
     // Determine the base SHA for incremental diffing
@@ -109,31 +189,30 @@ export async function runReviewPr(): Promise<void> {
       core.info(`Reviewing full PR diff from ${baseShaForDiff} to ${headSha}`);
     }
 
-    const diff = await fetchDiff(
+    const context = await deps.fetchPullRequestContext({
       octokit,
       owner,
       repo,
       pr,
+      baseSha,
       baseShaForDiff,
-      headSha
-    );
+      headSha,
+      rulesFilePath,
+    });
 
-    let rulesFromFile: string | undefined;
-    if (rulesFilePath) {
-      rulesFromFile = await loadRulesFromBase(
-        octokit,
-        owner,
-        repo,
-        rulesFilePath,
-        baseSha
-      );
-    }
+    const analyzerFindings = await deps.runAnalyzers({
+      changedFiles: context.changedFiles,
+      diff: context.diff,
+    });
+    const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
+    const selectedRules =
+      selectedRuleFiles.length > 0
+        ? deps.loadSelectedRules(context.changedFiles)
+        : "";
 
-    const { text: diffText, truncatedNote } = truncateDiff(diff, 80_000);
+    const { text: diffText, truncatedNote } = truncateDiff(context.diff, 80_000);
 
-    const openThreads = await fetchOpenThreads(octokit, owner, repo, prNumber);
-
-    const prompt = buildReviewPrompt({
+    const prompt = deps.buildReviewPrompt({
       repoFullName: `${owner}/${repo}`,
       prNumber,
       prTitle: pr.title || "",
@@ -141,19 +220,37 @@ export async function runReviewPr(): Promise<void> {
       diff: diffText,
       diffTruncatedNote: truncatedNote,
       extraInstructions: extraInstructions || undefined,
-      rulesFromFile,
-      openThreads,
+      rulesFromFile: context.rulesFromFile,
+      analyzerFindings,
+      rules: selectedRules || undefined,
+      openThreads: context.openThreads,
     });
 
-    const { reviewResult, sessionId } = await runJulesReview(
-      apiKey,
-      prompt,
-      { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
-      timeoutMinutes
+    const { reviewResult, sessionId, rawResponses, validationErrors } =
+      await deps.runJulesReview(
+        apiKey,
+        prompt,
+        { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
+        timeoutMinutes
+      );
+
+    await deps.uploadArtifact(
+      `maxi-review-${prNumber}-${headSha}.json`,
+      buildReviewArtifact({
+        repoFullName: `${owner}/${repo}`,
+        prNumber,
+        headSha,
+        baseSha,
+        analyzerFindings,
+        rawJulesResponses: rawResponses || [],
+        validatedReview: reviewResult,
+        validationErrors: validationErrors || [],
+        sessionId,
+      })
     );
 
     if (!reviewResult) {
-      await setStatus(
+      await deps.setStatus(
         octokit,
         owner,
         repo,
@@ -172,19 +269,19 @@ export async function runReviewPr(): Promise<void> {
 
     // Resolve threads that the LLM identified as fixed
     if (resolvedCommentIds && resolvedCommentIds.length > 0) {
-      const threadIdsToResolve = openThreads
+      const threadIdsToResolve = context.openThreads
         .filter((t) => resolvedCommentIds.includes(t.index))
         .map((t) => t.threadId);
 
       if (threadIdsToResolve.length > 0) {
-        await resolveThreads(octokit, threadIdsToResolve);
+        await deps.resolveThreads(octokit, threadIdsToResolve);
       }
     }
 
     // Prepare body for the PR review
     const finalBody = `${COMMENT_MARKER}\n## 🤖 Jules Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
 
-    await submitReview(
+    await deps.submitReview(
       octokit,
       owner,
       repo,
@@ -195,7 +292,7 @@ export async function runReviewPr(): Promise<void> {
     );
 
     const { state, description } = statusFromVerdict(verdict, failOn);
-    await setStatus(
+    await deps.setStatus(
       octokit,
       owner,
       repo,
@@ -210,7 +307,7 @@ export async function runReviewPr(): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     core.error(`Review failed: ${msg}`);
 
-    await setStatus(
+    await deps.setStatus(
       octokit,
       owner,
       repo,
@@ -221,6 +318,72 @@ export async function runReviewPr(): Promise<void> {
     ).catch(() => {});
     core.setFailed(`Jules PR review failed: ${msg}`);
   }
+}
+
+export async function fetchPullRequestContext(input: {
+  octokit: Octokit;
+  owner: string;
+  repo: string;
+  pr: { number: number };
+  baseSha: string;
+  baseShaForDiff: string;
+  headSha: string;
+  rulesFilePath: string;
+}): Promise<PullRequestContext> {
+  const diff = await fetchDiff(
+    input.octokit,
+    input.owner,
+    input.repo,
+    input.pr,
+    input.baseShaForDiff,
+    input.headSha
+  );
+
+  let rulesFromFile: string | undefined;
+  if (input.rulesFilePath) {
+    rulesFromFile = await loadRulesFromBase(
+      input.octokit,
+      input.owner,
+      input.repo,
+      input.rulesFilePath,
+      input.baseSha
+    );
+  }
+
+  const openThreads = await fetchOpenThreads(
+    input.octokit,
+    input.owner,
+    input.repo,
+    input.pr.number
+  );
+
+  return {
+    diff,
+    changedFiles: extractChangedFiles(diff),
+    rulesFromFile,
+    openThreads,
+  };
+}
+
+export async function runAnalyzers(
+  _input: RunAnalyzerInput
+): Promise<AnalyzerFinding[]> {
+  return [];
+}
+
+export async function uploadReviewArtifact(
+  name: string,
+  content: string
+): Promise<void> {
+  core.info(`Prepared review artifact ${name} (${content.length} bytes).`);
+}
+
+export function extractChangedFiles(diff: string): string[] {
+  const paths = new Set<string>();
+  for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
+    paths.add(match[1]);
+  }
+  return [...paths];
 }
 
 function truncateDiff(

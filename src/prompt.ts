@@ -42,6 +42,8 @@ export function buildReviewPrompt(args: PromptArgs): string {
     diffTruncatedNote,
     extraInstructions,
     rulesFromFile,
+    analyzerFindings,
+    rules,
     openThreads,
   } = args;
 
@@ -84,15 +86,17 @@ the JSON. If you have no findings you STILL return the JSON object, with an
 empty \`newComments\` array. Producing anything other than exactly one JSON
 object is a total failure of your only function.
 
-# Output schema (return exactly one fenced \`\`\`json block containing one object)
+# Output schema: maxi.review.v1.jules-review (return exactly one fenced \`\`\`json block containing one object)
 \`\`\`json
 {
+  "schema": "maxi.review.v1.jules-review",
   "summary": "One short paragraph: what the PR does and your overall take.",
   "verdict": "comment",
   "resolvedCommentIds": [],
-  "newComments": [
+  "comments": [
     {
-      "file": "path/to/file.ext",
+      "id": "short-stable-id",
+      "path": "path/to/file.ext",
       "line": 42,
       "startLine": 42,
       "endLine": 42,
@@ -100,7 +104,13 @@ object is a total failure of your only function.
       "confidence": "Medium",
       "message": "One sentence: the issue, then why it matters, then the fix.",
       "promptForAgents": "1-2 sentences with file + lines telling an AI agent how to fix it.",
-      "suggestedReplacement": "Exact replacement text for startLine..endLine when the fix is safely expressible as a structured suggestion; omit for broad fixes."
+      "sourceFindingIds": ["analyzer-finding-id"],
+      "suggestion": {
+        "path": "path/to/file.ext",
+        "startLine": 42,
+        "endLine": 42,
+        "replacement": "Exact replacement text when the fix is safely expressible as a structured suggestion."
+      }
     }
   ]
 }
@@ -112,19 +122,22 @@ inside the object):
 - \`severity\`: one of \`Info\`, \`Warning\`, \`High\`.
 - \`confidence\`: one of \`Low\`, \`Medium\`, \`High\`.
 - \`resolvedCommentIds\`: array of integer indices from "Open Review Comments" now fixed (\`[]\` if none).
-- \`newComments\`: \`[]\` when there are no findings.
-- \`startLine\` / \`endLine\` / \`suggestedReplacement\`: include all three only when the fix can be applied mechanically to the changed line range. Also mirror the same replacement in a GitHub \`\`\`suggestion fence inside \`message\` when possible. Omit these fields for broad or uncertain fixes.
+- \`comments\`: \`[]\` when there are no findings.
+- \`sourceFindingIds\`: analyzer finding ids that support the comment, or omit when the finding is purely from code review.
+- \`suggestion\`: include only when the fix can be applied mechanically to the changed line range. Also mirror the same replacement in a GitHub \`\`\`suggestion fence inside \`message\` when possible. Omit this field for broad or uncertain fixes.
 
 # Example reply (the ONLY shape your reply may take)
 For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }\`:
 \`\`\`json
 {
+  "schema": "maxi.review.v1.jules-review",
   "summary": "Adds a helper that parses a string into a port number.",
   "verdict": "block",
   "resolvedCommentIds": [],
-  "newComments": [
+  "comments": [
     {
-      "file": "src/net.rs",
+      "id": "panic-on-invalid-port",
+      "path": "src/net.rs",
       "line": 2,
       "startLine": 2,
       "endLine": 2,
@@ -132,7 +145,12 @@ For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }
       "confidence": "High",
       "message": "\`unwrap()\` on \`parse()\` panics on any non-numeric input; reachable from external input, it crashes the process. Return a \`Result\` instead.\n\`\`\`suggestion\nfn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }\n\`\`\`",
       "promptForAgents": "In src/net.rs around line 2, change \`fn port\` to return \`Result<u16, _>\` and propagate the parse error instead of calling .unwrap().",
-      "suggestedReplacement": "fn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }"
+      "suggestion": {
+        "path": "src/net.rs",
+        "startLine": 2,
+        "endLine": 2,
+        "replacement": "fn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }"
+      }
     }
   ]
 }
@@ -141,7 +159,17 @@ A reply that is NOT a single \`\`\`json block — e.g. "Sure! Here is my review:
 any prose outside the block — is rejected and wastes the run. Emit only the block.`;
 
   // ── 2. Rules up front, intact, before the (large) diff ───────────────────
-  const projectRules = [rulesFromFile, extraInstructions]
+  const analyzerSection =
+    analyzerFindings && analyzerFindings.length > 0
+      ? `
+# Analyzer findings (trusted structured context)
+\`\`\`json
+${JSON.stringify(analyzerFindings, null, 2)}
+\`\`\`
+`
+      : "";
+
+  const projectRules = [rules, rulesFromFile, extraInstructions]
     .filter((s) => s && s.trim())
     .join("\n\n");
   const rulesSection = projectRules
@@ -199,7 +227,13 @@ ${threadsContext}`;
 Now output your review for this PR as exactly one \`\`\`json block matching the
 schema above — and nothing else. No prose. No text outside the block.`;
 
-  return [header, rulesSection, security, reviewGuidance, payload, closer].join(
-    "\n"
-  );
+  return [
+    header,
+    analyzerSection,
+    rulesSection,
+    security,
+    reviewGuidance,
+    payload,
+    closer,
+  ].join("\n");
 }

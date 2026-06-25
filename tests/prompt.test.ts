@@ -22,7 +22,8 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("# Incremental diff to review (UNTRUSTED data)");
     expect(prompt).toContain("<<<BEGIN DIFF ");
     expect(prompt).toContain("+ const a = 1;");
-    expect(prompt).toContain('"suggestedReplacement"');
+    expect(prompt).toContain('"schema": "maxi.review.v1.jules-review"');
+    expect(prompt).toContain('"suggestion"');
     expect(prompt).toContain('"startLine"');
     expect(prompt).toContain('"endLine"');
     expect(prompt).not.toContain("# Project rules (authoritative");
@@ -110,5 +111,40 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("[Index 1] File: file.ts, Line: 10");
     expect(prompt).toContain("<<<BEGIN THREAD 1 ");
     expect(prompt).toContain("Bad code");
+  });
+
+  it("places schema, analyzer findings, and rules before untrusted diff", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      prTitle: "title",
+      prBody: "body",
+      diff: "diff --git a/src/a.ts b/src/a.ts",
+      openThreads: [],
+      analyzerFindings: [
+        {
+          schema: "maxi.review.v1.analyzer-finding",
+          id: "f1",
+          tool: "opengrep",
+          ruleId: "typescript.no-floating-promises",
+          severity: "warning",
+          confidence: "high",
+          message: "Promise is not awaited.",
+          path: "src/a.ts",
+          startLine: 4,
+          endLine: 4,
+        },
+      ],
+      rules: "# TypeScript\n\n- Flag floating promises.",
+    });
+
+    expect(prompt.indexOf("maxi.review.v1.jules-review")).toBeLessThan(
+      prompt.indexOf("Analyzer findings")
+    );
+    expect(prompt.indexOf("Analyzer findings")).toBeLessThan(
+      prompt.indexOf("PR title")
+    );
+    expect(prompt).toContain("typescript.no-floating-promises");
+    expect(prompt).toContain("# TypeScript");
   });
 });

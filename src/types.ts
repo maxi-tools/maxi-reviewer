@@ -20,6 +20,8 @@ export interface PromptArgs {
   diffTruncatedNote?: string;
   extraInstructions?: string;
   rulesFromFile?: string;
+  analyzerFindings?: AnalyzerFinding[];
+  rules?: string;
   openThreads: OpenThread[];
 }
 

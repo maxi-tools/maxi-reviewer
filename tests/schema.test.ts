@@ -41,4 +41,33 @@ describe("maxi.review.v1 schemas", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.join("\n")).toContain("line");
   });
+
+  it("rejects malformed structured suggestions", () => {
+    const result = validateJulesReview({
+      schema: "maxi.review.v1.jules-review",
+      summary: "Review summary.",
+      verdict: "comment",
+      resolvedCommentIds: [],
+      comments: [
+        {
+          id: "c1",
+          path: "src/a.ts",
+          line: 3,
+          severity: "Warning",
+          confidence: "High",
+          message: "Use a structured suggestion.",
+          suggestion: {
+            path: "src/a.ts",
+            startLine: 4,
+            endLine: 2,
+            replacement: 42,
+          },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain("suggestion.endLine");
+    expect(result.errors.join("\n")).toContain("suggestion.replacement");
+  });
 });

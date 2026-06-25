@@ -48,13 +48,43 @@ export function validateJulesReview(
       requireString(item, "id", undefined, errors);
       requireString(item, "path", undefined, errors);
       requirePositiveInt(item, "line", errors);
+      optionalPositiveInt(item, "startLine", errors);
+      optionalPositiveInt(item, "endLine", errors);
       requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
       requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
       requireString(item, "message", undefined, errors);
+      optionalString(item, "promptForAgents", errors);
+      optionalStringArray(item, "sourceFindingIds", errors);
+      validateSuggestion(
+        item.suggestion,
+        errors,
+        `comments[${index}].suggestion`
+      );
     });
   }
 
   return { ok: errors.length === 0, value: value as JulesReview, errors };
+}
+
+function validateSuggestion(
+  value: unknown,
+  errors: string[],
+  label: string
+): void {
+  if (value === undefined) return;
+  const suggestion = asRecord(value, errors, label);
+  if (!suggestion) return;
+  requireString(suggestion, "path", undefined, errors, `${label}.`);
+  requirePositiveInt(suggestion, "startLine", errors, `${label}.`);
+  requirePositiveInt(suggestion, "endLine", errors, `${label}.`);
+  if (
+    Number.isInteger(suggestion.startLine) &&
+    Number.isInteger(suggestion.endLine) &&
+    (suggestion.endLine as number) < (suggestion.startLine as number)
+  ) {
+    errors.push(`${label}.endLine must be greater than or equal to startLine`);
+  }
+  requireStringValue(suggestion, "replacement", errors, `${label}.`);
 }
 
 function asRecord(
@@ -73,15 +103,54 @@ function requireString(
   record: Record<string, unknown>,
   key: string,
   exact: string | undefined,
-  errors: string[]
+  errors: string[],
+  prefix = ""
 ): void {
   if (typeof record[key] !== "string" || record[key] === "") {
-    errors.push(`${key} must be a non-empty string`);
+    errors.push(`${prefix}${key} must be a non-empty string`);
     return;
   }
   if (exact !== undefined && record[key] !== exact) {
-    errors.push(`${key} must be ${exact}`);
+    errors.push(`${prefix}${key} must be ${exact}`);
   }
+}
+
+function requireStringValue(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[],
+  prefix = ""
+): void {
+  if (typeof record[key] !== "string") {
+    errors.push(`${prefix}${key} must be a string`);
+  }
+}
+
+function optionalString(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[]
+): void {
+  if (record[key] !== undefined && typeof record[key] !== "string") {
+    errors.push(`${key} must be a string`);
+  }
+}
+
+function optionalStringArray(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[]
+): void {
+  if (record[key] === undefined) return;
+  if (!Array.isArray(record[key])) {
+    errors.push(`${key} must be an array`);
+    return;
+  }
+  (record[key] as unknown[]).forEach((item, index) => {
+    if (typeof item !== "string" || item === "") {
+      errors.push(`${key}[${index}] must be a non-empty string`);
+    }
+  });
 }
 
 function requireEnum(
@@ -101,9 +170,20 @@ function requireEnum(
 function requirePositiveInt(
   record: Record<string, unknown>,
   key: string,
-  errors: string[]
+  errors: string[],
+  prefix = ""
 ): void {
   if (!Number.isInteger(record[key]) || (record[key] as number) < 1) {
-    errors.push(`${key} must be a positive integer`);
+    errors.push(`${prefix}${key} must be a positive integer`);
+  }
+}
+
+function optionalPositiveInt(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[]
+): void {
+  if (record[key] !== undefined) {
+    requirePositiveInt(record, key, errors);
   }
 }

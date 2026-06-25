@@ -197,6 +197,14 @@ async function runApplyAllCommand(
   pr: ReviewCommandPullRequest,
   artifact: ReviewArtifactLike
 ): Promise<void> {
+  const authorization = authorizeApplyAll(pr);
+  if (!authorization.ok) {
+    await deps.comment(
+      `Could not apply Maxi suggestions: ${authorization.reason}`
+    );
+    return;
+  }
+
   const comments = artifactComments(artifact);
   const paths = [...new Set(comments.map((comment) => commentPath(comment)))];
   const files = await deps.readFiles({
@@ -242,6 +250,24 @@ async function runApplyAllCommand(
       plan.result.applied.length === 1 ? "" : "s"
     }. Skipped ${plan.result.skipped.length}.`
   );
+}
+
+function authorizeApplyAll(
+  pr: ReviewCommandPullRequest
+): { ok: true } | { ok: false; reason: string } {
+  if (pr.repository !== pr.headRepository) {
+    return {
+      ok: false,
+      reason: "apply-all requires a same-repository PR branch",
+    };
+  }
+  if (pr.tokenPermissions.contents !== "write") {
+    return { ok: false, reason: "contents: write permission required" };
+  }
+  if (pr.tokenPermissions.pullRequests !== "write") {
+    return { ok: false, reason: "pull-requests: write permission required" };
+  }
+  return { ok: true };
 }
 
 async function runFixCommand(

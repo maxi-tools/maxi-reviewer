@@ -186,6 +186,43 @@ maxi-review-7-head.json
     );
   });
 
+  it("rejects apply-all on fork PR branches", async () => {
+    const deps = {
+      getContext: () => ({
+        body: "/maxi apply-all",
+        owner: "maxi",
+        repo: "example",
+        issueNumber: 7,
+      }),
+      fetchPullRequest: vi.fn().mockResolvedValue({
+        number: 7,
+        headSha: "head-a",
+        headRef: "feature",
+        headRepository: "other/example",
+        repository: "maxi/example",
+        tokenPermissions: { contents: "write", pullRequests: "write" },
+      }),
+      listArtifactComments: vi.fn().mockResolvedValue([
+        `<!-- maxi-review artifact -->
+\`\`\`json
+{"schema":"maxi.review.v1.review-artifact","headSha":"head-a","validatedReview":{"comments":[]}}
+\`\`\``,
+      ]),
+      readFiles: vi.fn().mockResolvedValue(new Map()),
+      commitFiles: vi.fn().mockResolvedValue(undefined),
+      startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
+      comment: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await runReviewCommand(deps);
+
+    expect(deps.readFiles).not.toHaveBeenCalled();
+    expect(deps.commitFiles).not.toHaveBeenCalled();
+    expect(deps.comment).toHaveBeenCalledWith(
+      "Could not apply Maxi suggestions: apply-all requires a same-repository PR branch"
+    );
+  });
+
   it("starts a hands-on fix session for an authorized finding", async () => {
     const deps = {
       getContext: () => ({

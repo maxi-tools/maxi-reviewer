@@ -76,7 +76,7 @@ describe("jules.ts", () => {
 
     it("returns structured maxi review output in the legacy result shape", async () => {
       const reviewText =
-        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"structured","verdict":"comment","resolvedCommentIds":[2],"comments":[{"id":"c1","path":"src/a.ts","line":4,"severity":"Warning","confidence":"High","message":"Use this.","promptForAgents":"Fix it.","suggestion":{"path":"src/a.ts","startLine":4,"endLine":4,"replacement":"const ok = true;"}}]}\n```';
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"structured","verdict":"comment","resolvedCommentIds":[2],"comments":[{"id":"c1","path":"src/a.ts","line":5,"severity":"Warning","confidence":"High","message":"Use this.","promptForAgents":"Fix it.","suggestion":{"path":"src/a.ts","startLine":4,"endLine":5,"replacement":"const ok = true;\\nconst more = true;"}}]}\n```';
       const mockJulesWith = vi.fn().mockReturnValue({
         session: vi
           .fn()
@@ -97,14 +97,14 @@ describe("jules.ts", () => {
         newComments: [
           {
             file: "src/a.ts",
-            line: 4,
-            startLine: undefined,
-            endLine: undefined,
+            line: 5,
+            startLine: 4,
+            endLine: 5,
             severity: "Warning",
             confidence: "High",
             message: "Use this.",
             promptForAgents: "Fix it.",
-            suggestedReplacement: "const ok = true;",
+            suggestedReplacement: "const ok = true;\nconst more = true;",
           },
         ],
       });

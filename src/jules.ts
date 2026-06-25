@@ -294,7 +294,12 @@ function convertStructuredReview(review: {
     confidence: "Low" | "Medium" | "High";
     message: string;
     promptForAgents?: string;
-    suggestion?: { replacement: string };
+    suggestion?: {
+      path?: string;
+      startLine?: number;
+      endLine?: number;
+      replacement: string;
+    };
   }>;
 }): ReviewResult {
   return {
@@ -304,8 +309,8 @@ function convertStructuredReview(review: {
     newComments: review.comments.map((comment) => ({
       file: comment.path,
       line: comment.line,
-      startLine: comment.startLine,
-      endLine: comment.endLine,
+      startLine: comment.startLine ?? comment.suggestion?.startLine,
+      endLine: comment.endLine ?? comment.suggestion?.endLine,
       severity: comment.severity,
       confidence: comment.confidence,
       message: comment.message,

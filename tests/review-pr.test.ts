@@ -164,4 +164,69 @@ describe("runAnalyzers", () => {
       "pmd",
     ]);
   });
+
+  it("runs external analyzers in auto mode when output files are not configured", async () => {
+    const semgrepFixture = readFileSync(
+      new URL("fixtures/semgrep.json", import.meta.url),
+      "utf8"
+    );
+    const pmdFixture = readFileSync(
+      new URL("fixtures/pmd.xml", import.meta.url),
+      "utf8"
+    );
+    const cpdFixture = readFileSync(
+      new URL("fixtures/cpd.xml", import.meta.url),
+      "utf8"
+    );
+    const commands: string[][] = [];
+
+    const findings = await runAnalyzers({
+      changedFiles: ["src/a.ts", "src/Main.java"],
+      diff: "",
+      executeAnalyzer: async (command, args) => {
+        commands.push([command, ...args]);
+        if (command === "opengrep") return semgrepFixture;
+        if (command === "pmd" && args[0] === "check") return pmdFixture;
+        if (command === "pmd" && args[0] === "cpd") return cpdFixture;
+        return "";
+      },
+    });
+
+    expect(commands).toEqual([
+      [
+        "opengrep",
+        "scan",
+        "--json",
+        "--metrics",
+        "off",
+        "--disable-version-check",
+        ".",
+      ],
+      [
+        "pmd",
+        "check",
+        "--format",
+        "xml",
+        "--dir",
+        ".",
+        "--rulesets",
+        "category/java/bestpractices.xml",
+      ],
+      [
+        "pmd",
+        "cpd",
+        "--format",
+        "xml",
+        "--dir",
+        ".",
+        "--minimum-tokens",
+        "100",
+      ],
+    ]);
+    expect(findings.map((finding) => finding.tool)).toEqual([
+      "opengrep",
+      "pmd",
+      "cpd",
+    ]);
+  });
 });

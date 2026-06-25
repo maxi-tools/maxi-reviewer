@@ -33,16 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Opengrep
-        run: opengrep scan --json --output opengrep.json .
-        continue-on-error: true
-
       - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           fail_on: blocking
-          opengrep_json: opengrep.json
 
   command:
     if: github.event_name == 'issue_comment' && github.event.issue.pull_request
@@ -81,7 +76,9 @@ Maxi Review is designed to consume fast, open-source analyzer output in the PR-t
 - PMD XML violations.
 - CPD XML duplicate findings.
 
-Analyzers are treated as external tools. Maxi Review consumes their machine-readable output and preserves tool name, rule id, help URL, and license metadata where available.
+Analyzers are treated as external tools. In `auto` mode, Maxi Review runs `opengrep` and `pmd` from `PATH` when no analyzer output files are configured, consumes their machine-readable output, and preserves tool name, rule id, help URL, and license metadata where available. Missing analyzer binaries are non-fatal so review can still proceed with Jules-only context.
+
+If your CI installs analyzers in an earlier step, leave `analyzer_mode` at `auto`. If another job or step already produced analyzer output, pass the output paths below; configured files take precedence over running tools.
 
 Configured analyzer output inputs:
 
@@ -92,7 +89,7 @@ Configured analyzer output inputs:
 | `pmd_xml`        | PMD XML                             |
 | `cpd_xml`        | CPD XML duplicate-detection results |
 
-Set `analyzer_mode: off` to skip analyzer ingestion.
+Set `analyzer_mode: off` to skip analyzer execution and ingestion.
 
 Qodana is intentionally not run during PR-time review. It is more expensive and belongs in nightly or self-hosted checks. Later Maxi-authored Qodana-inspired guidance can live in Maxi-owned rule files, but this repository does not bulk-copy JetBrains Inspectopedia or Qodana documentation.
 

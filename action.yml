@@ -46,7 +46,7 @@ inputs:
     required: false
     default: "30"
   analyzer_mode:
-    description: "Analyzer ingestion mode: auto | off. Default auto."
+    description: "Analyzer mode: auto runs Opengrep and PMD/CPD from PATH when no output files are configured; off skips analyzer execution and ingestion."
     required: false
     default: "auto"
   opengrep_json:

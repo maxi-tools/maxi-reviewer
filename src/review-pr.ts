@@ -1,6 +1,8 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { promisify } from "node:util";
 import {
   AnalyzerFinding,
   FailOn,
@@ -26,6 +28,7 @@ import { parseCpdXml, parsePmdXml } from "./analyzers/pmd.js";
 
 const COMMENT_MARKER = "<!-- jules-pr-reviewer -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
+const execFileAsync = promisify(execFile);
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 
@@ -40,6 +43,7 @@ export interface RunAnalyzerInput {
   changedFiles: string[];
   diff: string;
   analyzerMode?: string;
+  executeAnalyzer?: (command: string, args: string[]) => Promise<string>;
   analyzerOutputPaths?: {
     opengrepJson?: string;
     opengrepSarif?: string;
@@ -414,6 +418,43 @@ export async function runAnalyzers(
   findings.push(...parseAnalyzerFile(paths.opengrepSarif, parseOpengrepSarif));
   findings.push(...parseAnalyzerFile(paths.pmdXml, parsePmdXml));
   findings.push(...parseAnalyzerFile(paths.cpdXml, parseCpdXml));
+  if (findings.length > 0 || hasConfiguredAnalyzerOutput(paths)) {
+    return findings;
+  }
+
+  const executeAnalyzer = input.executeAnalyzer || executeExternalAnalyzer;
+  findings.push(
+    ...(await runAnalyzerCommand(
+      executeAnalyzer,
+      "opengrep",
+      ["scan", "--json", "--metrics", "off", "--disable-version-check", "."],
+      parseOpengrepJson
+    ))
+  );
+  findings.push(
+    ...(await runAnalyzerCommand(
+      executeAnalyzer,
+      "pmd",
+      [
+        "check",
+        "--format",
+        "xml",
+        "--dir",
+        ".",
+        "--rulesets",
+        "category/java/bestpractices.xml",
+      ],
+      parsePmdXml
+    ))
+  );
+  findings.push(
+    ...(await runAnalyzerCommand(
+      executeAnalyzer,
+      "pmd",
+      ["cpd", "--format", "xml", "--dir", ".", "--minimum-tokens", "100"],
+      parseCpdXml
+    ))
+  );
   return findings;
 }
 
@@ -447,6 +488,41 @@ function parseAnalyzerFile(
     core.warning(`Failed to parse analyzer output ${path}: ${String(err)}`);
     return [];
   }
+}
+
+async function runAnalyzerCommand(
+  executeAnalyzer: (command: string, args: string[]) => Promise<string>,
+  command: string,
+  args: string[],
+  parser: (text: string) => AnalyzerFinding[]
+): Promise<AnalyzerFinding[]> {
+  try {
+    const output = await executeAnalyzer(command, args);
+    return output.trim() ? parser(output) : [];
+  } catch (err) {
+    core.warning(
+      `Analyzer command failed (${command} ${args.join(" ")}): ${String(err)}`
+    );
+    return [];
+  }
+}
+
+async function executeExternalAnalyzer(
+  command: string,
+  args: string[]
+): Promise<string> {
+  const { stdout } = await execFileAsync(command, args, {
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return stdout;
+}
+
+function hasConfiguredAnalyzerOutput(
+  paths: NonNullable<RunAnalyzerInput["analyzerOutputPaths"]>
+): boolean {
+  return Boolean(
+    paths.opengrepJson || paths.opengrepSarif || paths.pmdXml || paths.cpdXml
+  );
 }
 
 function truncateDiff(

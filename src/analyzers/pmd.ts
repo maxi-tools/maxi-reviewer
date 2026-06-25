@@ -6,6 +6,9 @@ import {
   normalizeSeverity,
 } from "./normalize.js";
 
+const PMD_LICENSE = "BSD-4-Clause";
+const CPD_HELP_URI = "https://pmd.github.io/pmd/pmd_userdocs_cpd.html";
+
 export function parsePmdXml(text: string): AnalyzerFinding[] {
   const version = attrs(text.match(/<pmd\b[^>]*>/)?.[0] ?? "").version;
   const findings: AnalyzerFinding[] = [];
@@ -36,6 +39,7 @@ export function parsePmdXml(text: string): AnalyzerFinding[] {
           startLine,
           endLine: asPositiveInt(Number(violationAttrs.endline), startLine),
           helpUri: violationAttrs.externalInfoUrl,
+          license: PMD_LICENSE,
           raw: { file: fileAttrs, violation: violationAttrs },
         })
       );
@@ -67,6 +71,8 @@ export function parseCpdXml(text: string): AnalyzerFinding[] {
         path: fileAttrs.path ?? "",
         startLine,
         endLine: startLine + lines - 1,
+        helpUri: CPD_HELP_URI,
+        license: PMD_LICENSE,
         raw: { duplication: duplicationAttrs },
       })
     );

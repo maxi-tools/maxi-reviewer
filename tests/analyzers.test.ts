@@ -36,11 +36,19 @@ describe("analyzer parsers", () => {
     const findings = parsePmdXml(fixture("pmd.xml"));
     expect(findings[0].tool).toBe("pmd");
     expect(findings[0].path).toBe("src/Main.java");
+    expect(findings[0].helpUri).toBe(
+      "https://example.invalid/pmd/avoid-empty-if"
+    );
+    expect(findings[0].license).toBe("BSD-4-Clause");
   });
 
   it("normalizes CPD XML duplicates", () => {
     const findings = parseCpdXml(fixture("cpd.xml"));
     expect(findings[0].tool).toBe("cpd");
     expect(findings[0].ruleId).toBe("copy-paste-duplicate");
+    expect(findings[0].helpUri).toBe(
+      "https://pmd.github.io/pmd/pmd_userdocs_cpd.html"
+    );
+    expect(findings[0].license).toBe("BSD-4-Clause");
   });
 });

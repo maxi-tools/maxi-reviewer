@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyStructuredSuggestions } from "../src/apply.js";
-import { ReviewComment } from "../src/types.js";
+import {
+  applyStructuredSuggestions,
+  buildApplyAllCommitMessage,
+  validateApplyAllHead,
+} from "../src/apply.js";
+import { JulesReviewComment, ReviewComment } from "../src/types.js";
 
 const baseComment = {
   file: "src/example.ts",
@@ -115,6 +119,35 @@ describe("applyStructuredSuggestions", () => {
     ]);
   });
 
+  it("applies structured Jules review suggestions", () => {
+    const comment = {
+      id: "c1",
+      path: "src/example.ts",
+      line: 2,
+      severity: "Warning",
+      confidence: "High",
+      message: "Use the safer value.",
+      suggestion: {
+        path: "src/example.ts",
+        startLine: 2,
+        endLine: 2,
+        replacement: "const b = 5;",
+      },
+    } satisfies JulesReviewComment;
+
+    const result = applyStructuredSuggestions(
+      new Map([["src/example.ts", "const a = 1;\nconst b = 2;\n"]]),
+      [comment]
+    );
+
+    expect(result.files.get("src/example.ts")).toBe(
+      "const a = 1;\nconst b = 5;\n"
+    );
+    expect(result.applied).toEqual([
+      { file: "src/example.ts", startLine: 2, endLine: 2 },
+    ]);
+  });
+
   it("skips missing files, invalid ranges, and unstructured comments", () => {
     const result = applyStructuredSuggestions(
       new Map([["src/example.ts", "const a = 1;\n"]]),
@@ -132,5 +165,18 @@ describe("applyStructuredSuggestions", () => {
       "invalid range",
       "no structured replacement",
     ]);
+  });
+
+  it("rejects stale apply-all heads", () => {
+    expect(validateApplyAllHead("head-a", "head-b")).toEqual({
+      ok: false,
+      reason: "stale head SHA: expected head-a, got head-b",
+    });
+    expect(validateApplyAllHead("head-a", "head-a")).toEqual({ ok: true });
+  });
+
+  it("builds a simple apply-all commit message", () => {
+    expect(buildApplyAllCommitMessage(3)).toBe("Apply 3 Maxi suggestions");
+    expect(buildApplyAllCommitMessage(1)).toBe("Apply 1 Maxi suggestion");
   });
 });

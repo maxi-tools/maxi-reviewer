@@ -1,4 +1,4 @@
-import { ReviewComment } from "./types.js";
+import { JulesReviewComment, ReviewComment } from "./types.js";
 
 export interface AppliedSuggestion {
   file: string;
@@ -29,7 +29,7 @@ interface NormalizedSuggestion {
 
 export function applyStructuredSuggestions(
   files: Map<string, string>,
-  comments: ReviewComment[]
+  comments: Array<ReviewComment | JulesReviewComment>
 ): ApplyResult {
   const resultFiles = new Map(files);
   const applied: AppliedSuggestion[] = [];
@@ -94,13 +94,42 @@ export function applyStructuredSuggestions(
   return { files: resultFiles, applied, skipped };
 }
 
-function normalizeSuggestion(comment: ReviewComment): NormalizedSuggestion {
+export function validateApplyAllHead(
+  expectedHeadSha: string,
+  currentHeadSha: string
+): { ok: true } | { ok: false; reason: string } {
+  if (expectedHeadSha !== currentHeadSha) {
+    return {
+      ok: false,
+      reason: `stale head SHA: expected ${expectedHeadSha}, got ${currentHeadSha}`,
+    };
+  }
+  return { ok: true };
+}
+
+export function buildApplyAllCommitMessage(appliedCount: number): string {
+  return `Apply ${appliedCount} Maxi suggestion${appliedCount === 1 ? "" : "s"}`;
+}
+
+function normalizeSuggestion(
+  comment: ReviewComment | JulesReviewComment
+): NormalizedSuggestion {
+  if ("suggestion" in comment && comment.suggestion) {
+    return {
+      file: comment.suggestion.path,
+      startLine: comment.suggestion.startLine,
+      endLine: comment.suggestion.endLine,
+      replacement: comment.suggestion.replacement,
+    };
+  }
+
+  const legacy = comment as ReviewComment;
   return {
-    file: comment.file,
-    startLine: comment.startLine || comment.line,
-    endLine: comment.endLine || comment.startLine || comment.line,
+    file: legacy.file,
+    startLine: legacy.startLine || legacy.line,
+    endLine: legacy.endLine || legacy.startLine || legacy.line,
     replacement:
-      comment.suggestedReplacement ?? extractSuggestionFence(comment.message),
+      legacy.suggestedReplacement ?? extractSuggestionFence(legacy.message),
   };
 }
 

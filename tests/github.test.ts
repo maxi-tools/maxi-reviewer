@@ -163,7 +163,7 @@ describe("github.ts", () => {
                   comments: {
                     nodes: [
                       {
-                        body: "<!-- jules-inline-comment -->\nMsg",
+                        body: "<!-- maxi-review-inline-comment -->\nMsg",
                         path: "a.ts",
                         line: 10,
                         author: { login: "bot" },
@@ -248,7 +248,7 @@ describe("github.ts", () => {
         threadId: "t1",
         path: "a.ts",
         line: 10,
-        body: "<!-- jules-inline-comment -->\nMsg",
+        body: "<!-- maxi-review-inline-comment -->\nMsg",
       },
       {
         index: 2,
@@ -330,19 +330,19 @@ describe("github.ts", () => {
           start_side: "RIGHT",
           line: 12,
           side: "RIGHT",
-          body: "<!-- jules-inline-comment -->\n**Severity:** 🚨 High | **Confidence:** 🟢 High\n\nMsg\n\n<details>\n<summary>🤖 Prompt for Agents</summary>\n\nFix this issue by doing X\n</details>",
+          body: "<!-- maxi-review-inline-comment -->\n**Severity:** 🚨 High | **Confidence:** 🟢 High\n\nMsg\n\n<details>\n<summary>🤖 Prompt for Agents</summary>\n\nFix this issue by doing X\n</details>",
         },
         {
           path: "b.ts",
           line: 20,
           side: "RIGHT",
-          body: "<!-- jules-inline-comment -->\n**Severity:** ⚠️ Warning | **Confidence:** 🟡 Medium\n\nMsg2",
+          body: "<!-- maxi-review-inline-comment -->\n**Severity:** ⚠️ Warning | **Confidence:** 🟡 Medium\n\nMsg2",
         },
         {
           path: "c.ts",
           line: 30,
           side: "RIGHT",
-          body: "<!-- jules-inline-comment -->\n**Severity:** ℹ️ Info | **Confidence:** 🔴 Low\n\nMsg3",
+          body: "<!-- maxi-review-inline-comment -->\n**Severity:** ℹ️ Info | **Confidence:** 🔴 Low\n\nMsg3",
         },
       ],
     });
@@ -403,7 +403,7 @@ describe("github.ts", () => {
       owner: "owner",
       repo: "repo",
       issue_number: 1,
-      body: expect.stringContaining("Late Jules review feedback"),
+      body: expect.stringContaining("Late Maxi review feedback"),
     });
     expect(octokit.rest.issues.createComment).toHaveBeenCalledWith(
       expect.objectContaining({

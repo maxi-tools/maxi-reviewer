@@ -1,10 +1,9 @@
 import { PromptArgs } from "./types.js";
 
 /**
- * maxi-config-owned Jules review prompt.
+ * Maxi-owned Jules review prompt.
  *
- * Vendored + patched from thalesraymond/jules-pr-reviewer's `src/prompt.ts`.
- * Deliberate changes vs upstream:
+ * Prompt design notes:
  *
  *  1. JSON COERCION. Upstream opens with "You are an expert code reviewer" and
  *     puts the output contract dead last — so Jules sometimes answers in prose

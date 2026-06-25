@@ -117,8 +117,8 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
 | `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
 | `skip_forks`         | `true`                          | Skip PRs from forks.                                          |
-| `bypass_label`       | `jules-override`                | Label that skips the review.                                  |
-| `status_context`     | `jules/review`                  | Commit status context name.                                   |
+| `bypass_label`       | `maxi-review-override`          | Label that skips the review.                                  |
+| `status_context`     | `maxi/review`                   | Commit status context name.                                   |
 | `extra_instructions` |                                 | Markdown appended to the review prompt.                       |
 | `rules_file`         | `.github/jules-review-rules.md` | Repo file loaded from the base SHA. Set empty to disable.     |
 | `timeout_minutes`    | `30`                            | How long to wait for Jules review output.                     |

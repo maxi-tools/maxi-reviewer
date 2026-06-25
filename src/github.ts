@@ -109,7 +109,8 @@ export async function fetchOpenThreads(
     if (!firstComment) continue;
     if (
       firstComment.viewerDidAuthor &&
-      firstComment.body.includes("<!-- jules-inline-comment -->")
+      (firstComment.body.includes("<!-- maxi-review-inline-comment -->") ||
+        firstComment.body.includes("<!-- jules-inline-comment -->"))
     ) {
       result.push({
         index: index++,
@@ -161,7 +162,7 @@ export async function submitReview(
     const confidenceEmoji =
       c.confidence === "High" ? "🟢" : c.confidence === "Medium" ? "🟡" : "🔴";
 
-    let body = `<!-- jules-inline-comment -->
+    let body = `<!-- maxi-review-inline-comment -->
 **Severity:** ${severityEmoji} ${c.severity} | **Confidence:** ${confidenceEmoji} ${c.confidence}
 
 ${messageWithSuggestion(c)}`;
@@ -238,8 +239,8 @@ ${comment.message}${promptForAgents}`;
     })
     .join("\n\n---\n\n");
 
-  return `<!-- jules-pr-reviewer late-feedback -->
-## Late Jules review feedback
+  return `<!-- maxi-review late-feedback -->
+## Late Maxi review feedback
 
 ${summary}
 

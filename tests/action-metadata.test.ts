@@ -17,7 +17,11 @@ describe("action metadata", () => {
     expect(action).toContain('name: "Maxi Review"');
     expect(action).toContain('using: "node24"');
     expect(action).toContain("analyzer_mode:");
+    expect(action).toContain('default: "maxi-review-override"');
+    expect(action).toContain('default: "maxi/review"');
     expect(action).not.toContain("jules-pr-reviewer");
+    expect(action).not.toContain("jules-override");
+    expect(action).not.toContain("jules/review");
     expect(action).not.toContain("node20");
   });
 });

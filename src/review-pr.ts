@@ -26,7 +26,7 @@ import { buildReviewArtifact } from "./late-feedback-harvest.js";
 import { parseOpengrepJson, parseOpengrepSarif } from "./analyzers/opengrep.js";
 import { parseCpdXml, parsePmdXml } from "./analyzers/pmd.js";
 
-const COMMENT_MARKER = "<!-- jules-pr-reviewer -->";
+const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
 const execFileAsync = promisify(execFile);
 
@@ -328,7 +328,7 @@ export async function runReviewPr(
     }
 
     // Prepare body for the PR review
-    const finalBody = `${COMMENT_MARKER}\n## 🤖 Jules Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
+    const finalBody = `${COMMENT_MARKER}\n## Maxi Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
 
     await deps.submitReview(
       octokit,

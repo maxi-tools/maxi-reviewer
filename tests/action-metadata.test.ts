@@ -19,6 +19,7 @@ describe("action metadata", () => {
     expect(action).toContain("analyzer_mode:");
     expect(action).toContain("command:");
     expect(action).toContain("pr_number:");
+    expect(action).toContain("review_artifacts:");
     expect(action).toContain('default: "maxi-review-override"');
     expect(action).toContain('default: "maxi/review"');
     expect(action).not.toContain("jules-pr-reviewer");

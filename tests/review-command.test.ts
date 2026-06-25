@@ -19,6 +19,9 @@ describe("review command handling", () => {
     expect(parseReviewCommand("/maxi apply-all")).toEqual({
       kind: "apply-all",
     });
+    expect(parseReviewCommand("/maxi harvest")).toEqual({
+      kind: "harvest",
+    });
     expect(parseReviewCommand("/maxi fix c1")).toEqual({
       kind: "fix",
       findingId: "c1",
@@ -44,6 +47,78 @@ maxi-review-7-head.json
       schema: "maxi.review.v1.review-artifact",
       headSha: "head",
     });
+  });
+
+  it("harvests all review artifacts from hidden PR comments", async () => {
+    const artifactA = `<!-- maxi-review artifact -->
+## Maxi review artifact
+
+maxi-review-7-a.json
+
+<details>
+<summary>Artifact JSON</summary>
+
+\`\`\`json
+{"schema":"maxi.review.v1.review-artifact","headSha":"a","validatedReview":{"comments":[]}}
+\`\`\`
+</details>`;
+    const artifactB = `<!-- maxi-review artifact -->
+## Maxi review artifact
+
+maxi-review-7-b.json
+
+<details>
+<summary>Artifact JSON</summary>
+
+\`\`\`json
+{"schema":"maxi.review.v1.review-artifact","headSha":"b","validatedReview":{"comments":[{"id":"c1"}]}}
+\`\`\`
+</details>`;
+    const deps = {
+      getContext: () => ({
+        body: "/maxi harvest",
+        owner: "maxi",
+        repo: "example",
+        issueNumber: 7,
+      }),
+      fetchPullRequest: vi.fn().mockResolvedValue({
+        number: 7,
+        headSha: "head-a",
+        headRef: "feature",
+        headRepository: "maxi/example",
+        repository: "maxi/example",
+        tokenPermissions: { contents: "write", pullRequests: "write" },
+      }),
+      listArtifactComments: vi
+        .fn()
+        .mockResolvedValue([artifactA, "ordinary comment", artifactB]),
+      readFiles: vi.fn(),
+      commitFiles: vi.fn(),
+      startHandsOnFix: vi.fn(),
+      comment: vi.fn().mockResolvedValue(undefined),
+      setOutput: vi.fn(),
+    };
+
+    await runReviewCommand(deps);
+
+    expect(deps.setOutput).toHaveBeenCalledWith(
+      "review_artifacts",
+      JSON.stringify([
+        {
+          schema: "maxi.review.v1.review-artifact",
+          headSha: "a",
+          validatedReview: { comments: [] },
+        },
+        {
+          schema: "maxi.review.v1.review-artifact",
+          headSha: "b",
+          validatedReview: { comments: [{ id: "c1" }] },
+        },
+      ])
+    );
+    expect(deps.comment).toHaveBeenCalledWith(
+      "Harvested 2 Maxi review artifacts."
+    );
   });
 
   it("builds workflow dispatch command context from action inputs", () => {
@@ -195,6 +270,7 @@ maxi-review-7-head.json
       commitFiles: vi.fn().mockResolvedValue(undefined),
       startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
+      setOutput: vi.fn(),
     };
 
     await runReviewCommand(deps);
@@ -252,6 +328,7 @@ maxi-review-7-head.json
         ),
       startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
+      setOutput: vi.fn(),
     };
 
     await expect(runReviewCommand(deps)).resolves.toBeUndefined();
@@ -287,6 +364,7 @@ maxi-review-7-head.json
       commitFiles: vi.fn().mockResolvedValue(undefined),
       startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
+      setOutput: vi.fn(),
     };
 
     await runReviewCommand(deps);
@@ -324,6 +402,7 @@ maxi-review-7-head.json
       commitFiles: vi.fn().mockResolvedValue(undefined),
       startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
+      setOutput: vi.fn(),
     };
 
     await runReviewCommand(deps);

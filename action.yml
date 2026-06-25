@@ -74,6 +74,10 @@ inputs:
     required: false
     default: ""
 
+outputs:
+  review_artifacts:
+    description: "JSON array of harvested maxi.review.v1.review-artifact objects from /maxi harvest."
+
 runs:
   using: "node24"
   main: "dist/index.js"

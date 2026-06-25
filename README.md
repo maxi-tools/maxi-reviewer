@@ -140,6 +140,12 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `command`            |                                 | `/maxi ...` command for `workflow_dispatch`.                  |
 | `pr_number`          |                                 | Pull request number for `workflow_dispatch` commands.         |
 
+## Outputs
+
+| Output             | Description                                                   |
+| ------------------ | ------------------------------------------------------------- |
+| `review_artifacts` | JSON array emitted by `/maxi harvest` with recorded artifacts. |
+
 ## Apply-All And Hands-On Fixes
 
 Structured suggestions can be applied as a batch only when the head SHA is still fresh. Broader findings can be routed to a hands-on Jules fix session only after an explicit `/maxi fix <finding-id>` command, on a same-repository PR branch, with write permissions available.
@@ -148,6 +154,7 @@ Supported PR comment or `workflow_dispatch` commands:
 
 - `/maxi apply-all`
 - `/maxi fix <finding-id>`
+- `/maxi harvest`
 
 Fork PRs and stale heads are rejected for branch-writing flows.
 

@@ -13,6 +13,7 @@ import { JulesReviewComment, ReviewComment } from "./types.js";
 export type ReviewCommand =
   | { kind: "apply-all" }
   | { kind: "fix"; findingId: string }
+  | { kind: "harvest" }
   | { kind: "unknown" };
 
 export interface ReviewArtifactLike {
@@ -86,12 +87,16 @@ export interface ReviewCommandDeps {
     prompt: string;
   }) => Promise<string>;
   comment: (body: string) => Promise<void>;
+  setOutput: (name: string, value: string) => void;
 }
 
 export function parseReviewCommand(body: string): ReviewCommand {
   const text = body.trim();
   if (/^\/maxi\s+apply-all\b/.test(text)) {
     return { kind: "apply-all" };
+  }
+  if (/^\/maxi\s+harvest\b/.test(text)) {
+    return { kind: "harvest" };
   }
   const fix = text.match(/^\/maxi\s+fix\s+([A-Za-z0-9_.:-]+)\b/);
   if (fix) {
@@ -123,6 +128,11 @@ export async function runReviewCommand(
     return;
   }
 
+  if (command.kind === "harvest") {
+    await runHarvestCommand(deps, context);
+    return;
+  }
+
   const artifact = await latestReviewArtifact(
     deps,
     context.owner,
@@ -142,6 +152,22 @@ export async function runReviewCommand(
   }
 
   await runFixCommand(deps, context, pr, artifact, command.findingId);
+}
+
+async function runHarvestCommand(
+  deps: ReviewCommandDeps,
+  context: ReviewCommandContext
+): Promise<void> {
+  const comments = await deps.listArtifactComments(
+    context.owner,
+    context.repo,
+    context.issueNumber
+  );
+  const artifacts = comments
+    .map(extractReviewArtifact)
+    .filter((artifact): artifact is ReviewArtifactLike => artifact !== null);
+  deps.setOutput("review_artifacts", JSON.stringify(artifacts));
+  await deps.comment(`Harvested ${artifacts.length} Maxi review artifacts.`);
 }
 
 export function extractReviewArtifact(body: string): ReviewArtifactLike | null {
@@ -371,6 +397,7 @@ function hasAllReviewCommandDeps(
     deps.commitFiles,
     deps.startHandsOnFix,
     deps.comment,
+    deps.setOutput,
   ].every(Boolean);
 }
 
@@ -519,12 +546,17 @@ export function defaultReviewCommandDeps(): ReviewCommandDeps {
     },
     comment: async (body) => {
       const context = github.context;
+      const issueNumber =
+        context.eventName === "workflow_dispatch"
+          ? Number(core.getInput("pr_number", { required: true }))
+          : Number(context.payload.issue?.number || 0);
       await octokit.rest.issues.createComment({
         owner: context.repo.owner,
         repo: context.repo.repo,
-        issue_number: Number(context.payload.issue?.number || 0),
+        issue_number: issueNumber,
         body,
       });
     },
+    setOutput: core.setOutput,
   };
 }

@@ -220,6 +220,58 @@ describe("jules.ts", () => {
       );
     });
 
+    it("asks the same Jules session to revise structured reviews that fail validation", async () => {
+      const badReview =
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"test","verdict":"comment","resolvedCommentIds":[],"comments":[{"id":"c1","path":"src/a.ts","line":9,"severity":"Warning","confidence":"High","message":"Use this.\\n```suggestion\\nconst ok = true;\\n```","suggestion":{"path":"src/a.ts","startLine":9,"endLine":9,"replacement":"const ok = true;"}}]}\n```';
+      const fixedReview =
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"test","verdict":"comment","resolvedCommentIds":[],"comments":[{"id":"c1","path":"src/a.ts","line":4,"severity":"Warning","confidence":"High","message":"Use this.\\n```suggestion\\nconst ok = true;\\n```","suggestion":{"path":"src/a.ts","startLine":4,"endLine":4,"replacement":"const ok = true;"}}]}\n```';
+      let prompted = false;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          prompted = true;
+        }),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: prompted ? fixedReview : badReview,
+          };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1, {
+        verificationContext: {
+          changedLines: new Map([["src/a.ts", new Set([4])]]),
+          files: new Map([
+            [
+              "src/a.ts",
+              "const old = false;\nconst x = 1;\n\nconst ok = false;\n",
+            ],
+          ]),
+        },
+      });
+
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining("Fix only the Maxi review JSON")
+      );
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "targets a line that is not in the changed diff"
+        )
+      );
+      expect(result.reviewResult?.newComments[0]).toMatchObject({
+        file: "src/a.ts",
+        line: 4,
+        suggestedReplacement: "const ok = true;",
+      });
+    });
+
     it("keeps the parsed review when a formatting revision returns invalid JSON", async () => {
       const badFormatReview =
         '```json\n{"summary":"test","verdict":"comment","resolvedCommentIds":[],"newComments":[{"file":"a.ts","line":3,"severity":"Warning","confidence":"High","message":"Use a suggestion.\\n```suggestion\\nconst ok = true;","promptForAgents":""}]}\n```';

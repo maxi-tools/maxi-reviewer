@@ -6,7 +6,12 @@ import {
   buildJsonRepairPrompt,
   findReviewFormatIssues,
 } from "./format.js";
-import { parseJulesReview } from "./verify-format.js";
+import {
+  buildReviewRepairPrompt,
+  parseJulesReview,
+  VerificationContext,
+  verifyJulesReview,
+} from "./verify-format.js";
 
 interface JulesSession {
   id: string;
@@ -20,12 +25,17 @@ interface JulesSession {
   send?: (message: string) => Promise<unknown>;
 }
 
+export interface RunJulesReviewOptions {
+  verificationContext?: VerificationContext;
+}
+
 export async function runJulesReview(
   apiKey: string,
   prompt: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   source: any,
-  timeoutMinutes: number
+  timeoutMinutes: number,
+  options: RunJulesReviewOptions = {}
 ): Promise<{ reviewResult: ReviewResult | null; sessionId: string }> {
   const customJules = jules.with({ apiKey });
 
@@ -121,7 +131,74 @@ export async function runJulesReview(
     }
   }
 
+  if (options.verificationContext) {
+    const verified = await requestStructuredValidationRepair({
+      session,
+      latestReviewMessage,
+      timeoutMinutes,
+      verificationContext: options.verificationContext,
+    });
+    if (verified) {
+      reviewResult = verified.reviewResult;
+    }
+  }
+
   return { reviewResult, sessionId: session.id };
+}
+
+async function requestStructuredValidationRepair(input: {
+  session: JulesSession;
+  latestReviewMessage: string;
+  timeoutMinutes: number;
+  verificationContext: VerificationContext;
+}): Promise<{
+  reviewResult: ReviewResult;
+  latestReviewMessage: string;
+} | null> {
+  let structuredReview;
+  try {
+    structuredReview = parseJulesReview(input.latestReviewMessage);
+  } catch {
+    return null;
+  }
+
+  const issues = verifyJulesReview(structuredReview, input.verificationContext);
+  if (issues.length === 0) return null;
+
+  core.warning(
+    `Jules structured review has ${issues.length} validation issue(s); requesting a same-session revision.`
+  );
+  await sendSessionMessage(
+    input.session,
+    buildReviewRepairPrompt(structuredReview, issues)
+  );
+  const revisedMessage = await pollForReview(
+    input.session,
+    input.timeoutMinutes * 60 * 1000,
+    input.latestReviewMessage
+  );
+  try {
+    const revisedStructuredReview = parseJulesReview(revisedMessage);
+    const remainingIssues = verifyJulesReview(
+      revisedStructuredReview,
+      input.verificationContext
+    );
+    if (remainingIssues.length > 0) {
+      core.warning(
+        `Jules revised structured review still has validation issue(s): ${remainingIssues.map((issue) => issue.message).join(" ")}`
+      );
+      return null;
+    }
+    return {
+      reviewResult: convertStructuredReview(revisedStructuredReview),
+      latestReviewMessage: revisedMessage,
+    };
+  } catch (err) {
+    core.warning(
+      `Failed to parse Jules structured validation revision; keeping previous parsed review result: ${err}`
+    );
+    return null;
+  }
 }
 
 export async function startJulesHandsOnFix(

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd version="7.0.0">
+  <file name="src/Main.java">
+    <violation beginline="12" endline="12" rule="AvoidEmptyIfStmt" ruleset="Best Practices" externalInfoUrl="https://example.invalid/pmd/avoid-empty-if" priority="3">Avoid empty if statements.</violation>
+  </file>
+</pmd>

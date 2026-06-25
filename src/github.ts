@@ -164,7 +164,7 @@ export async function submitReview(
     let body = `<!-- jules-inline-comment -->
 **Severity:** ${severityEmoji} ${c.severity} | **Confidence:** ${confidenceEmoji} ${c.confidence}
 
-${c.message}`;
+${messageWithSuggestion(c)}`;
 
     if (c.promptForAgents) {
       body += `
@@ -209,6 +209,16 @@ ${c.promptForAgents}
       body: buildLateFeedbackComment(summary, comments),
     });
   }
+}
+
+function messageWithSuggestion(comment: ReviewComment): string {
+  if (
+    !comment.suggestedReplacement ||
+    comment.message.includes("```suggestion")
+  ) {
+    return comment.message;
+  }
+  return `${comment.message}\n\n\`\`\`suggestion\n${comment.suggestedReplacement}\n\`\`\``;
 }
 
 function buildLateFeedbackComment(

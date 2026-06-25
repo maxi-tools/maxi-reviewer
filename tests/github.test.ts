@@ -348,6 +348,32 @@ describe("github.ts", () => {
     });
   });
 
+  it("submitReview renders structured replacements as GitHub suggestion fences", async () => {
+    const octokit = {
+      rest: { pulls: { createReview: vi.fn().mockResolvedValue({}) } },
+    } as any;
+
+    await submitReview(octokit, "owner", "repo", 1, "headSHA", "Summary text", [
+      {
+        file: "a.ts",
+        line: 10,
+        startLine: 10,
+        endLine: 10,
+        severity: "Warning",
+        confidence: "High",
+        message: "Use the safer value.",
+        promptForAgents: "",
+        suggestedReplacement: "const value = safeValue();",
+      },
+    ]);
+
+    expect(
+      octokit.rest.pulls.createReview.mock.calls[0][0].comments[0].body
+    ).toContain(
+      "Use the safer value.\n\n```suggestion\nconst value = safeValue();\n```"
+    );
+  });
+
   it("submitReview records late feedback as an issue comment when review submission is unavailable", async () => {
     const octokit = {
       rest: {

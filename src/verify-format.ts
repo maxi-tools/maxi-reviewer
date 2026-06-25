@@ -82,6 +82,14 @@ export function verifyJulesReview(
         kind: "invalid-range",
         message: `${label} suggestion range ${suggestion.startLine}-${suggestion.endLine} is outside ${suggestion.path}.`,
       });
+    } else if (
+      currentRange(file, suggestion.startLine, suggestion.endLine) ===
+      suggestion.replacement
+    ) {
+      issues.push({
+        kind: "non-applying",
+        message: `${label} suggestion replacement does not change ${suggestion.path}:${suggestion.startLine}-${suggestion.endLine}.`,
+      });
     }
     const suggestionChanged = context.changedLines.get(suggestion.path);
     for (let line = suggestion.startLine; line <= suggestion.endLine; line++) {
@@ -102,6 +110,18 @@ export function verifyJulesReview(
   }
 
   return issues;
+}
+
+function currentRange(
+  file: string,
+  startLine: number,
+  endLine: number
+): string {
+  return file
+    .replace(/\n$/, "")
+    .split("\n")
+    .slice(startLine - 1, endLine)
+    .join("\n");
 }
 
 export function buildReviewRepairPrompt(

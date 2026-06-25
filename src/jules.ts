@@ -124,6 +124,23 @@ export async function runJulesReview(
   return { reviewResult, sessionId: session.id };
 }
 
+export async function startJulesHandsOnFix(
+  apiKey: string,
+  prompt: string,
+  source: { github: string; baseBranch: string }
+): Promise<string> {
+  const customJules = jules.with({ apiKey });
+  const rawSession = await customJules.session({
+    prompt,
+    source,
+    requireApproval: false,
+    autoPr: false,
+  });
+  const session = rawSession as unknown as JulesSession;
+  core.info(`Jules hands-on fix session: ${session.id}`);
+  return session.id;
+}
+
 function parseJulesResponse(message: string): ReviewResult {
   try {
     return convertStructuredReview(parseJulesReview(message));

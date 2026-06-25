@@ -33,6 +33,9 @@ describe("index.ts", () => {
     runJulesReview: vi.fn(),
     wrapPermissionError: vi.fn(),
   };
+  const mockReviewCommand = {
+    runReviewCommand: vi.fn(),
+  };
 
   beforeEach(async () => {
     vi.resetModules();
@@ -78,6 +81,7 @@ describe("index.ts", () => {
     // mock helpers
     vi.doMock("../src/github.js", () => mockGithubHelper);
     vi.doMock("../src/jules.js", () => mockJulesHelper);
+    vi.doMock("../src/review-command.js", () => mockReviewCommand);
 
     // default helper returns
     mockGithubHelper.fetchDiff.mockResolvedValue("diff");
@@ -92,6 +96,7 @@ describe("index.ts", () => {
       sessionId: "session-id",
     });
     mockJulesHelper.wrapPermissionError.mockImplementation((e: any) => e);
+    mockReviewCommand.runReviewCommand.mockResolvedValue(undefined);
   });
 
   const loadIndex = async () => {
@@ -114,6 +119,16 @@ describe("index.ts", () => {
     expect(mockSetFailed).toHaveBeenCalledWith(
       expect.stringContaining("Unsupported event")
     );
+  });
+
+  it("routes issue comment events to the review command handler", async () => {
+    (github as any).context.eventName = "issue_comment";
+    (github as any).context.payload = {
+      issue: { number: 1, pull_request: {} },
+      comment: { body: "/maxi apply-all" },
+    };
+    await loadIndex();
+    expect(mockReviewCommand.runReviewCommand).toHaveBeenCalled();
   });
 
   it("fails if no pull_request payload", async () => {

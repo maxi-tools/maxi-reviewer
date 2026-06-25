@@ -15,20 +15,21 @@ name: Maxi Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 concurrency:
-  group: maxi-review-${{ github.event.pull_request.number }}
+  group: maxi-review-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
-
-permissions:
-  contents: read
-  pull-requests: write
-  statuses: write
-  actions: write
 
 jobs:
   review:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +43,19 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           fail_on: blocking
           opengrep_json: opengrep.json
+
+  command:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: maxi-tools/maxi-reviewer@v1
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 Add `JULES_API_KEY` as a repository Actions secret. The default `GITHUB_TOKEN` should be used with the permissions above.
@@ -57,6 +71,7 @@ Add `JULES_API_KEY` as a repository Actions secret. The default `GITHUB_TOKEN` s
 - Posts actionable GitHub review comments and uses suggested-change format when a fix is mechanically applicable.
 - Builds `maxi.review.v1.review-artifact` JSON so review feedback remains harvestable even if PR review submission is unavailable or late.
 - Records review artifacts as hidden PR comments for later harvesting.
+- Handles `/maxi apply-all` and `/maxi fix <finding-id>` on `issue_comment` events.
 
 ## Analyzer Posture
 
@@ -119,6 +134,11 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 ## Apply-All And Hands-On Fixes
 
 Structured suggestions can be applied as a batch only when the head SHA is still fresh. Broader findings can be routed to a hands-on Jules fix session only after an explicit `/maxi fix <finding-id>` command, on a same-repository PR branch, with write permissions available.
+
+Supported PR comment commands:
+
+- `/maxi apply-all`
+- `/maxi fix <finding-id>`
 
 Fork PRs and stale heads are rejected for branch-writing flows.
 

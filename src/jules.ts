@@ -6,6 +6,7 @@ import {
   buildJsonRepairPrompt,
   findReviewFormatIssues,
 } from "./format.js";
+import { parseJulesReview } from "./verify-format.js";
 
 interface JulesSession {
   id: string;
@@ -124,6 +125,12 @@ export async function runJulesReview(
 }
 
 function parseJulesResponse(message: string): ReviewResult {
+  try {
+    return convertStructuredReview(parseJulesReview(message));
+  } catch {
+    // Fall back to the legacy Jules response shape while callers migrate.
+  }
+
   const jsonMatch = message.match(/```json\n([\s\S]*?)\n```/);
   if (jsonMatch) {
     try {
@@ -138,6 +145,40 @@ function parseJulesResponse(message: string): ReviewResult {
   } catch (e) {
     throw new Error("Failed to parse Jules response as JSON", { cause: e });
   }
+}
+
+function convertStructuredReview(review: {
+  summary: string;
+  verdict: ReviewResult["verdict"];
+  resolvedCommentIds: number[];
+  comments: Array<{
+    path: string;
+    line: number;
+    startLine?: number;
+    endLine?: number;
+    severity: "Info" | "Warning" | "High";
+    confidence: "Low" | "Medium" | "High";
+    message: string;
+    promptForAgents?: string;
+    suggestion?: { replacement: string };
+  }>;
+}): ReviewResult {
+  return {
+    summary: review.summary,
+    verdict: review.verdict,
+    resolvedCommentIds: review.resolvedCommentIds,
+    newComments: review.comments.map((comment) => ({
+      file: comment.path,
+      line: comment.line,
+      startLine: comment.startLine,
+      endLine: comment.endLine,
+      severity: comment.severity,
+      confidence: comment.confidence,
+      message: comment.message,
+      promptForAgents: comment.promptForAgents ?? "",
+      suggestedReplacement: comment.suggestion?.replacement,
+    })),
+  };
 }
 
 async function waitUntilSessionReady(session: {

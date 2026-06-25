@@ -74,6 +74,42 @@ describe("jules.ts", () => {
       });
     });
 
+    it("returns structured maxi review output in the legacy result shape", async () => {
+      const reviewText =
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"structured","verdict":"comment","resolvedCommentIds":[2],"comments":[{"id":"c1","path":"src/a.ts","line":4,"severity":"Warning","confidence":"High","message":"Use this.","promptForAgents":"Fix it.","suggestion":{"path":"src/a.ts","startLine":4,"endLine":4,"replacement":"const ok = true;"}}]}\n```';
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi
+          .fn()
+          .mockResolvedValue(
+            mockSessionWithHistory([
+              { type: "agentMessaged", message: reviewText },
+            ])
+          ),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1);
+
+      expect(result.reviewResult).toEqual({
+        summary: "structured",
+        verdict: "comment",
+        resolvedCommentIds: [2],
+        newComments: [
+          {
+            file: "src/a.ts",
+            line: 4,
+            startLine: undefined,
+            endLine: undefined,
+            severity: "Warning",
+            confidence: "High",
+            message: "Use this.",
+            promptForAgents: "Fix it.",
+            suggestedReplacement: "const ok = true;",
+          },
+        ],
+      });
+    });
+
     it("asks the same Jules session to revise malformed JSON", async () => {
       const badReview = '```json\n{"summary":"bad", "verdict":"comment",\n```';
       const fixedReview =

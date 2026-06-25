@@ -262,3 +262,30 @@ export async function setStatus(
     description,
   });
 }
+
+export async function recordReviewArtifactComment(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  name: string,
+  content: string
+): Promise<void> {
+  await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: prNumber,
+    body: `<!-- maxi-review artifact -->
+## Maxi review artifact
+
+${name}
+
+<details>
+<summary>Artifact JSON</summary>
+
+\`\`\`json
+${content}
+\`\`\`
+</details>`,
+  });
+}

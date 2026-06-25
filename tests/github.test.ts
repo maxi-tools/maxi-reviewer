@@ -7,6 +7,7 @@ import {
   setStatus,
   submitReview,
   fetchOpenThreads,
+  recordReviewArtifactComment,
 } from "../src/github.js";
 
 describe("github.ts", () => {
@@ -418,5 +419,37 @@ describe("github.ts", () => {
       context: "context",
       description: "desc",
     });
+  });
+
+  it("records harvestable review artifact comments", async () => {
+    const octokit = {
+      rest: {
+        issues: {
+          createComment: vi.fn().mockResolvedValue({}),
+        },
+      },
+    } as any;
+
+    await recordReviewArtifactComment(
+      octokit,
+      "owner",
+      "repo",
+      7,
+      "maxi-review-7-head.json",
+      '{"schema":"maxi.review.v1.review-artifact"}'
+    );
+
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      issue_number: 7,
+      body: expect.stringContaining("<!-- maxi-review artifact -->"),
+    });
+    expect(octokit.rest.issues.createComment.mock.calls[0][0].body).toContain(
+      "maxi-review-7-head.json"
+    );
+    expect(octokit.rest.issues.createComment.mock.calls[0][0].body).toContain(
+      '"schema":"maxi.review.v1.review-artifact"'
+    );
   });
 });

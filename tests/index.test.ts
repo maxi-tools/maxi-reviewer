@@ -26,6 +26,7 @@ describe("index.ts", () => {
     resolveThreads: vi.fn(),
     submitReview: vi.fn(),
     setStatus: vi.fn(),
+    recordReviewArtifactComment: vi.fn(),
   };
 
   const mockJulesHelper = {

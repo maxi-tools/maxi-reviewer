@@ -15,6 +15,7 @@ import {
   resolveThreads,
   submitReview,
   setStatus,
+  recordReviewArtifactComment,
 } from "./github.js";
 import { runJulesReview, wrapPermissionError } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
@@ -85,6 +86,7 @@ export interface ReviewPrDeps {
   resolveThreads: typeof resolveThreads;
   setStatus: typeof setStatus;
   uploadArtifact: (name: string, content: string) => Promise<void>;
+  recordReviewArtifact: typeof recordReviewArtifactComment;
   wrapPermissionError: typeof wrapPermissionError;
 }
 
@@ -99,6 +101,7 @@ const defaultDeps: ReviewPrDeps = {
   resolveThreads,
   setStatus,
   uploadArtifact: uploadReviewArtifact,
+  recordReviewArtifact: recordReviewArtifactComment,
   wrapPermissionError,
 };
 
@@ -260,19 +263,26 @@ export async function runReviewPr(
         timeoutMinutes
       );
 
-    await deps.uploadArtifact(
-      `maxi-review-${prNumber}-${headSha}.json`,
-      buildReviewArtifact({
-        repoFullName: `${owner}/${repo}`,
-        prNumber,
-        headSha,
-        baseSha,
-        analyzerFindings,
-        rawJulesResponses: rawResponses || [],
-        validatedReview: reviewResult,
-        validationErrors: validationErrors || [],
-        sessionId,
-      })
+    const artifactName = `maxi-review-${prNumber}-${headSha}.json`;
+    const artifactContent = buildReviewArtifact({
+      repoFullName: `${owner}/${repo}`,
+      prNumber,
+      headSha,
+      baseSha,
+      analyzerFindings,
+      rawJulesResponses: rawResponses || [],
+      validatedReview: reviewResult,
+      validationErrors: validationErrors || [],
+      sessionId,
+    });
+    await deps.uploadArtifact(artifactName, artifactContent);
+    await deps.recordReviewArtifact(
+      octokit,
+      owner,
+      repo,
+      prNumber,
+      artifactName,
+      artifactContent
     );
 
     if (!reviewResult) {

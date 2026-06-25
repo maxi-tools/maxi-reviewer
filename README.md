@@ -56,6 +56,7 @@ Add `JULES_API_KEY` as a repository Actions secret. The default `GITHUB_TOKEN` s
 - Requests same-session repair when Jules returns malformed JSON or invalid review data.
 - Posts actionable GitHub review comments and uses suggested-change format when a fix is mechanically applicable.
 - Builds `maxi.review.v1.review-artifact` JSON so review feedback remains harvestable even if PR review submission is unavailable or late.
+- Records review artifacts as hidden PR comments for later harvesting.
 
 ## Analyzer Posture
 

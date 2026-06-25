@@ -89,6 +89,7 @@ describe("runReviewPr orchestration", () => {
       resolveThreads: vi.fn().mockResolvedValue(undefined),
       setStatus: vi.fn().mockResolvedValue(undefined),
       uploadArtifact: vi.fn().mockResolvedValue(undefined),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
       wrapPermissionError: vi.fn((err: unknown) => err),
     };
 
@@ -114,6 +115,14 @@ describe("runReviewPr orchestration", () => {
     expect(deps.uploadArtifact).toHaveBeenCalledWith(
       "maxi-review-7-head-sha.json",
       expect.stringContaining('"analyzerFindings"')
+    );
+    expect(deps.recordReviewArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      7,
+      "maxi-review-7-head-sha.json",
+      expect.stringContaining('"validationErrors"')
     );
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
     expect(artifact).toMatchObject({

@@ -36596,6 +36596,25 @@ async function setStatus(octokit, owner, repo, sha, context, state, description)
         description,
     });
 }
+async function recordReviewArtifactComment(octokit, owner, repo, prNumber, name, content) {
+    await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: `<!-- maxi-review artifact -->
+## Maxi review artifact
+
+${name}
+
+<details>
+<summary>Artifact JSON</summary>
+
+\`\`\`json
+${content}
+\`\`\`
+</details>`,
+    });
+}
 
 ;// CONCATENATED MODULE: external "node:path"
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
@@ -41915,6 +41934,7 @@ const defaultDeps = {
     resolveThreads: resolveThreads,
     setStatus: setStatus,
     uploadArtifact: uploadReviewArtifact,
+    recordReviewArtifact: recordReviewArtifactComment,
     wrapPermissionError: wrapPermissionError,
 };
 async function runReviewPr(overrides = {}) {
@@ -42029,7 +42049,8 @@ async function runReviewPr(overrides = {}) {
             openThreads: context.openThreads,
         });
         const { reviewResult, sessionId, rawResponses, validationErrors } = await deps.runJulesReview(apiKey, prompt, { github: `${owner}/${repo}`, baseBranch: pr.base.ref }, timeoutMinutes);
-        await deps.uploadArtifact(`maxi-review-${prNumber}-${headSha}.json`, buildReviewArtifact({
+        const artifactName = `maxi-review-${prNumber}-${headSha}.json`;
+        const artifactContent = buildReviewArtifact({
             repoFullName: `${owner}/${repo}`,
             prNumber,
             headSha,
@@ -42039,7 +42060,9 @@ async function runReviewPr(overrides = {}) {
             validatedReview: reviewResult,
             validationErrors: validationErrors || [],
             sessionId,
-        }));
+        });
+        await deps.uploadArtifact(artifactName, artifactContent);
+        await deps.recordReviewArtifact(octokit, owner, repo, prNumber, artifactName, artifactContent);
         if (!reviewResult) {
             await deps.setStatus(octokit, owner, repo, headSha, statusContext, "error", "Jules did not return a valid review in time");
             setFailed(`Jules returned no review message within ${timeoutMinutes} minutes.`);

@@ -84,7 +84,7 @@ export interface ReviewCommandDeps {
     branch: string;
     findingId: string;
     prompt: string;
-  }) => Promise<void>;
+  }) => Promise<string>;
   comment: (body: string) => Promise<void>;
 }
 
@@ -279,7 +279,7 @@ async function runFixCommand(
     return;
   }
 
-  await deps.startHandsOnFix({
+  const sessionId = await deps.startHandsOnFix({
     owner: context.owner,
     repo: context.repo,
     prNumber: pr.number,
@@ -287,7 +287,9 @@ async function runFixCommand(
     findingId,
     prompt: buildHandsOnFixPrompt(comment),
   });
-  await deps.comment(`Started hands-on Maxi fix session for ${findingId}.`);
+  await deps.comment(
+    `Started hands-on Maxi fix session ${sessionId} for ${findingId}.`
+  );
 }
 
 async function latestReviewArtifact(
@@ -474,7 +476,7 @@ function defaultReviewCommandDeps(): ReviewCommandDeps {
     startHandsOnFix: async ({ owner, repo, branch, prompt }) => {
       const apiKey = core.getInput("jules_api_key", { required: true });
       core.setSecret(apiKey);
-      await startJulesHandsOnFix(apiKey, prompt, {
+      return await startJulesHandsOnFix(apiKey, prompt, {
         github: `${owner}/${repo}`,
         baseBranch: branch,
       });

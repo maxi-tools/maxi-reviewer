@@ -118,7 +118,7 @@ maxi-review-7-head.json
           new Map([["src/a.ts", "const a = 1;\nconst b = 2;\n"]])
         ),
       commitFiles: vi.fn().mockResolvedValue(undefined),
-      startHandsOnFix: vi.fn().mockResolvedValue(undefined),
+      startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -175,7 +175,7 @@ maxi-review-7-head.json
         .mockRejectedValue(
           new Error("stale head SHA: expected head-a, got head-b")
         ),
-      startHandsOnFix: vi.fn().mockResolvedValue(undefined),
+      startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -210,7 +210,7 @@ maxi-review-7-head.json
       ]),
       readFiles: vi.fn().mockResolvedValue(new Map()),
       commitFiles: vi.fn().mockResolvedValue(undefined),
-      startHandsOnFix: vi.fn().mockResolvedValue(undefined),
+      startHandsOnFix: vi.fn().mockResolvedValue("fix-session-1"),
       comment: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -225,7 +225,7 @@ maxi-review-7-head.json
       prompt: expect.stringContaining("Patch src/a.ts."),
     });
     expect(deps.comment).toHaveBeenCalledWith(
-      "Started hands-on Maxi fix session for c1."
+      "Started hands-on Maxi fix session fix-session-1 for c1."
     );
   });
 });

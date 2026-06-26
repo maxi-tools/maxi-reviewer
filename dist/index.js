@@ -36802,6 +36802,10 @@ async function listReviewArtifactComments(octokit, owner, repo, prNumber) {
 }
 async function trustedArtifactCommentAuthors(octokit) {
     const trusted = new Set(["github-actions[bot]", "maxi-reviewer[bot]"]);
+    const actor = process.env.GITHUB_ACTOR;
+    if (actor?.endsWith("[bot]")) {
+        trusted.add(actor);
+    }
     try {
         const authenticated = await octokit.rest.users.getAuthenticated();
         if (authenticated.data.login) {

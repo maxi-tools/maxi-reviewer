@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   fetchDiff,
   loadRulesFromBase,
@@ -12,6 +12,10 @@ import {
 } from "../src/github.js";
 
 describe("github.ts", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("fetchDiff works with compareCommitsWithBasehead", async () => {
     const octokit = {
       rest: {
@@ -559,5 +563,34 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
       "<!-- maxi-review artifact -->\ncurrent app",
       "<!-- maxi-review artifact -->\nlegacy action",
     ]);
+  });
+
+  it("trusts the GitHub Actions actor when authenticated user lookup fails", async () => {
+    vi.stubEnv("GITHUB_ACTOR", "custom-reviewer[bot]");
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "<!-- maxi-review artifact -->\ncurrent actor",
+                user: { login: "custom-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nother bot",
+                user: { login: "other-bot[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockRejectedValue(new Error("api down")),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual(["<!-- maxi-review artifact -->\ncurrent actor"]);
   });
 });

@@ -85,4 +85,14 @@ describe("action metadata", () => {
     expect(ci).toContain("run: npm test");
     expect(ci).not.toContain("run: npm run coverage");
   });
+
+  it("skips SonarCloud when the repository token is not configured", () => {
+    const ci = readFileSync(
+      new URL("../.github/workflows/ci.yml", import.meta.url),
+      "utf8"
+    );
+
+    expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
+    expect(ci).toContain("if: ${{ env.SONAR_TOKEN != '' }}");
+  });
 });

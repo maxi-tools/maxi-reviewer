@@ -420,4 +420,25 @@ describe("runAnalyzers", () => {
       "cpd",
     ]);
   });
+
+  it("skips optional auto analyzers that are not installed", async () => {
+    const warning = vi.spyOn(core, "warning");
+    const findings = await runAnalyzers({
+      changedFiles: ["src/a.ts", "src/Main.java"],
+      diff: "",
+      executeAnalyzer: async () => {
+        const err = new Error("spawn opengrep ENOENT") as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      },
+    });
+
+    expect(findings).toEqual([]);
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("Optional analyzer command not found")
+    );
+    expect(warning).not.toHaveBeenCalledWith(
+      expect.stringContaining("Analyzer command failed")
+    );
+  });
 });

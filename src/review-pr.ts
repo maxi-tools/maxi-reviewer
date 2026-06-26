@@ -634,11 +634,26 @@ async function runAnalyzerCommand(
     const output = await executeAnalyzer(command, args);
     return output.trim() ? parser(output) : [];
   } catch (err) {
+    if (isCommandNotFoundError(err)) {
+      core.warning(
+        `Optional analyzer command not found (${command}); skipping this analyzer. Install ${command} or provide a machine-readable output file to include its findings.`
+      );
+      return [];
+    }
     core.warning(
       `Analyzer command failed (${command} ${args.join(" ")}): ${String(err)}`
     );
     return [];
   }
+}
+
+function isCommandNotFoundError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "ENOENT"
+  );
 }
 
 async function executeExternalAnalyzer(

@@ -4,6 +4,7 @@ import {
   runJulesReview,
   isAuthError,
   wrapPermissionError,
+  startJulesHandsOnFix,
 } from "../src/jules.js";
 import { jules } from "@google/jules-sdk";
 import * as core from "@actions/core";
@@ -567,6 +568,27 @@ describe("jules.ts", () => {
       await expect(promise).rejects.toThrow(
         "Jules API rejected request (403 Forbidden). Check JULES_API_KEY is valid."
       );
+    });
+  });
+
+  describe("startJulesHandsOnFix", () => {
+    it("starts a Jules session that can commit to the PR branch", async () => {
+      const session = vi.fn().mockResolvedValue({ id: "fix-session-id" });
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const sessionId = await startJulesHandsOnFix("api-key", "fix prompt", {
+        github: "maxi/example",
+        baseBranch: "feature",
+      });
+
+      expect(sessionId).toBe("fix-session-id");
+      expect(session).toHaveBeenCalledWith({
+        prompt: "fix prompt",
+        source: { github: "maxi/example", baseBranch: "feature" },
+        requireApproval: false,
+        autoPr: true,
+      });
     });
   });
 

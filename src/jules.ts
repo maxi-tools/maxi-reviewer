@@ -299,7 +299,7 @@ export async function startJulesHandsOnFix(
     prompt,
     source,
     requireApproval: false,
-    autoPr: false,
+    autoPr: true,
   });
   const session = rawSession as unknown as JulesSession;
   core.info(`Jules hands-on fix session: ${session.id}`);

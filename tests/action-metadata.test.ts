@@ -75,4 +75,14 @@ describe("action metadata", () => {
       expect(workflow).not.toContain('cache: "npm"');
     }
   });
+
+  it("uses the non-coverage test gate in required CI", () => {
+    const ci = readFileSync(
+      new URL("../.github/workflows/ci.yml", import.meta.url),
+      "utf8"
+    );
+
+    expect(ci).toContain("run: npm test");
+    expect(ci).not.toContain("run: npm run coverage");
+  });
 });

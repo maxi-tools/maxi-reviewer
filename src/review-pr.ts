@@ -322,8 +322,8 @@ export async function runReviewPr(
         repo,
         headSha,
         statusContext,
-        "success",
-        "Review timed out; artifact recorded for harvest"
+        "failure",
+        "Review timed out; see harvested artifact"
       );
       core.warning(
         `Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`

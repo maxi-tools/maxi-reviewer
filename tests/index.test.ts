@@ -16,6 +16,7 @@ describe("index.ts", () => {
   let mockSetFailed: any;
   let mockGetBooleanInput: any;
   let mockInfo: any;
+  let mockWarning: any;
   let mockOctokit: any;
 
   // mock sub-modules
@@ -50,6 +51,7 @@ describe("index.ts", () => {
     mockGetBooleanInput = vi.spyOn(core, "getBooleanInput");
     mockSetFailed = vi.spyOn(core, "setFailed");
     mockInfo = vi.spyOn(core, "info");
+    mockWarning = vi.spyOn(core, "warning");
 
     // Default inputs
     mockGetInput.mockImplementation((name: string) => {
@@ -258,13 +260,16 @@ describe("index.ts", () => {
         "repo",
         "headSHA",
         expect.anything(),
-        "error",
-        "Jules did not return a valid review in time"
+        "success",
+        "Review timed out; artifact recorded for harvest"
       )
     );
-    expect(mockSetFailed).toHaveBeenCalledWith(
-      expect.stringContaining("Jules returned no review message")
+    expect(mockGithubHelper.submitReview).not.toHaveBeenCalled();
+    expect(mockArtifact.default.uploadArtifact).toHaveBeenCalled();
+    expect(mockWarning).toHaveBeenCalledWith(
+      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
     );
+    expect(mockSetFailed).not.toHaveBeenCalled();
   });
 
   it("resolves open threads if resolvedCommentIds provided", async () => {

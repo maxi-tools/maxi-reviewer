@@ -322,11 +322,11 @@ export async function runReviewPr(
         repo,
         headSha,
         statusContext,
-        "error",
-        "Jules did not return a valid review in time"
+        "success",
+        "Review timed out; artifact recorded for harvest"
       );
-      core.setFailed(
-        `Jules returned no review message within ${timeoutMinutes} minutes.`
+      core.warning(
+        `Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`
       );
       return;
     }

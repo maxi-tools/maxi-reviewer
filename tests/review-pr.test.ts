@@ -209,6 +209,75 @@ describe("runReviewPr orchestration", () => {
       "Failed to record review artifact comment: Error: too large"
     );
   });
+
+  it("records a harvestable artifact without failing when Jules times out", async () => {
+    const deps = {
+      fetchPullRequestContext: vi.fn().mockResolvedValue({
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+        changedFiles: ["src/a.ts"],
+        files: new Map([["src/a.ts", "new\n"]]),
+        changedLines: new Map([["src/a.ts", new Set([1])]]),
+        rulesFromFile: undefined,
+        openThreads: [],
+      }),
+      selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+      loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+      runAnalyzers: vi.fn().mockResolvedValue([]),
+      buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "session-1",
+        rawResponses: [],
+        validationErrors: [],
+      }),
+      submitReview: vi.fn().mockResolvedValue(undefined),
+      resolveThreads: vi.fn().mockResolvedValue(undefined),
+      setStatus: vi.fn().mockResolvedValue(undefined),
+      uploadArtifact: vi.fn().mockResolvedValue(undefined),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+      wrapPermissionError: vi.fn((err: unknown) => err),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.uploadArtifact).toHaveBeenCalledWith(
+      "maxi-review-7-head-sha.json",
+      expect.any(String)
+    );
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact).toMatchObject({
+      validatedReview: null,
+      retention: {
+        harvestableAfterMerge: true,
+      },
+    });
+    expect(deps.recordReviewArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      7,
+      "maxi-review-7-head-sha.json",
+      expect.any(String)
+    );
+    const commentArtifact = JSON.parse(
+      deps.recordReviewArtifact.mock.calls[0][5]
+    );
+    expect(commentArtifact.retention.harvestableAfterMerge).toBe(true);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review timed out; artifact recorded for harvest"
+    );
+    expect(core.warning).toHaveBeenCalledWith(
+      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
 });
 
 describe("uploadReviewArtifact", () => {

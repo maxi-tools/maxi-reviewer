@@ -130,7 +130,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `bypass_label`       | `maxi-review-override`          | Label that skips the review.                                  |
 | `status_context`     | `maxi/review`                   | Commit status context name.                                   |
 | `extra_instructions` |                                 | Markdown appended to the review prompt.                       |
-| `rules_file`         | `.github/jules-review-rules.md` | Repo file loaded from the base SHA. Set empty to disable.     |
+| `rules_file`         | `.github/maxi-review-rules.md`  | Repo file loaded from the base SHA. Set empty to disable.     |
 | `timeout_minutes`    | `30`                            | How long to wait for Jules review output.                     |
 | `analyzer_mode`      | `auto`                          | `auto` or `off`.                                              |
 | `opengrep_json`      |                                 | Path to Opengrep/Semgrep-compatible JSON output.              |

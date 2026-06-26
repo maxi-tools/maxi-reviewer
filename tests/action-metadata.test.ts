@@ -27,4 +27,17 @@ describe("action metadata", () => {
     expect(action).not.toContain("jules/review");
     expect(action).not.toContain("node20");
   });
+
+  it("keeps docs and workflows on Maxi-owned identity defaults", () => {
+    const read = (path: string) =>
+      readFileSync(new URL(path, import.meta.url), "utf8");
+
+    const readme = read("../README.md");
+    const selfTestWorkflow = read("../.github/workflows/self-test.yml");
+
+    expect(readme).toContain(".github/maxi-review-rules.md");
+    expect(readme).not.toContain(".github/jules-review-rules.md");
+    expect(selfTestWorkflow).toContain("group: maxi-review-");
+    expect(selfTestWorkflow).not.toContain("group: jules-review-");
+  });
 });

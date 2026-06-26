@@ -178,7 +178,7 @@ describe("github.ts", () => {
                       {
                         body: "Human reply on the finding",
                         path: "a.ts",
-                        line: 10,
+                        line: null,
                         author: { login: "reviewer" },
                         viewerDidAuthor: false,
                         createdAt: "2026-06-26T02:46:32Z",

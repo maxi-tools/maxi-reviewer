@@ -36650,7 +36650,7 @@ async function fetchOpenThreads(octokit, owner, repo, prNumber) {
                 comments: thread.comments.nodes.map((comment) => ({
                     author: comment.author?.login || "unknown",
                     body: comment.body,
-                    line: comment.line || 0,
+                    line: comment.line || firstComment.line || 0,
                     viewerDidAuthor: !!comment.viewerDidAuthor,
                     createdAt: comment.createdAt,
                 })),

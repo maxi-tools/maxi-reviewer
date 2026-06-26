@@ -33,8 +33,8 @@ jobs:
         run: |
           BRANCH_NAME="${GITHUB_REF#refs/heads/}"
 
-          # Check if an open PR already exists from this branch to main
-          PR_COUNT=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json id --jq 'length')
+          # Check if an open PR already exists from this branch on any base
+          PR_COUNT=$(gh pr list --head "$BRANCH_NAME" --state open --json id --jq 'length')
 
           if [ "$PR_COUNT" -eq 0 ]; then
             echo "No open PR found for branch '$BRANCH_NAME'. Creating one..."

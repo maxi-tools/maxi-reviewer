@@ -41,6 +41,7 @@ jobs:
         run: pnpm run coverage
 
       - name: SonarCloud Scan
+        if: ${{ secrets.SONAR_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@v8.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -77,9 +77,12 @@ export function asPositiveInt(value: unknown, fallback = 1): number {
 export function asText(value: unknown): string;
 export function asText(value: unknown, fallback: string): string;
 export function asText(value: unknown, fallback: undefined): string | undefined;
-export function asText(
-  value: unknown,
-  fallback: string | undefined = ""
-): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : fallback;
+export function asText(value: unknown, fallback?: string): string | undefined {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  if (arguments.length > 1) {
+    return fallback;
+  }
+  return "";
 }

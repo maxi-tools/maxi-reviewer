@@ -4,6 +4,7 @@ import {
   parseOpengrepJson,
   parseOpengrepSarif,
 } from "../src/analyzers/opengrep.js";
+import { asText } from "../src/analyzers/normalize.js";
 import { parseCpdXml, parsePmdXml } from "../src/analyzers/pmd.js";
 
 const fixture = (name: string) =>
@@ -44,11 +45,24 @@ describe("analyzer parsers", () => {
 
   it("normalizes CPD XML duplicates", () => {
     const findings = parseCpdXml(fixture("cpd.xml"));
-    expect(findings[0].tool).toBe("cpd");
-    expect(findings[0].ruleId).toBe("copy-paste-duplicate");
-    expect(findings[0].helpUri).toBe(
-      "https://pmd.github.io/pmd/pmd_userdocs_cpd.html"
-    );
-    expect(findings[0].license).toBe("BSD-4-Clause");
+    expect(findings).toHaveLength(2);
+    expect(findings.map((finding) => finding.path)).toEqual([
+      "src/A.java",
+      "src/B.java",
+    ]);
+    for (const finding of findings) {
+      expect(finding.tool).toBe("cpd");
+      expect(finding.ruleId).toBe("copy-paste-duplicate");
+      expect(finding.helpUri).toBe(
+        "https://pmd.github.io/pmd/pmd_userdocs_cpd.html"
+      );
+      expect(finding.license).toBe("BSD-4-Clause");
+    }
+  });
+
+  it("preserves explicit undefined text fallbacks", () => {
+    expect(asText(undefined, undefined)).toBeUndefined();
+    expect(asText("", undefined)).toBeUndefined();
+    expect(asText(undefined)).toBe("");
   });
 });

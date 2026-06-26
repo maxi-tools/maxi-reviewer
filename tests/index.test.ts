@@ -36,6 +36,11 @@ describe("index.ts", () => {
   const mockReviewCommand = {
     runReviewCommand: vi.fn(),
   };
+  const mockArtifact = {
+    default: {
+      uploadArtifact: vi.fn(),
+    },
+  };
 
   beforeEach(async () => {
     vi.resetModules();
@@ -82,6 +87,7 @@ describe("index.ts", () => {
     vi.doMock("../src/github.js", () => mockGithubHelper);
     vi.doMock("../src/jules.js", () => mockJulesHelper);
     vi.doMock("../src/review-command.js", () => mockReviewCommand);
+    vi.doMock("@actions/artifact", () => mockArtifact);
 
     // default helper returns
     mockGithubHelper.fetchDiff.mockResolvedValue("diff");
@@ -97,12 +103,13 @@ describe("index.ts", () => {
     });
     mockJulesHelper.wrapPermissionError.mockImplementation((e: any) => e);
     mockReviewCommand.runReviewCommand.mockResolvedValue(undefined);
+    mockArtifact.default.uploadArtifact.mockResolvedValue({});
   });
 
   const loadIndex = async () => {
     await import("../src/index.js");
     // Allow promises to flush
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   };
 
   it("fails if eventName is pull_request_target", async () => {
@@ -244,14 +251,16 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "error",
-      "Jules did not return a valid review in time"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "error",
+        "Jules did not return a valid review in time"
+      )
     );
     expect(mockSetFailed).toHaveBeenCalledWith(
       expect.stringContaining("Jules returned no review message")

@@ -447,7 +447,7 @@ describe("github.ts", () => {
     });
   });
 
-  it("records harvestable review artifact comments", async () => {
+  it("records harvestable review artifact comments without visible wrapper content", async () => {
     const octokit = {
       rest: {
         issues: {
@@ -465,17 +465,22 @@ describe("github.ts", () => {
       '{"schema":"maxi.review.v1.review-artifact"}'
     );
 
-    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith({
-      owner: "owner",
-      repo: "repo",
-      issue_number: 7,
-      body: expect.stringContaining("<!-- maxi-review artifact -->"),
-    });
-    expect(octokit.rest.issues.createComment.mock.calls[0][0].body).toContain(
-      "maxi-review-7-head.json"
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: "owner",
+        repo: "repo",
+        issue_number: 7,
+      })
     );
-    expect(octokit.rest.issues.createComment.mock.calls[0][0].body).toContain(
-      '"schema":"maxi.review.v1.review-artifact"'
+    const body = octokit.rest.issues.createComment.mock.calls[0][0].body;
+    expect(body).toContain("<!-- maxi-review artifact -->");
+    expect(body).toBe(
+      `<!-- maxi-review artifact -->
+<!-- maxi-review artifact-data
+name: maxi-review-7-head.json
+encoding: base64
+eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
+-->`
     );
   });
 });

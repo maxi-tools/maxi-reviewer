@@ -49,6 +49,20 @@ maxi-review-7-head.json
     });
   });
 
+  it("extracts review artifacts from invisible base64 comments", () => {
+    const artifact = extractReviewArtifact(`<!-- maxi-review artifact -->
+<!-- maxi-review artifact-data
+name: maxi-review-7-head.json
+encoding: base64
+eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QiLCJoZWFkU2hhIjoiaGVhZCIsInZhbGlkYXRlZFJldmlldyI6eyJjb21tZW50cyI6W119fQ==
+-->`);
+
+    expect(artifact).toMatchObject({
+      schema: "maxi.review.v1.review-artifact",
+      headSha: "head",
+    });
+  });
+
   it("harvests all review artifacts from hidden PR comments", async () => {
     const artifactA = `<!-- maxi-review artifact -->
 ## Maxi review artifact

@@ -56,26 +56,29 @@ export function parseCpdXml(text: string): AnalyzerFinding[] {
     /<duplication\b([^>]*)>([\s\S]*?)<\/duplication>/g
   )) {
     const duplicationAttrs = attrs(duplicationMatch[1]);
-    const firstFile = duplicationMatch[2].match(/<file\b([^>]*)\/?>/);
-    const fileAttrs = attrs(firstFile?.[1] ?? "");
-    const startLine = asPositiveInt(Number(fileAttrs.line));
     const lines = asPositiveInt(Number(duplicationAttrs.lines), 1);
 
-    findings.push(
-      buildFinding({
-        tool: "cpd",
-        ruleId: "copy-paste-duplicate",
-        severity: "warning",
-        confidence: "medium",
-        message: `Duplicate code block spans ${lines} lines.`,
-        path: fileAttrs.path ?? "",
-        startLine,
-        endLine: startLine + lines - 1,
-        helpUri: CPD_HELP_URI,
-        license: PMD_LICENSE,
-        raw: { duplication: duplicationAttrs },
-      })
-    );
+    for (const fileMatch of duplicationMatch[2].matchAll(
+      /<file\b([^>]*)\/?>/g
+    )) {
+      const fileAttrs = attrs(fileMatch[1]);
+      const startLine = asPositiveInt(Number(fileAttrs.line));
+      findings.push(
+        buildFinding({
+          tool: "cpd",
+          ruleId: "copy-paste-duplicate",
+          severity: "warning",
+          confidence: "medium",
+          message: `Duplicate code block spans ${lines} lines.`,
+          path: fileAttrs.path ?? "",
+          startLine,
+          endLine: startLine + lines - 1,
+          helpUri: CPD_HELP_URI,
+          license: PMD_LICENSE,
+          raw: { duplication: duplicationAttrs, file: fileAttrs },
+        })
+      );
+    }
   }
 
   return findings;

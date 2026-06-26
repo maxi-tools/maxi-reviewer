@@ -9,6 +9,7 @@ import {
   fetchPullRequestContext,
   runAnalyzers,
   runReviewPr,
+  uploadReviewArtifact,
 } from "../src/review-pr.js";
 
 vi.mock("@actions/core");
@@ -143,6 +144,9 @@ describe("runReviewPr orchestration", () => {
       expect.stringContaining('"validationErrors"')
     );
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    const commentArtifact = JSON.parse(
+      deps.recordReviewArtifact.mock.calls[0][5]
+    );
     expect(artifact).toMatchObject({
       schema: "maxi.review.v1.review-artifact",
       repoFullName: "maxi/example",
@@ -154,6 +158,89 @@ describe("runReviewPr orchestration", () => {
       validationErrors: ["non-applying suggestion"],
       sessionId: "session-1",
     });
+    expect(commentArtifact.rawJulesResponses).toEqual([]);
+  });
+
+  it("continues when recording the artifact comment fails", async () => {
+    const deps = {
+      fetchPullRequestContext: vi.fn().mockResolvedValue({
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+        changedFiles: ["src/a.ts"],
+        files: new Map([["src/a.ts", "new\n"]]),
+        changedLines: new Map([["src/a.ts", new Set([1])]]),
+        rulesFromFile: undefined,
+        openThreads: [],
+      }),
+      selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+      loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+      runAnalyzers: vi.fn().mockResolvedValue([]),
+      buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "approve",
+          summary: "Looks okay.",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "session-1",
+      }),
+      submitReview: vi.fn().mockResolvedValue(undefined),
+      resolveThreads: vi.fn().mockResolvedValue(undefined),
+      setStatus: vi.fn().mockResolvedValue(undefined),
+      uploadArtifact: vi.fn().mockResolvedValue(undefined),
+      recordReviewArtifact: vi.fn().mockRejectedValue(new Error("too large")),
+      wrapPermissionError: vi.fn((err: unknown) => err),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review complete (verdict: approve)"
+    );
+    expect(core.warning).toHaveBeenCalledWith(
+      "Failed to record review artifact comment: Error: too large"
+    );
+  });
+});
+
+describe("uploadReviewArtifact", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("writes artifact content to a temporary file and uploads it", async () => {
+    const uploadedFiles: string[] = [];
+    const uploader = {
+      uploadArtifact: vi.fn(async (_name: string, files: string[]) => {
+        uploadedFiles.push(...files);
+        expect(readFileSync(files[0], "utf8")).toBe('{"ok":true}');
+        return { id: 42, size: 11 };
+      }),
+    };
+
+    await uploadReviewArtifact(
+      "maxi-review-7-head.json",
+      '{"ok":true}',
+      uploader
+    );
+
+    expect(uploader.uploadArtifact).toHaveBeenCalledWith(
+      "maxi-review-7-head.json",
+      [expect.stringContaining("maxi-review-7-head.json")],
+      expect.stringContaining("maxi-review-"),
+      { retentionDays: 90 }
+    );
+    expect(() => readFileSync(uploadedFiles[0], "utf8")).toThrow();
+    expect(core.info).toHaveBeenCalledWith(
+      "Uploaded review artifact maxi-review-7-head.json (11 bytes, id 42)."
+    );
   });
 });
 
@@ -307,6 +394,7 @@ describe("runAnalyzers", () => {
     expect(findings.map((finding) => finding.tool)).toEqual([
       "opengrep",
       "pmd",
+      "cpd",
       "cpd",
     ]);
   });

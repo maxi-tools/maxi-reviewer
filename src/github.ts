@@ -282,21 +282,16 @@ export async function recordReviewArtifactComment(
   name: string,
   content: string
 ): Promise<void> {
+  const encodedContent = Buffer.from(content, "utf8").toString("base64");
   await octokit.rest.issues.createComment({
     owner,
     repo,
     issue_number: prNumber,
     body: `<!-- maxi-review artifact -->
-## Maxi review artifact
-
-${name}
-
-<details>
-<summary>Artifact JSON</summary>
-
-\`\`\`json
-${content}
-\`\`\`
-</details>`,
+<!-- maxi-review artifact-data
+name: ${name}
+encoding: base64
+${encodedContent}
+-->`,
   });
 }

@@ -27,6 +27,7 @@
   },
   "homepage": "https://github.com/maxi-tools/maxi-reviewer#readme",
   "dependencies": {
+    "@actions/artifact": "^6.2.1",
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
     "@google/jules-sdk": "^0.2.0"

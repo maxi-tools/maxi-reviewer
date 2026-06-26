@@ -2,6 +2,9 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import {
   AnalyzerFinding,
@@ -28,7 +31,17 @@ import { parseCpdXml, parsePmdXml } from "./analyzers/pmd.js";
 
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
+const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
 const execFileAsync = promisify(execFile);
+
+interface ArtifactUploader {
+  uploadArtifact: (
+    name: string,
+    files: string[],
+    rootDirectory: string,
+    options?: { retentionDays?: number }
+  ) => Promise<{ id?: number; size?: number; digest?: string }>;
+}
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 
@@ -289,14 +302,18 @@ export async function runReviewPr(
       sessionId,
     });
     await deps.uploadArtifact(artifactName, artifactContent);
-    await deps.recordReviewArtifact(
-      octokit,
-      owner,
-      repo,
-      prNumber,
-      artifactName,
-      artifactContent
-    );
+    try {
+      await deps.recordReviewArtifact(
+        octokit,
+        owner,
+        repo,
+        prNumber,
+        artifactName,
+        buildArtifactCommentContent(artifactContent)
+      );
+    } catch (err) {
+      core.warning(`Failed to record review artifact comment: ${String(err)}`);
+    }
 
     if (!reviewResult) {
       await deps.setStatus(
@@ -478,9 +495,24 @@ export async function runAnalyzers(
 
 export async function uploadReviewArtifact(
   name: string,
-  content: string
+  content: string,
+  uploader?: ArtifactUploader
 ): Promise<void> {
-  core.info(`Prepared review artifact ${name} (${content.length} bytes).`);
+  const client = uploader || (await loadArtifactUploader());
+  const root = await mkdtemp(join(tmpdir(), "maxi-review-"));
+  const filename = basename(name);
+  const path = join(root, filename);
+  try {
+    await writeFile(path, content, "utf8");
+    const uploaded = await client.uploadArtifact(name, [path], root, {
+      retentionDays: 90,
+    });
+    core.info(
+      `Uploaded review artifact ${name} (${content.length} bytes${uploaded.id ? `, id ${uploaded.id}` : ""}).`
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
 
 export function extractChangedFiles(diff: string): string[] {
@@ -615,8 +647,26 @@ async function executeExternalAnalyzer(
 ): Promise<string> {
   const { stdout } = await execFileAsync(command, args, {
     maxBuffer: 20 * 1024 * 1024,
+    timeout: ANALYZER_TIMEOUT_MS,
   });
   return stdout;
+}
+
+async function loadArtifactUploader(): Promise<ArtifactUploader> {
+  const artifact = await import("@actions/artifact");
+  return artifact.default;
+}
+
+function buildArtifactCommentContent(content: string): string {
+  try {
+    const artifact = JSON.parse(content) as { rawJulesResponses?: unknown };
+    if (Array.isArray(artifact.rawJulesResponses)) {
+      artifact.rawJulesResponses = [];
+    }
+    return JSON.stringify(artifact, null, 2);
+  } catch {
+    return content;
+  }
 }
 
 function hasConfiguredAnalyzerOutput(

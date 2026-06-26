@@ -172,10 +172,23 @@ async function runHarvestCommand(
 
 export function extractReviewArtifact(body: string): ReviewArtifactLike | null {
   if (!body.includes("<!-- maxi-review artifact -->")) return null;
+  const encodedMatch = body.match(
+    /<!-- maxi-review artifact[\s\S]*?encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/
+  );
+  if (encodedMatch) {
+    return parseReviewArtifactJson(
+      Buffer.from(encodedMatch[1].replace(/\s/g, ""), "base64").toString("utf8")
+    );
+  }
+
   const match = body.match(/```json\s*\n([\s\S]*?)\n```/);
   if (!match) return null;
+  return parseReviewArtifactJson(match[1]);
+}
+
+function parseReviewArtifactJson(json: string): ReviewArtifactLike | null {
   try {
-    const parsed = JSON.parse(match[1]) as unknown;
+    const parsed = JSON.parse(json) as unknown;
     if (typeof parsed === "object" && parsed !== null) {
       return parsed as ReviewArtifactLike;
     }

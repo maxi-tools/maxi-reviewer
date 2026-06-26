@@ -47,7 +47,7 @@ describe("action metadata", () => {
       "utf8"
     );
 
-    const setupIndex = workflow.indexOf("actions/setup-node@v4");
+    const setupIndex = workflow.indexOf("actions/setup-node@v5");
     const installIndex = workflow.indexOf("npm install");
     const buildIndex = workflow.indexOf("npm run build");
     const dogfoodIndex = workflow.indexOf("uses: ./");
@@ -57,5 +57,22 @@ describe("action metadata", () => {
     expect(buildIndex).toBeGreaterThan(installIndex);
     expect(dogfoodIndex).toBeGreaterThan(buildIndex);
     expect(workflow).toContain('node-version: "24"');
+  });
+
+  it("keeps CI Node setup compatible with the checked-in lockfiles", () => {
+    const ci = readFileSync(
+      new URL("../.github/workflows/ci.yml", import.meta.url),
+      "utf8"
+    );
+    const selfTest = readFileSync(
+      new URL("../.github/workflows/self-test.yml", import.meta.url),
+      "utf8"
+    );
+
+    for (const workflow of [ci, selfTest]) {
+      expect(workflow).toContain("actions/setup-node@v5");
+      expect(workflow).toContain('node-version: "24"');
+      expect(workflow).not.toContain('cache: "npm"');
+    }
   });
 });

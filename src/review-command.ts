@@ -8,6 +8,7 @@ import {
 } from "./apply.js";
 import { authorizeHandsOnFix, buildHandsOnFixPrompt } from "./hands-on-fix.js";
 import { startJulesHandsOnFix } from "./jules.js";
+import { validateReviewArtifact } from "./schema.js";
 import { JulesReviewComment, ReviewComment } from "./types.js";
 
 export type ReviewCommand =
@@ -189,7 +190,8 @@ export function extractReviewArtifact(body: string): ReviewArtifactLike | null {
 function parseReviewArtifactJson(json: string): ReviewArtifactLike | null {
   try {
     const parsed = JSON.parse(json) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
+    const validated = validateReviewArtifact(parsed);
+    if (validated.ok && typeof parsed === "object" && parsed !== null) {
       return parsed as ReviewArtifactLike;
     }
   } catch {

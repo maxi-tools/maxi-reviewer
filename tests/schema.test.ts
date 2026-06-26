@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { validateAnalyzerFinding, validateJulesReview } from "../src/schema.js";
+import {
+  validateAnalyzerFinding,
+  validateJulesReview,
+  validateReviewArtifact,
+} from "../src/schema.js";
 
 describe("maxi.review.v1 schemas", () => {
   it("accepts a normalized analyzer finding", () => {
@@ -89,5 +93,52 @@ describe("maxi.review.v1 schemas", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.join("\n")).toContain("suggestion.endLine");
     expect(result.errors.join("\n")).toContain("suggestion.replacement");
+  });
+
+  it("accepts a harvestable review artifact", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: {
+        schema: "maxi.review.v1.jules-review",
+        summary: "Review summary.",
+        verdict: "approve",
+        resolvedCommentIds: [],
+        comments: [],
+      },
+      validationErrors: [],
+      sessionId: "session-1",
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects review artifacts without harvest retention metadata", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: null,
+      validationErrors: [],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain("retention");
   });
 });

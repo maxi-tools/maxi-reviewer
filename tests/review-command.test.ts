@@ -14,6 +14,32 @@ vi.mock("@actions/github");
 
 type MutableGithubModule = typeof github & { context: typeof github.context };
 
+function artifactComment(input: {
+  headSha: string;
+  validatedReview: unknown;
+}): string {
+  return `<!-- maxi-review artifact -->
+\`\`\`json
+${JSON.stringify({
+  schema: "maxi.review.v1.review-artifact",
+  createdAt: "2026-06-26T03:05:23.000Z",
+  retention: {
+    harvestableAfterMerge: true,
+    channels: ["github-actions-artifact", "github-pr-comment"],
+    commentMarker: "<!-- maxi-review artifact -->",
+  },
+  repoFullName: "maxi/example",
+  prNumber: 7,
+  headSha: input.headSha,
+  baseSha: "base",
+  analyzerFindings: [],
+  rawJulesResponses: [],
+  validatedReview: input.validatedReview,
+  validationErrors: [],
+})}
+\`\`\``;
+}
+
 describe("review command handling", () => {
   it("parses apply-all and hands-on fix commands", () => {
     expect(parseReviewCommand("/maxi apply-all")).toEqual({
@@ -39,7 +65,7 @@ maxi-review-7-head.json
 <summary>Artifact JSON</summary>
 
 \`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"head","validatedReview":{"comments":[]}}
+{"schema":"maxi.review.v1.review-artifact","createdAt":"2026-06-26T03:05:23.000Z","retention":{"harvestableAfterMerge":true,"channels":["github-actions-artifact","github-pr-comment"],"commentMarker":"<!-- maxi-review artifact -->"},"repoFullName":"maxi/example","prNumber":7,"headSha":"head","baseSha":"base","analyzerFindings":[],"rawJulesResponses":[],"validatedReview":{"comments":[]},"validationErrors":[]}
 \`\`\`
 </details>`);
 
@@ -49,12 +75,49 @@ maxi-review-7-head.json
     });
   });
 
-  it("extracts review artifacts from invisible base64 comments", () => {
+  it("rejects malformed review artifact comments", () => {
     const artifact = extractReviewArtifact(`<!-- maxi-review artifact -->
+## Maxi review artifact
+
+\`\`\`json
+{"schema":"maxi.review.v1.review-artifact","headSha":"head","validatedReview":{"comments":[]}}
+\`\`\``);
+
+    expect(artifact).toBeNull();
+  });
+
+  it("extracts review artifacts from invisible base64 comments", () => {
+    const oldArtifact = extractReviewArtifact(`<!-- maxi-review artifact -->
 <!-- maxi-review artifact-data
 name: maxi-review-7-head.json
 encoding: base64
 eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QiLCJoZWFkU2hhIjoiaGVhZCIsInZhbGlkYXRlZFJldmlldyI6eyJjb21tZW50cyI6W119fQ==
+-->`);
+    expect(oldArtifact).toBeNull();
+    const encoded = Buffer.from(
+      JSON.stringify({
+        schema: "maxi.review.v1.review-artifact",
+        createdAt: "2026-06-26T03:05:23.000Z",
+        retention: {
+          harvestableAfterMerge: true,
+          channels: ["github-actions-artifact", "github-pr-comment"],
+          commentMarker: "<!-- maxi-review artifact -->",
+        },
+        repoFullName: "maxi/example",
+        prNumber: 7,
+        headSha: "head",
+        baseSha: "base",
+        analyzerFindings: [],
+        rawJulesResponses: [],
+        validatedReview: { comments: [] },
+        validationErrors: [],
+      })
+    ).toString("base64");
+    const artifact = extractReviewArtifact(`<!-- maxi-review artifact -->
+<!-- maxi-review artifact-data
+name: maxi-review-7-head.json
+encoding: base64
+${encoded}
 -->`);
 
     expect(artifact).toMatchObject({
@@ -73,7 +136,7 @@ maxi-review-7-a.json
 <summary>Artifact JSON</summary>
 
 \`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"a","validatedReview":{"comments":[]}}
+{"schema":"maxi.review.v1.review-artifact","createdAt":"2026-06-26T03:05:23.000Z","retention":{"harvestableAfterMerge":true,"channels":["github-actions-artifact","github-pr-comment"],"commentMarker":"<!-- maxi-review artifact -->"},"repoFullName":"maxi/example","prNumber":7,"headSha":"a","baseSha":"base","analyzerFindings":[],"rawJulesResponses":[],"validatedReview":{"comments":[]},"validationErrors":[]}
 \`\`\`
 </details>`;
     const artifactB = `<!-- maxi-review artifact -->
@@ -85,7 +148,7 @@ maxi-review-7-b.json
 <summary>Artifact JSON</summary>
 
 \`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"b","validatedReview":{"comments":[{"id":"c1"}]}}
+{"schema":"maxi.review.v1.review-artifact","createdAt":"2026-06-26T03:05:23.000Z","retention":{"harvestableAfterMerge":true,"channels":["github-actions-artifact","github-pr-comment"],"commentMarker":"<!-- maxi-review artifact -->"},"repoFullName":"maxi/example","prNumber":7,"headSha":"b","baseSha":"base","analyzerFindings":[],"rawJulesResponses":[],"validatedReview":{"comments":[{"id":"c1"}]},"validationErrors":[]}
 \`\`\`
 </details>`;
     const deps = {
@@ -115,21 +178,21 @@ maxi-review-7-b.json
 
     await runReviewCommand(deps);
 
-    expect(deps.setOutput).toHaveBeenCalledWith(
-      "review_artifacts",
-      JSON.stringify([
-        {
-          schema: "maxi.review.v1.review-artifact",
-          headSha: "a",
-          validatedReview: { comments: [] },
-        },
-        {
-          schema: "maxi.review.v1.review-artifact",
-          headSha: "b",
-          validatedReview: { comments: [{ id: "c1" }] },
-        },
-      ])
-    );
+    expect(deps.setOutput.mock.calls[0][0]).toBe("review_artifacts");
+    expect(JSON.parse(deps.setOutput.mock.calls[0][1])).toMatchObject([
+      {
+        schema: "maxi.review.v1.review-artifact",
+        retention: { harvestableAfterMerge: true },
+        headSha: "a",
+        validatedReview: { comments: [] },
+      },
+      {
+        schema: "maxi.review.v1.review-artifact",
+        retention: { harvestableAfterMerge: true },
+        headSha: "b",
+        validatedReview: { comments: [{ id: "c1" }] },
+      },
+    ]);
     expect(deps.comment).toHaveBeenCalledWith(
       "Harvested 2 Maxi review artifacts."
     );
@@ -271,10 +334,27 @@ maxi-review-7-b.json
         tokenPermissions: { contents: "write", pullRequests: "write" },
       }),
       listArtifactComments: vi.fn().mockResolvedValue([
-        `<!-- maxi-review artifact -->
-\`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"head-a","validatedReview":{"comments":[{"id":"c1","path":"src/a.ts","line":2,"severity":"Warning","confidence":"High","message":"Use this.","suggestion":{"path":"src/a.ts","startLine":2,"endLine":2,"replacement":"const b = 3;"}}]}}
-\`\`\``,
+        artifactComment({
+          headSha: "head-a",
+          validatedReview: {
+            comments: [
+              {
+                id: "c1",
+                path: "src/a.ts",
+                line: 2,
+                severity: "Warning",
+                confidence: "High",
+                message: "Use this.",
+                suggestion: {
+                  path: "src/a.ts",
+                  startLine: 2,
+                  endLine: 2,
+                  replacement: "const b = 3;",
+                },
+              },
+            ],
+          },
+        }),
       ]),
       readFiles: vi
         .fn()
@@ -325,10 +405,27 @@ maxi-review-7-b.json
         tokenPermissions: { contents: "write", pullRequests: "write" },
       }),
       listArtifactComments: vi.fn().mockResolvedValue([
-        `<!-- maxi-review artifact -->
-\`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"head-a","validatedReview":{"comments":[{"id":"c1","path":"src/a.ts","line":2,"severity":"Warning","confidence":"High","message":"Use this.","suggestion":{"path":"src/a.ts","startLine":2,"endLine":2,"replacement":"const b = 3;"}}]}}
-\`\`\``,
+        artifactComment({
+          headSha: "head-a",
+          validatedReview: {
+            comments: [
+              {
+                id: "c1",
+                path: "src/a.ts",
+                line: 2,
+                severity: "Warning",
+                confidence: "High",
+                message: "Use this.",
+                suggestion: {
+                  path: "src/a.ts",
+                  startLine: 2,
+                  endLine: 2,
+                  replacement: "const b = 3;",
+                },
+              },
+            ],
+          },
+        }),
       ]),
       readFiles: vi
         .fn()
@@ -369,10 +466,10 @@ maxi-review-7-b.json
         tokenPermissions: { contents: "write", pullRequests: "write" },
       }),
       listArtifactComments: vi.fn().mockResolvedValue([
-        `<!-- maxi-review artifact -->
-\`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"head-a","validatedReview":{"comments":[]}}
-\`\`\``,
+        artifactComment({
+          headSha: "head-a",
+          validatedReview: { comments: [] },
+        }),
       ]),
       readFiles: vi.fn().mockResolvedValue(new Map()),
       commitFiles: vi.fn().mockResolvedValue(undefined),
@@ -407,10 +504,22 @@ maxi-review-7-b.json
         tokenPermissions: { contents: "write", pullRequests: "write" },
       }),
       listArtifactComments: vi.fn().mockResolvedValue([
-        `<!-- maxi-review artifact -->
-\`\`\`json
-{"schema":"maxi.review.v1.review-artifact","headSha":"head-a","validatedReview":{"comments":[{"id":"c1","path":"src/a.ts","line":2,"severity":"High","confidence":"High","message":"Fix this.","promptForAgents":"Patch src/a.ts."}]}}
-\`\`\``,
+        artifactComment({
+          headSha: "head-a",
+          validatedReview: {
+            comments: [
+              {
+                id: "c1",
+                path: "src/a.ts",
+                line: 2,
+                severity: "High",
+                confidence: "High",
+                message: "Fix this.",
+                promptForAgents: "Patch src/a.ts.",
+              },
+            ],
+          },
+        }),
       ]),
       readFiles: vi.fn().mockResolvedValue(new Map()),
       commitFiles: vi.fn().mockResolvedValue(undefined),

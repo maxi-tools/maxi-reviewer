@@ -91,6 +91,27 @@ export interface JulesReview {
   comments: JulesReviewComment[];
 }
 
+export interface ReviewArtifactRetention {
+  harvestableAfterMerge: true;
+  channels: ["github-actions-artifact", "github-pr-comment"];
+  commentMarker: "<!-- maxi-review artifact -->";
+}
+
+export interface ReviewArtifact {
+  schema: "maxi.review.v1.review-artifact";
+  createdAt: string;
+  retention: ReviewArtifactRetention;
+  repoFullName: string;
+  prNumber: number;
+  headSha: string;
+  baseSha: string;
+  analyzerFindings: AnalyzerFinding[];
+  rawJulesResponses: string[];
+  validatedReview: JulesReview | ReviewResult | null;
+  validationErrors: string[];
+  sessionId?: string;
+}
+
 export interface ValidationResult<T> {
   ok: boolean;
   value?: T;

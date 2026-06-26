@@ -1,4 +1,9 @@
-import { AnalyzerFinding, JulesReview, ValidationResult } from "./types.js";
+import {
+  AnalyzerFinding,
+  JulesReview,
+  ReviewArtifact,
+  ValidationResult,
+} from "./types.js";
 
 export function validateAnalyzerFinding(
   value: unknown
@@ -75,6 +80,54 @@ export function validateJulesReview(
   }
 
   return { ok: errors.length === 0, value: value as JulesReview, errors };
+}
+
+export function validateReviewArtifact(
+  value: unknown
+): ValidationResult<ReviewArtifact> {
+  const errors: string[] = [];
+  const record = asRecord(value, errors, "artifact");
+  if (!record) return { ok: false, errors };
+
+  requireString(record, "schema", "maxi.review.v1.review-artifact", errors);
+  requireString(record, "createdAt", undefined, errors);
+  validateRetention(record.retention, errors);
+  requireString(record, "repoFullName", undefined, errors);
+  requirePositiveInt(record, "prNumber", errors);
+  requireString(record, "headSha", undefined, errors);
+  requireString(record, "baseSha", undefined, errors);
+  requireArray(record, "analyzerFindings", errors);
+  requireStringArray(record, "rawJulesResponses", errors);
+  if (record.validatedReview === undefined) {
+    errors.push("validatedReview is required");
+  }
+  requireStringArray(record, "validationErrors", errors);
+  optionalString(record, "sessionId", errors);
+
+  return { ok: errors.length === 0, value: value as ReviewArtifact, errors };
+}
+
+function validateRetention(value: unknown, errors: string[]): void {
+  const retention = asRecord(value, errors, "retention");
+  if (!retention) return;
+  if (retention.harvestableAfterMerge !== true) {
+    errors.push("retention.harvestableAfterMerge must be true");
+  }
+  if (
+    !Array.isArray(retention.channels) ||
+    retention.channels.length !== 2 ||
+    retention.channels[0] !== "github-actions-artifact" ||
+    retention.channels[1] !== "github-pr-comment"
+  ) {
+    errors.push(
+      "retention.channels must be github-actions-artifact, github-pr-comment"
+    );
+  }
+  if (retention.commentMarker !== "<!-- maxi-review artifact -->") {
+    errors.push(
+      "retention.commentMarker must be <!-- maxi-review artifact -->"
+    );
+  }
 }
 
 function validateSuggestion(
@@ -162,6 +215,32 @@ function optionalStringArray(
       errors.push(`${key}[${index}] must be a non-empty string`);
     }
   });
+}
+
+function requireStringArray(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[]
+): void {
+  if (!Array.isArray(record[key])) {
+    errors.push(`${key} must be an array`);
+    return;
+  }
+  (record[key] as unknown[]).forEach((item, index) => {
+    if (typeof item !== "string") {
+      errors.push(`${key}[${index}] must be a string`);
+    }
+  });
+}
+
+function requireArray(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[]
+): void {
+  if (!Array.isArray(record[key])) {
+    errors.push(`${key} must be an array`);
+  }
 }
 
 function requireEnum(

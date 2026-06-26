@@ -10,11 +10,22 @@ export interface ReviewArtifactInput {
   sessionId?: string;
 }
 
+export interface ReviewArtifactRetention {
+  harvestableAfterMerge: true;
+  channels: ["github-actions-artifact", "github-pr-comment"];
+  commentMarker: "<!-- maxi-review artifact -->";
+}
+
 export function buildReviewArtifact(input: ReviewArtifactInput): string {
   return JSON.stringify(
     {
       schema: "maxi.review.v1.review-artifact",
       createdAt: new Date().toISOString(),
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      } satisfies ReviewArtifactRetention,
       ...input,
     },
     null,

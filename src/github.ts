@@ -318,6 +318,7 @@ export async function listReviewArtifactComments(
   repo: string,
   prNumber: number
 ): Promise<string[]> {
+  const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
   const request = {
     owner,
     repo,
@@ -329,6 +330,32 @@ export async function listReviewArtifactComments(
       ? await octokit.paginate(octokit.rest.issues.listComments, request)
       : (await octokit.rest.issues.listComments(request)).data;
   return comments
-    .map((comment: { body?: string }) => comment.body || "")
-    .filter((body: string) => body.includes("<!-- maxi-review artifact -->"));
+    .filter(
+      (comment: {
+        body?: string;
+        user?: { login?: string; type?: string } | null;
+      }) =>
+        comment.body?.includes("<!-- maxi-review artifact -->") &&
+        comment.user?.type === "Bot" &&
+        typeof comment.user.login === "string" &&
+        trustedAuthors.has(comment.user.login)
+    )
+    .map((comment: { body?: string }) => comment.body || "");
+}
+
+async function trustedArtifactCommentAuthors(
+  octokit: ReturnType<typeof github.getOctokit>
+): Promise<Set<string>> {
+  const trusted = new Set(["github-actions[bot]", "maxi-reviewer[bot]"]);
+  try {
+    const authenticated = await octokit.rest.users.getAuthenticated();
+    if (authenticated.data.login) {
+      trusted.add(authenticated.data.login);
+    }
+  } catch (err) {
+    core.warning(
+      `Failed to determine authenticated GitHub user for artifact filtering: ${String(err)}`
+    );
+  }
+  return trusted;
 }

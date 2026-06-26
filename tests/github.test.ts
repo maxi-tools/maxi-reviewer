@@ -8,6 +8,7 @@ import {
   submitReview,
   fetchOpenThreads,
   recordReviewArtifactComment,
+  listReviewArtifactComments,
 } from "../src/github.js";
 
 describe("github.ts", () => {
@@ -517,5 +518,46 @@ encoding: base64
 eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
 -->`
     );
+  });
+
+  it("lists review artifact comments only from trusted automation authors", async () => {
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "<!-- maxi-review artifact -->\nspoofed",
+                user: { login: "contributor", type: "User" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nwrong bot",
+                user: { login: "other-bot[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\ncurrent app",
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nlegacy action",
+                user: { login: "github-actions[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockResolvedValue({
+            data: { login: "maxi-reviewer[bot]" },
+          }),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual([
+      "<!-- maxi-review artifact -->\ncurrent app",
+      "<!-- maxi-review artifact -->\nlegacy action",
+    ]);
   });
 });

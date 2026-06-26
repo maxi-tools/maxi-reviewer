@@ -22,6 +22,17 @@ export function validateAnalyzerFinding(
   requireString(record, "path", undefined, errors);
   requirePositiveInt(record, "startLine", errors);
   requirePositiveInt(record, "endLine", errors);
+  if (
+    typeof record.startLine === "number" &&
+    typeof record.endLine === "number" &&
+    Number.isInteger(record.startLine) &&
+    Number.isInteger(record.endLine) &&
+    record.startLine > 0 &&
+    record.endLine > 0 &&
+    record.endLine < record.startLine
+  ) {
+    errors.push("endLine must be greater than or equal to startLine");
+  }
 
   return { ok: errors.length === 0, value: value as AnalyzerFinding, errors };
 }

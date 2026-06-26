@@ -657,9 +657,12 @@ async function loadArtifactUploader(): Promise<ArtifactUploader> {
   return artifact.default;
 }
 
-function buildArtifactCommentContent(content: string): string {
+export function buildArtifactCommentContent(content: string): string {
   try {
     const artifact = JSON.parse(content) as { rawJulesResponses?: unknown };
+    if (!artifact || typeof artifact !== "object") {
+      return content;
+    }
     if (Array.isArray(artifact.rawJulesResponses)) {
       artifact.rawJulesResponses = [];
     }

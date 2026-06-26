@@ -21,6 +21,26 @@ describe("maxi.review.v1 schemas", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("rejects analyzer findings with inverted line ranges", () => {
+    const result = validateAnalyzerFinding({
+      schema: "maxi.review.v1.analyzer-finding",
+      id: "f1",
+      tool: "opengrep",
+      ruleId: "r1",
+      severity: "warning",
+      confidence: "high",
+      message: "Message.",
+      path: "src/a.ts",
+      startLine: 9,
+      endLine: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain(
+      "endLine must be greater than or equal to startLine"
+    );
+  });
+
   it("rejects a review comment missing changed-line location", () => {
     const result = validateJulesReview({
       schema: "maxi.review.v1.jules-review",

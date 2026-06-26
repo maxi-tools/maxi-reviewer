@@ -9,6 +9,13 @@ describe("Jules review verification", () => {
     expect(review.schema).toBe("maxi.review.v1.jules-review");
   });
 
+  it("parses fenced JSON without a newline before the closing fence", () => {
+    const review = parseJulesReview(
+      '```json\n{"schema":"maxi.review.v1.jules-review","summary":"s","verdict":"approve","resolvedCommentIds":[],"comments":[]}```'
+    );
+    expect(review.verdict).toBe("approve");
+  });
+
   it("rejects suggestions that target unchanged lines", () => {
     const issues = verifyJulesReview(
       {

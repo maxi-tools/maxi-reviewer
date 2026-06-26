@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
+  buildArtifactCommentContent,
   fetchPullRequestContext,
   runAnalyzers,
   runReviewPr,
@@ -241,6 +242,27 @@ describe("uploadReviewArtifact", () => {
     expect(core.info).toHaveBeenCalledWith(
       "Uploaded review artifact maxi-review-7-head.json (11 bytes, id 42)."
     );
+  });
+});
+
+describe("buildArtifactCommentContent", () => {
+  it("returns non-object JSON content unchanged", () => {
+    expect(buildArtifactCommentContent("null")).toBe("null");
+    expect(buildArtifactCommentContent('"text"')).toBe('"text"');
+  });
+
+  it("removes bulky raw Jules responses from object artifacts", () => {
+    const content = JSON.stringify({
+      schema: "maxi.review.v1.review-artifact",
+      rawJulesResponses: ["large"],
+      validatedReview: { comments: [] },
+    });
+
+    expect(JSON.parse(buildArtifactCommentContent(content))).toMatchObject({
+      schema: "maxi.review.v1.review-artifact",
+      rawJulesResponses: [],
+      validatedReview: { comments: [] },
+    });
   });
 });
 

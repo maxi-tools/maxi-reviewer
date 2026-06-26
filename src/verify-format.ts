@@ -19,7 +19,7 @@ export interface VerificationIssue {
 }
 
 export function parseJulesReview(message: string): JulesReview {
-  const match = message.match(/```json\s*\n([\s\S]*?)\n```/);
+  const match = message.match(/```json\s*\n([\s\S]*?)\n?```/);
   const text = match ? match[1] : message;
   const parsed = JSON.parse(text) as unknown;
   const validated = validateJulesReview(parsed);

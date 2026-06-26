@@ -60,7 +60,8 @@
     },
     "endLine": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "Inclusive ending line. Runtime validation rejects values lower than startLine."
     },
     "helpUri": {
       "type": "string",

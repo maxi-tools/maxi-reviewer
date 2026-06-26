@@ -40,4 +40,22 @@ describe("action metadata", () => {
     expect(selfTestWorkflow).toContain("group: maxi-review-");
     expect(selfTestWorkflow).not.toContain("group: jules-review-");
   });
+
+  it("builds the local action before dogfooding it", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/self-test.yml", import.meta.url),
+      "utf8"
+    );
+
+    const setupIndex = workflow.indexOf("actions/setup-node@v4");
+    const installIndex = workflow.indexOf("npm install");
+    const buildIndex = workflow.indexOf("npm run build");
+    const dogfoodIndex = workflow.indexOf("uses: ./");
+
+    expect(setupIndex).toBeGreaterThan(-1);
+    expect(installIndex).toBeGreaterThan(setupIndex);
+    expect(buildIndex).toBeGreaterThan(installIndex);
+    expect(dogfoodIndex).toBeGreaterThan(buildIndex);
+    expect(workflow).toContain('node-version: "24"');
+  });
 });

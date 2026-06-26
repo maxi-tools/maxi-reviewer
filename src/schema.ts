@@ -63,9 +63,9 @@ export function validateJulesReview(
       if (!item) return;
       requireString(item, "id", undefined, errors);
       requireString(item, "path", undefined, errors);
-      requirePositiveInt(item, "line", errors);
-      optionalPositiveInt(item, "startLine", errors);
-      optionalPositiveInt(item, "endLine", errors);
+      requirePositiveInt(item, "line", errors, `comments[${index}].`);
+      optionalPositiveInt(item, "startLine", errors, `comments[${index}].`);
+      optionalPositiveInt(item, "endLine", errors, `comments[${index}].`);
       requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
       requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
       requireString(item, "message", undefined, errors);
@@ -96,15 +96,51 @@ export function validateReviewArtifact(
   requirePositiveInt(record, "prNumber", errors);
   requireString(record, "headSha", undefined, errors);
   requireString(record, "baseSha", undefined, errors);
-  requireArray(record, "analyzerFindings", errors);
+  if (requireArray(record, "analyzerFindings", errors)) {
+    (record.analyzerFindings as unknown[]).forEach((finding, index) => {
+      const result = validateAnalyzerFinding(finding);
+      errors.push(
+        ...result.errors.map((error) => `analyzerFindings[${index}].${error}`)
+      );
+    });
+  }
   requireStringArray(record, "rawJulesResponses", errors);
   if (record.validatedReview === undefined) {
     errors.push("validatedReview is required");
+  } else if (record.validatedReview !== null) {
+    errors.push(...validateArtifactReview(record.validatedReview));
   }
   requireStringArray(record, "validationErrors", errors);
   optionalString(record, "sessionId", errors);
 
   return { ok: errors.length === 0, value: value as ReviewArtifact, errors };
+}
+
+function validateArtifactReview(value: unknown): string[] {
+  const errors: string[] = [];
+  const record = asRecord(value, errors, "validatedReview");
+  if (!record) return errors;
+  if (record.schema === "maxi.review.v1.jules-review") {
+    const result = validateJulesReview(value);
+    return result.errors.map((error) => `validatedReview.${error}`);
+  }
+
+  requireString(record, "summary", undefined, errors, "validatedReview.");
+  if (
+    typeof record.verdict !== "string" ||
+    !["approve", "comment", "block"].includes(record.verdict)
+  ) {
+    errors.push(
+      "validatedReview.verdict must be one of approve, comment, block"
+    );
+  }
+  if (!Array.isArray(record.resolvedCommentIds)) {
+    errors.push("validatedReview.resolvedCommentIds must be an array");
+  }
+  if (!Array.isArray(record.newComments)) {
+    errors.push("validatedReview.newComments must be an array");
+  }
+  return errors;
 }
 
 function validateRetention(value: unknown, errors: string[]): void {
@@ -237,10 +273,12 @@ function requireArray(
   record: Record<string, unknown>,
   key: string,
   errors: string[]
-): void {
+): boolean {
   if (!Array.isArray(record[key])) {
     errors.push(`${key} must be an array`);
+    return false;
   }
+  return true;
 }
 
 function requireEnum(
@@ -271,9 +309,10 @@ function requirePositiveInt(
 function optionalPositiveInt(
   record: Record<string, unknown>,
   key: string,
-  errors: string[]
+  errors: string[],
+  prefix = ""
 ): void {
   if (record[key] !== undefined) {
-    requirePositiveInt(record, key, errors);
+    requirePositiveInt(record, key, errors, prefix);
   }
 }

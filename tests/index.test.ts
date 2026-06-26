@@ -262,8 +262,8 @@ describe("index.ts", () => {
         "repo",
         "headSHA",
         expect.anything(),
-        "success",
-        "Review timed out; artifact recorded for harvest"
+        "failure",
+        "Review timed out; see harvested artifact"
       )
     );
     expect(mockGithubHelper.submitReview).not.toHaveBeenCalled();

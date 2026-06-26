@@ -124,6 +124,75 @@ describe("maxi.review.v1 schemas", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("rejects review artifacts with malformed nested analyzer findings", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [
+        {
+          schema: "maxi.review.v1.analyzer-finding",
+          id: "f1",
+          tool: "opengrep",
+          ruleId: "r1",
+          severity: "warning",
+          confidence: "high",
+          message: "Message.",
+          path: "src/a.ts",
+          startLine: 9,
+          endLine: 3,
+        },
+      ],
+      rawJulesResponses: [],
+      validatedReview: null,
+      validationErrors: [],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "analyzerFindings[0].endLine must be greater than or equal to startLine"
+    );
+  });
+
+  it("rejects review artifacts with malformed nested Jules reviews", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: {
+        schema: "maxi.review.v1.jules-review",
+        summary: "Review summary.",
+        verdict: "approve",
+        resolvedCommentIds: [],
+        comments: [{ id: "c1", path: "src/a.ts" }],
+      },
+      validationErrors: [],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "validatedReview.comments[0].line"
+    );
+  });
+
   it("rejects review artifacts without harvest retention metadata", () => {
     const result = validateReviewArtifact({
       schema: "maxi.review.v1.review-artifact",

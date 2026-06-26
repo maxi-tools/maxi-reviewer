@@ -93,7 +93,8 @@ describe("action metadata", () => {
       "utf8"
     );
 
+    expect(ci).toContain("if: ${{ secrets.SONAR_TOKEN != '' }}");
     expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
-    expect(ci).toContain("if: ${{ env.SONAR_TOKEN != '' }}");
+    expect(ci).not.toContain("SONAR_TOKEN: ${{ env.SONAR_TOKEN }}");
   });
 });

@@ -194,10 +194,44 @@ function parseReviewArtifactJson(json: string): ReviewArtifactLike | null {
     if (validated.ok && typeof parsed === "object" && parsed !== null) {
       return parsed as ReviewArtifactLike;
     }
+    if (isLegacyReviewArtifact(parsed)) {
+      return parsed;
+    }
   } catch {
     return null;
   }
   return null;
+}
+
+function isLegacyReviewArtifact(value: unknown): value is ReviewArtifactLike {
+  const artifact = asRecord(value);
+  if (!artifact) return false;
+  if (artifact.schema !== undefined && !hasLegacyCompatibleEnvelope(artifact)) {
+    return false;
+  }
+  if (typeof artifact.headSha !== "string" || artifact.headSha === "") {
+    return false;
+  }
+  const review = asRecord(artifact.validatedReview);
+  if (!review) return false;
+  return Array.isArray(review.comments) || Array.isArray(review.newComments);
+}
+
+function hasLegacyCompatibleEnvelope(
+  artifact: Record<string, unknown>
+): boolean {
+  const retention = asRecord(artifact.retention);
+  return (
+    artifact.schema === "maxi.review.v1.review-artifact" &&
+    typeof artifact.createdAt === "string" &&
+    retention?.harvestableAfterMerge === true &&
+    typeof artifact.repoFullName === "string" &&
+    Number.isInteger(artifact.prNumber) &&
+    typeof artifact.baseSha === "string" &&
+    Array.isArray(artifact.analyzerFindings) &&
+    Array.isArray(artifact.rawJulesResponses) &&
+    Array.isArray(artifact.validationErrors)
+  );
 }
 
 export function buildApplyAllPlan(input: ApplyAllPlanInput): ApplyAllPlan {

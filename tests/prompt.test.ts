@@ -124,12 +124,15 @@ describe("buildReviewPrompt", () => {
     });
 
     expect(prompt).toContain("# Open Review Comments");
-    expect(prompt).toContain("[Index 1] File: file.ts, Line: 10");
     expect(prompt).toContain("<<<BEGIN THREAD 1 COMMENT 1 ");
-    expect(prompt).toContain("Bad code");
+    expect(prompt).toContain('"index": 1');
+    expect(prompt).toContain('"path": "file.ts"');
+    expect(prompt).toContain('"line": 10');
+    expect(prompt).toContain('"body": "Bad code"');
     expect(prompt).toContain("maxiboch");
     expect(prompt).toContain("I pushed a fix for this, please re-check it.");
     expect(prompt).toContain("<<<BEGIN THREAD 1 COMMENT 2 ");
+    expect(prompt).not.toContain("[Index 1] File: file.ts, Line: 10");
   });
 
   it("places schema, analyzer findings, and rules before untrusted diff", () => {
@@ -163,6 +166,9 @@ describe("buildReviewPrompt", () => {
     expect(prompt.indexOf("Analyzer findings")).toBeLessThan(
       prompt.indexOf("PR title")
     );
+    expect(prompt).toContain("# Analyzer findings (UNTRUSTED tool output)");
+    expect(prompt).toContain("<<<BEGIN ANALYZER_FINDINGS ");
+    expect(prompt).not.toContain("```json\n[\n");
     expect(prompt).toContain("typescript.no-floating-promises");
     expect(prompt).toContain("# TypeScript");
   });

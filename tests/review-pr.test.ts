@@ -35,7 +35,13 @@ function artifactComment(input: {
       baseSha: "base-sha",
       analyzerFindings: [],
       rawJulesResponses: [],
-      validatedReview: { comments: [] },
+      validatedReview: {
+        schema: "maxi.review.v1.jules-review",
+        summary: "Review summary.",
+        verdict: "approve",
+        resolvedCommentIds: [],
+        comments: [],
+      },
       validationErrors: [],
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     }),
@@ -364,8 +370,8 @@ describe("runReviewPr orchestration", () => {
       "example",
       "head-sha",
       "",
-      "success",
-      "Review timed out; artifact recorded for harvest"
+      "failure",
+      "Review timed out; see harvested artifact"
     );
     expect(core.warning).toHaveBeenCalledWith(
       "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."

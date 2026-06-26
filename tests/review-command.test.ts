@@ -86,6 +86,20 @@ maxi-review-7-head.json
     expect(artifact).toBeNull();
   });
 
+  it("accepts legacy review artifacts for already-open PRs", () => {
+    const artifact = extractReviewArtifact(`<!-- maxi-review artifact -->
+## Maxi review artifact
+
+\`\`\`json
+{"headSha":"head","validatedReview":{"comments":[]}}
+\`\`\``);
+
+    expect(artifact).toMatchObject({
+      headSha: "head",
+      validatedReview: { comments: [] },
+    });
+  });
+
   it("extracts review artifacts from invisible base64 comments", () => {
     const oldArtifact = extractReviewArtifact(`<!-- maxi-review artifact -->
 <!-- maxi-review artifact-data

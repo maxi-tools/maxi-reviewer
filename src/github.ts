@@ -311,3 +311,24 @@ ${encodedContent}
 -->`,
   });
 }
+
+export async function listReviewArtifactComments(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<string[]> {
+  const request = {
+    owner,
+    repo,
+    issue_number: prNumber,
+    per_page: 100,
+  };
+  const comments =
+    typeof octokit.paginate === "function"
+      ? await octokit.paginate(octokit.rest.issues.listComments, request)
+      : (await octokit.rest.issues.listComments(request)).data;
+  return comments
+    .map((comment: { body?: string }) => comment.body || "")
+    .filter((body: string) => body.includes("<!-- maxi-review artifact -->"));
+}

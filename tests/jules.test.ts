@@ -75,6 +75,95 @@ describe("jules.ts", () => {
       });
     });
 
+    it("continues a previous Jules session before polling for a new review", async () => {
+      const oldReview =
+        '```json\n{"summary": "old", "verdict": "approve"}\n```';
+      const newReview =
+        '```json\n{"summary": "continued", "verdict": "comment", "resolvedCommentIds": [], "newComments": []}\n```';
+      let sent = false;
+      const continuedSession = {
+        id: "previous-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        send: vi.fn().mockImplementation(async () => {
+          sent = true;
+        }),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: sent ? newReview : oldReview,
+          };
+        },
+      };
+      const session = vi.fn().mockReturnValue(continuedSession);
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1, {
+        previousSessionId: "previous-session-id",
+      });
+
+      expect(session).toHaveBeenCalledWith("previous-session-id");
+      expect(session).not.toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "prompt" })
+      );
+      expect(continuedSession.send).toHaveBeenCalledWith("prompt");
+      expect(result).toEqual({
+        reviewResult: {
+          summary: "continued",
+          verdict: "comment",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "previous-session-id",
+      });
+    });
+
+    it("falls back to a new Jules session when previous session continuation fails", async () => {
+      const reviewText =
+        '```json\n{"summary": "fresh", "verdict": "approve"}\n```';
+      const previousSession = {
+        id: "previous-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        send: vi.fn().mockRejectedValue(new Error("session is closed")),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: '```json\n{"summary": "old", "verdict": "approve"}\n```',
+          };
+        },
+      };
+      const freshSession = mockSessionWithHistory([
+        { type: "agentMessaged", message: reviewText },
+      ]);
+      freshSession.id = "fresh-session-id";
+      const session = vi.fn((input: unknown) =>
+        typeof input === "string"
+          ? previousSession
+          : Promise.resolve(freshSession)
+      );
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1, {
+        previousSessionId: "previous-session-id",
+      });
+
+      expect(session).toHaveBeenCalledWith("previous-session-id");
+      expect(session).toHaveBeenCalledWith({
+        prompt: "prompt",
+        source: {},
+        requireApproval: false,
+        autoPr: false,
+      });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Could not continue Jules session previous-session-id; starting a new review session: Error: session is closed"
+      );
+      expect(result.reviewResult?.summary).toBe("fresh");
+      expect(result.sessionId).toBe("fresh-session-id");
+    });
+
     it("retries without source context when Jules cannot access the repo source", async () => {
       const reviewText =
         '```json\n{"summary": "fallback", "verdict": "approve"}\n```';

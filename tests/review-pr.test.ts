@@ -16,6 +16,39 @@ import {
 vi.mock("@actions/core");
 vi.mock("@actions/github");
 
+function artifactComment(input: {
+  headSha: string;
+  sessionId?: string;
+}): string {
+  const encoded = Buffer.from(
+    JSON.stringify({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T04:07:21.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: input.headSha,
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: { comments: [] },
+      validationErrors: [],
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    }),
+    "utf8"
+  ).toString("base64");
+  return `<!-- maxi-review artifact -->
+<!-- maxi-review artifact-data
+name: maxi-review-7-${input.headSha}.json
+encoding: base64
+${encoded}
+-->`;
+}
+
 describe("runReviewPr orchestration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -207,6 +240,67 @@ describe("runReviewPr orchestration", () => {
     );
     expect(core.warning).toHaveBeenCalledWith(
       "Failed to record review artifact comment: Error: too large"
+    );
+  });
+
+  it("passes the latest recorded Jules session id into the review request", async () => {
+    const deps = {
+      fetchPullRequestContext: vi.fn().mockResolvedValue({
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+        changedFiles: ["src/a.ts"],
+        files: new Map([["src/a.ts", "new\n"]]),
+        changedLines: new Map([["src/a.ts", new Set([1])]]),
+        rulesFromFile: undefined,
+        openThreads: [],
+      }),
+      selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+      loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+      runAnalyzers: vi.fn().mockResolvedValue([]),
+      buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "approve",
+          summary: "Looks okay.",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "continued-session",
+      }),
+      submitReview: vi.fn().mockResolvedValue(undefined),
+      resolveThreads: vi.fn().mockResolvedValue(undefined),
+      setStatus: vi.fn().mockResolvedValue(undefined),
+      uploadArtifact: vi.fn().mockResolvedValue(undefined),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+      listReviewArtifactComments: vi.fn().mockResolvedValue([
+        artifactComment({ headSha: "older-head", sessionId: "old-session" }),
+        artifactComment({
+          headSha: "previous-head",
+          sessionId: "prev-session",
+        }),
+      ]),
+      wrapPermissionError: vi.fn((err: unknown) => err),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.listReviewArtifactComments).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      7
+    );
+    expect(deps.runJulesReview).toHaveBeenCalledWith(
+      "jules-key",
+      "prompt",
+      { github: "maxi/example", baseBranch: "main" },
+      30,
+      {
+        verificationContext: {
+          files: new Map([["src/a.ts", "new\n"]]),
+          changedLines: new Map([["src/a.ts", new Set([1])]]),
+        },
+        previousSessionId: "prev-session",
+      }
     );
   });
 

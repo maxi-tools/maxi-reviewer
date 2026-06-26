@@ -10,6 +10,7 @@ import {
   AnalyzerFinding,
   FailOn,
   OpenThread,
+  ReviewArtifact,
   ReviewComment,
   Verdict,
 } from "./types.js";
@@ -21,6 +22,7 @@ import {
   submitReview,
   setStatus,
   recordReviewArtifactComment,
+  listReviewArtifactComments,
 } from "./github.js";
 import { runJulesReview, wrapPermissionError } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
@@ -28,6 +30,7 @@ import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
 import { parseOpengrepJson, parseOpengrepSarif } from "./analyzers/opengrep.js";
 import { parseCpdXml, parsePmdXml } from "./analyzers/pmd.js";
+import { validateReviewArtifact } from "./schema.js";
 
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
@@ -105,6 +108,7 @@ export interface ReviewPrDeps {
         files: Map<string, string>;
         changedLines: Map<string, Set<number>>;
       };
+      previousSessionId?: string;
     }
   ) => Promise<JulesReviewRunResult>;
   submitReview: typeof submitReview;
@@ -112,6 +116,7 @@ export interface ReviewPrDeps {
   setStatus: typeof setStatus;
   uploadArtifact: (name: string, content: string) => Promise<void>;
   recordReviewArtifact: typeof recordReviewArtifactComment;
+  listReviewArtifactComments: typeof listReviewArtifactComments;
   wrapPermissionError: typeof wrapPermissionError;
 }
 
@@ -127,6 +132,7 @@ const defaultDeps: ReviewPrDeps = {
   setStatus,
   uploadArtifact: uploadReviewArtifact,
   recordReviewArtifact: recordReviewArtifactComment,
+  listReviewArtifactComments,
   wrapPermissionError,
 };
 
@@ -280,13 +286,25 @@ export async function runReviewPr(
       openThreads: context.openThreads,
     });
 
+    const previousSessionId = await loadPreviousReviewSessionId(
+      deps,
+      octokit,
+      owner,
+      repo,
+      prNumber
+    );
+    const julesOptions = buildJulesReviewOptions(context);
+    if (previousSessionId) {
+      julesOptions.previousSessionId = previousSessionId;
+    }
+
     const { reviewResult, sessionId, rawResponses, validationErrors } =
       await deps.runJulesReview(
         apiKey,
         prompt,
         { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
         timeoutMinutes,
-        buildJulesReviewOptions(context)
+        julesOptions
       );
 
     const artifactName = `maxi-review-${prNumber}-${headSha}.json`;
@@ -597,6 +615,7 @@ function buildJulesReviewOptions(context: PullRequestContext): {
     files: Map<string, string>;
     changedLines: Map<string, Set<number>>;
   };
+  previousSessionId?: string;
 } {
   if (!context.files || !context.changedLines) return {};
   return {
@@ -605,6 +624,65 @@ function buildJulesReviewOptions(context: PullRequestContext): {
       changedLines: context.changedLines,
     },
   };
+}
+
+async function loadPreviousReviewSessionId(
+  deps: ReviewPrDeps,
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<string | undefined> {
+  try {
+    const comments = await deps.listReviewArtifactComments(
+      octokit,
+      owner,
+      repo,
+      prNumber
+    );
+    return latestReviewArtifactSessionId(comments);
+  } catch (err) {
+    core.warning(
+      `Failed to load previous Maxi review artifact session: ${String(err)}`
+    );
+    return undefined;
+  }
+}
+
+export function latestReviewArtifactSessionId(
+  comments: string[]
+): string | undefined {
+  for (const body of [...comments].reverse()) {
+    const artifact = extractReviewArtifactFromComment(body);
+    if (artifact?.sessionId) return artifact.sessionId;
+  }
+  return undefined;
+}
+
+function extractReviewArtifactFromComment(body: string): ReviewArtifact | null {
+  if (!body.includes("<!-- maxi-review artifact -->")) return null;
+  const encodedMatch = body.match(
+    /<!-- maxi-review artifact[\s\S]*?encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/
+  );
+  if (encodedMatch) {
+    return parseReviewArtifactJson(
+      Buffer.from(encodedMatch[1].replace(/\s/g, ""), "base64").toString("utf8")
+    );
+  }
+
+  const match = body.match(/```json\s*\n([\s\S]*?)\n```/);
+  if (!match) return null;
+  return parseReviewArtifactJson(match[1]);
+}
+
+function parseReviewArtifactJson(json: string): ReviewArtifact | null {
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    const validated = validateReviewArtifact(parsed);
+    return validated.ok ? (parsed as ReviewArtifact) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseAnalyzerFile(

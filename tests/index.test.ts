@@ -112,8 +112,26 @@ describe("index.ts", () => {
 
   const loadIndex = async () => {
     await import("../src/index.js");
-    // Allow promises to flush
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => {
+      const hasFinalStatus = mockGithubHelper.setStatus.mock.calls.some(
+        (call) => call[5] !== "pending"
+      );
+      const hasSkip = mockInfo.mock.calls.some(
+        (call) =>
+          String(call[0]).startsWith("Skipping") ||
+          String(call[0]).startsWith("Bypass label")
+      );
+      if (
+        mockReviewCommand.runReviewCommand.mock.calls.length > 0 ||
+        mockSetFailed.mock.calls.length > 0 ||
+        mockGithubHelper.submitReview.mock.calls.length > 0 ||
+        hasFinalStatus ||
+        hasSkip
+      ) {
+        return;
+      }
+      throw new Error("Action has not settled yet.");
+    });
   };
 
   it("fails if eventName is pull_request_target", async () => {
@@ -320,15 +338,19 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.submitReview).toHaveBeenCalled();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "failure",
-      "Blocking issues found"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.submitReview).toHaveBeenCalled()
+    );
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "failure",
+        "Blocking issues found"
+      )
     );
   });
 
@@ -344,14 +366,16 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "success",
-      "Review complete (verdict: block)"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "success",
+        "Review complete (verdict: block)"
+      )
     );
   });
 
@@ -361,14 +385,16 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "success",
-      "Approved"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "success",
+        "Approved"
+      )
     );
   });
 

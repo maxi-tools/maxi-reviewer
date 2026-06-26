@@ -41,10 +41,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: write
+          permission-pull-requests: write
+          permission-statuses: write
+
       - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           fail_on: blocking
 
   command:
@@ -55,15 +66,28 @@ jobs:
       issues: write
       pull-requests: write
     steps:
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
       - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           command: ${{ inputs.command }}
           pr_number: ${{ inputs.pr_number }}
 ```
 
-Add `JULES_API_KEY` as a repository Actions secret. The default `GITHUB_TOKEN` should be used with the permissions above.
+Add `JULES_API_KEY` and `MAXI_REVIEW_APP_PRIVATE_KEY` as organization or
+repository Actions secrets. Add `MAXI_REVIEW_APP_CLIENT_ID` as an organization
+or repository Actions variable. Using an app token makes review comments appear
+as the GitHub App's bot user instead of `github-actions[bot]`.
 
 ## What It Does
 
@@ -123,7 +147,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | Input                | Default                         | Description                                                   |
 | -------------------- | ------------------------------- | ------------------------------------------------------------- |
 | `jules_api_key`      |                                 | Required Jules API key.                                       |
-| `github_token`       |                                 | Required GitHub token, usually `${{ secrets.GITHUB_TOKEN }}`. |
+| `github_token`       |                                 | Required GitHub token, preferably a GitHub App installation token. |
 | `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
 | `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
 | `skip_forks`         | `true`                          | Skip PRs from forks.                                          |

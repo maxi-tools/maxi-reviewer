@@ -57,6 +57,7 @@ describe("action metadata", () => {
     expect(buildIndex).toBeGreaterThan(installIndex);
     expect(dogfoodIndex).toBeGreaterThan(buildIndex);
     expect(workflow).toContain('node-version: "24"');
+    expect(workflow).toContain("skip_drafts: false");
   });
 
   it("keeps CI Node setup compatible with the checked-in lockfiles", () => {

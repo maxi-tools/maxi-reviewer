@@ -201,6 +201,13 @@ off-by-one), security (injection, secrets, crypto, authz), reliability (error
 handling, leaks), maintainability (duplication, naming, dead code), and missing
 tests for new non-trivial logic.
 
+# External tool and platform compatibility
+For claims about third-party tools, GitHub Actions, package-manager behavior,
+hosted runners, APIs, or SaaS configuration, require authoritative evidence from
+the diff, checked-in metadata, analyzer output, or an observed CI/runtime failure.
+If you are relying only on memory of an external API, mention the uncertainty and
+do not use \`block\`; make it \`Warning\` or omit it.
+
 # Severity
 - High: high-confidence correctness/security flaws, data loss, broken auth, obvious bugs.
 - Warning: real concerns worth fixing, not blocking.

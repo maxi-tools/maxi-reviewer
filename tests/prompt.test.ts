@@ -147,4 +147,19 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("typescript.no-floating-promises");
     expect(prompt).toContain("# TypeScript");
   });
+
+  it("requires authoritative evidence before blocking on external tool compatibility", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      prTitle: "Update workflow",
+      prBody: "Use a GitHub App token",
+      diff: "+ uses: actions/create-github-app-token@v3\n+ with:\n+   client-id: ${{ vars.APP_CLIENT_ID }}",
+      openThreads: [],
+    });
+
+    expect(prompt).toContain("External tool and platform compatibility");
+    expect(prompt).toContain("authoritative evidence");
+    expect(prompt).toContain("do not use `block`");
+  });
 });

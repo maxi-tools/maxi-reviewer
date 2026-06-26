@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   fetchDiff,
   loadRulesFromBase,
@@ -8,9 +8,14 @@ import {
   submitReview,
   fetchOpenThreads,
   recordReviewArtifactComment,
+  listReviewArtifactComments,
 } from "../src/github.js";
 
 describe("github.ts", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("fetchDiff works with compareCommitsWithBasehead", async () => {
     const octokit = {
       rest: {
@@ -168,6 +173,15 @@ describe("github.ts", () => {
                         line: 10,
                         author: { login: "bot" },
                         viewerDidAuthor: true,
+                        createdAt: "2026-06-26T02:43:36Z",
+                      },
+                      {
+                        body: "Human reply on the finding",
+                        path: "a.ts",
+                        line: null,
+                        author: { login: "reviewer" },
+                        viewerDidAuthor: false,
+                        createdAt: "2026-06-26T02:46:32Z",
                       },
                     ],
                   },
@@ -249,6 +263,22 @@ describe("github.ts", () => {
         path: "a.ts",
         line: 10,
         body: "<!-- maxi-review-inline-comment -->\nMsg",
+        comments: [
+          {
+            author: "bot",
+            body: "<!-- maxi-review-inline-comment -->\nMsg",
+            line: 10,
+            viewerDidAuthor: true,
+            createdAt: "2026-06-26T02:43:36Z",
+          },
+          {
+            author: "reviewer",
+            body: "Human reply on the finding",
+            line: 10,
+            viewerDidAuthor: false,
+            createdAt: "2026-06-26T02:46:32Z",
+          },
+        ],
       },
       {
         index: 2,
@@ -256,8 +286,18 @@ describe("github.ts", () => {
         path: "d.ts",
         line: 0,
         body: "<!-- jules-inline-comment -->\nNo Line",
+        comments: [
+          {
+            author: "bot",
+            body: "<!-- jules-inline-comment -->\nNo Line",
+            line: 0,
+            viewerDidAuthor: true,
+            createdAt: undefined,
+          },
+        ],
       },
     ]);
+    expect(octokit.graphql.mock.calls[0][0]).toContain("comments(first: 20)");
   });
 
   it("fetchOpenThreads handles empty response", async () => {
@@ -482,5 +522,75 @@ encoding: base64
 eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
 -->`
     );
+  });
+
+  it("lists review artifact comments only from trusted automation authors", async () => {
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "<!-- maxi-review artifact -->\nspoofed",
+                user: { login: "contributor", type: "User" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nwrong bot",
+                user: { login: "other-bot[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\ncurrent app",
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nlegacy action",
+                user: { login: "github-actions[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockResolvedValue({
+            data: { login: "maxi-reviewer[bot]" },
+          }),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual([
+      "<!-- maxi-review artifact -->\ncurrent app",
+      "<!-- maxi-review artifact -->\nlegacy action",
+    ]);
+  });
+
+  it("trusts the GitHub Actions actor when authenticated user lookup fails", async () => {
+    vi.stubEnv("GITHUB_ACTOR", "custom-reviewer[bot]");
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "<!-- maxi-review artifact -->\ncurrent actor",
+                user: { login: "custom-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nother bot",
+                user: { login: "other-bot[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockRejectedValue(new Error("api down")),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual(["<!-- maxi-review artifact -->\ncurrent actor"]);
   });
 });

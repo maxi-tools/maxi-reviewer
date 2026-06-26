@@ -78,13 +78,14 @@ export async function fetchOpenThreads(
             nodes {
               id
               isResolved
-              comments(first: 1) {
+              comments(first: 20) {
                 nodes {
                   body
                   path
                   line
                   author { login }
                   viewerDidAuthor
+                  createdAt
                 }
               }
             }
@@ -118,6 +119,21 @@ export async function fetchOpenThreads(
         path: firstComment.path,
         line: firstComment.line || 0,
         body: firstComment.body,
+        comments: thread.comments.nodes.map(
+          (comment: {
+            body: string;
+            line?: number | null;
+            author?: { login?: string } | null;
+            viewerDidAuthor?: boolean;
+            createdAt?: string;
+          }) => ({
+            author: comment.author?.login || "unknown",
+            body: comment.body,
+            line: comment.line || firstComment.line || 0,
+            viewerDidAuthor: !!comment.viewerDidAuthor,
+            createdAt: comment.createdAt,
+          })
+        ),
       });
     }
   }
@@ -294,4 +310,56 @@ encoding: base64
 ${encodedContent}
 -->`,
   });
+}
+
+export async function listReviewArtifactComments(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<string[]> {
+  const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
+  const request = {
+    owner,
+    repo,
+    issue_number: prNumber,
+    per_page: 100,
+  };
+  const comments =
+    typeof octokit.paginate === "function"
+      ? await octokit.paginate(octokit.rest.issues.listComments, request)
+      : (await octokit.rest.issues.listComments(request)).data;
+  return comments
+    .filter(
+      (comment: {
+        body?: string;
+        user?: { login?: string; type?: string } | null;
+      }) =>
+        comment.body?.includes("<!-- maxi-review artifact -->") &&
+        comment.user?.type === "Bot" &&
+        typeof comment.user.login === "string" &&
+        trustedAuthors.has(comment.user.login)
+    )
+    .map((comment: { body?: string }) => comment.body || "");
+}
+
+async function trustedArtifactCommentAuthors(
+  octokit: ReturnType<typeof github.getOctokit>
+): Promise<Set<string>> {
+  const trusted = new Set(["github-actions[bot]", "maxi-reviewer[bot]"]);
+  const actor = process.env.GITHUB_ACTOR;
+  if (actor?.endsWith("[bot]")) {
+    trusted.add(actor);
+  }
+  try {
+    const authenticated = await octokit.rest.users.getAuthenticated();
+    if (authenticated.data.login) {
+      trusted.add(authenticated.data.login);
+    }
+  } catch (err) {
+    core.warning(
+      `Failed to determine authenticated GitHub user for artifact filtering: ${String(err)}`
+    );
+  }
+  return trusted;
 }

@@ -28,6 +28,7 @@ describe("index.ts", () => {
     submitReview: vi.fn(),
     setStatus: vi.fn(),
     recordReviewArtifactComment: vi.fn(),
+    listReviewArtifactComments: vi.fn(),
   };
 
   const mockJulesHelper = {
@@ -94,6 +95,7 @@ describe("index.ts", () => {
     // default helper returns
     mockGithubHelper.fetchDiff.mockResolvedValue("diff");
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([]);
+    mockGithubHelper.listReviewArtifactComments.mockResolvedValue([]);
     mockGithubHelper.setStatus.mockResolvedValue(undefined);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {
@@ -274,8 +276,22 @@ describe("index.ts", () => {
 
   it("resolves open threads if resolvedCommentIds provided", async () => {
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([
-      { index: 1, threadId: "t1" },
-      { index: 2, threadId: "t2" },
+      {
+        index: 1,
+        threadId: "t1",
+        path: "a.ts",
+        line: 1,
+        body: "root 1",
+        comments: [],
+      },
+      {
+        index: 2,
+        threadId: "t2",
+        path: "b.ts",
+        line: 2,
+        body: "root 2",
+        comments: [],
+      },
     ]);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {
@@ -286,9 +302,11 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
-      expect.anything(),
-      ["t2"]
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
+        expect.anything(),
+        ["t2"]
+      )
     );
   });
 

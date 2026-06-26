@@ -1,8 +1,8 @@
 {
-  "name": "jules-pr-reviewer",
-  "version": "1.2.0",
+  "name": "maxi-review",
+  "version": "0.1.0",
   "private": true,
-  "description": "GitHub Action that uses Google Jules to review pull requests and post review comments.",
+  "description": "Maxi PR review action with analyzer context and Jules review feedback.",
   "scripts": {
     "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
     "typecheck": "tsc --noEmit",
@@ -17,16 +17,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thalesraymond/jules-pr-reviewer.git"
+    "url": "git+https://github.com/maxi-tools/maxi-reviewer.git"
   },
-  "author": "thalesraymond",
+  "author": "maxi-tools",
   "license": "MIT",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/thalesraymond/jules-pr-reviewer/issues"
+    "url": "https://github.com/maxi-tools/maxi-reviewer/issues"
   },
-  "homepage": "https://github.com/thalesraymond/jules-pr-reviewer#readme",
+  "homepage": "https://github.com/maxi-tools/maxi-reviewer#readme",
   "dependencies": {
+    "@actions/artifact": "^6.2.1",
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
     "@google/jules-sdk": "^0.2.0"

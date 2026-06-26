@@ -1,20 +1,30 @@
-name: Jules PR Review (project rules)
+name: Maxi Review (project rules)
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 jobs:
   review:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
       contents: read
+      pull-requests: write
       statuses: write
     steps:
-      - uses: thalesraymond/jules-pr-reviewer@v1
+      - uses: actions/checkout@v4
+
+      - name: Run Opengrep
+        run: opengrep scan --json --output opengrep.json .
+        continue-on-error: true
+
+      - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          opengrep_json: opengrep.json
           extra_instructions: |
             This repo is a Node/TypeScript service.
 
@@ -26,3 +36,16 @@ jobs:
             Soft rules:
             - Prefer named exports — raise as NIT if default export.
             - New public functions without JSDoc — raise as WARN.
+
+  command:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: maxi-tools/maxi-reviewer@v1
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

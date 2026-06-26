@@ -1,239 +1,200 @@
-# Jules PR Reviewer
+# Maxi Review
 
-A GitHub Action that uses [Google Jules](https://jules.google) (Gemini-powered cloud coding agent) to review pull requests and post the review as a PR comment. Optionally gates merges via a commit status check.
+`maxi-review` is Maxi's PR review action. It combines fast analyzer context with a Jules review session, validates the structured response, posts GitHub review feedback, and records review artifacts for late harvesting.
 
-_Special thanks to [@sanjay3290](https://github.com/sanjay3290) for the original work in the base action_
+This repository is a hard fork of the earlier Jules PR reviewer workflow, but the action identity and review schema are Maxi-owned:
 
-- Works on any language / framework — Jules is general-purpose.
-- Low noise by default: aggressive false-positive filter baked into the prompt.
-- Extensible: layer your own rules from the workflow or from a file in the repo.
-- **Line-level Comments**: Posts findings directly on the specific lines of code in the PR.
-- **Auto-resolves threads**: Automatically resolves its own comments if you fix the issue and push a new commit.
-- **Incremental reviews**: Only reviews the new changes between pushes (on `synchronize` events) to save time and tokens.
+- Action/package identity: `maxi-review`
+- GitHub Action runtime: Node 24
+- Review schema namespace: `maxi.review.v1`
 
-## What a review looks like
-
-Instead of a single monolithic comment, Jules leaves **inline, line-level comments** on the PR:
-
-**On `src/db.js`, line 4:**
-
-> <!-- jules-inline-comment -->
->
-> **Severity:** 🚨 High | **Confidence:** 🟢 High
->
-> SQL injection — the id parameter is interpolated into the query. Use parameterized queries.
-
-It will also post a general summary as a standard PR comment:
-
-> ## 🤖 Jules Review
->
-> Adds a /user lookup endpoint and an /admin check. Three critical security flaws need fixing before merge.
->
-> ---
->
-> _Session: `...`_
-
-## Setup
-
-### 1. Add your Jules API key as a repo secret
-
-`Settings → Secrets and variables → Actions → New repository secret`
-
-- Name: `JULES_API_KEY`
-- Value: key from [jules.google.com](https://jules.google.com) (after authenticating with GitHub)
-
-### 2. Add the workflow
-
-`.github/workflows/pr-review.yml`:
+## Usage
 
 ```yaml
-name: Jules PR Review
+name: Maxi Review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number
+        required: true
+      command:
+        description: Maxi command, for example /maxi apply-all
+        required: true
 
 concurrency:
-  group: jules-review-${{ github.event.pull_request.number }}
+  group: maxi-review-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
   review:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
       contents: read
+      pull-requests: write
       statuses: write
     steps:
-      - uses: thalesraymond/jules-pr-reviewer@v1
+      - uses: actions/checkout@v4
+
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-issues: write
+          permission-pull-requests: write
+          permission-statuses: write
+
+      - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
+          fail_on: blocking
+
+  command:
+    if: (github.event_name == 'issue_comment' && github.event.issue.pull_request) || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - uses: maxi-tools/maxi-reviewer@v1
+        with:
+          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          github_token: ${{ steps.app-token.outputs.token }}
+          command: ${{ inputs.command }}
+          pr_number: ${{ inputs.pr_number }}
 ```
 
-The `concurrency` block cancels an older review run when a new commit lands, preventing race conditions where a stale run's verdict overwrites a fresh one. **Recommended.**
+Add `JULES_API_KEY` and `MAXI_REVIEW_APP_PRIVATE_KEY` as organization or
+repository Actions secrets. Add `MAXI_REVIEW_APP_CLIENT_ID` as an organization
+or repository Actions variable. Using an app token makes review comments appear
+as the GitHub App's bot user instead of `github-actions[bot]`.
 
-### 3. (Optional) Gate merges on the review
+## What It Does
 
-`Settings → Branches → Branch protection rules → Require status check → jules/review`.
+- Rejects `pull_request_target` and skips fork PRs by default for write-capable review flows.
+- Collects the PR diff, changed files, project rules, open Maxi/Jules review threads, analyzer findings, and per-language Maxi rule guidance.
+- Passes trusted structured context to Jules before untrusted PR title/body/diff data.
+- Asks Jules to return a `maxi.review.v1.jules-review` JSON object.
+- Validates schema, locations, suggested-change fences, changed-line targets, and structured suggestions.
+- Requests same-session repair when Jules returns malformed JSON or invalid review data.
+- Posts actionable GitHub review comments and uses suggested-change format when a fix is mechanically applicable.
+- Builds `maxi.review.v1.review-artifact` JSON so review feedback remains harvestable even if PR review submission is unavailable or late.
+- Records review artifacts as hidden PR comments for later harvesting.
+- Handles `/maxi apply-all` and `/maxi fix <finding-id>` on `issue_comment` events.
 
-Without this, a blocking verdict shows as a red X but won't stop merge.
+## Analyzer Posture
 
-## Customizing the review
+Maxi Review is designed to consume fast, open-source analyzer output in the PR-time path:
 
-Three ways to shape what Jules looks for (most → least common):
+- Opengrep/Semgrep-compatible JSON and SARIF findings.
+- PMD XML violations.
+- CPD XML duplicate findings.
 
-### A. Inline rules in the workflow
+Analyzers are treated as external tools. In `auto` mode, Maxi Review runs `opengrep` and `pmd` from `PATH` when no analyzer output files are configured, consumes their machine-readable output, and preserves tool name, rule id, help URL, and license metadata where available. Missing analyzer binaries are non-fatal so review can still proceed with Jules-only context.
 
-Best for quick tweaks or project-level rules.
+If your CI installs analyzers in an earlier step, leave `analyzer_mode` at `auto`. If another job or step already produced analyzer output, pass the output paths below; configured files take precedence over running tools.
 
-```yaml
-- uses: thalesraymond/jules-pr-reviewer@v1
-  with:
-    jules_api_key: ${{ secrets.JULES_API_KEY }}
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    extra_instructions: |
-      Project is a Flutter mobile app.
+Configured analyzer output inputs:
 
-      Additional blocking rules:
-      - Any setState() call inside build() is BLOCKING.
-      - Any hardcoded API URL (not read from Config) is BLOCKING.
-      - Missing await on a returned Future is BLOCKING.
+| Input            | Format                              |
+| ---------------- | ----------------------------------- |
+| `opengrep_json`  | Opengrep/Semgrep-compatible JSON    |
+| `opengrep_sarif` | Opengrep/Semgrep-compatible SARIF   |
+| `pmd_xml`        | PMD XML                             |
+| `cpd_xml`        | CPD XML duplicate-detection results |
 
-      Soft rules:
-      - Prefer const constructors where possible — raise as warning.
-      - All public APIs must have dartdoc — raise as info.
-```
+Set `analyzer_mode: off` to skip analyzer execution and ingestion.
 
-### B. Rules file in the repo
+Qodana is intentionally not run during PR-time review. It is more expensive and belongs in nightly or self-hosted checks. Later Maxi-authored Qodana-inspired guidance can live in Maxi-owned rule files, but this repository does not bulk-copy JetBrains Inspectopedia or Qodana documentation.
 
-Best when rules are long, evolving, or shared across workflows. Default path: `.github/jules-review-rules.md`.
+## Rule Guidance
 
-```markdown
-# Review rules for my-org/my-repo
+The `rules/` directory contains concise Maxi-authored guidance for:
 
-## Always blocking
+- JavaScript
+- TypeScript
+- Python
+- Rust
+- Go
+- Shell
+- Markdown
+- GitHub Actions
 
-- Direct writes to `users.balance` without going through `account-service`.
-- Any usage of `eval`, `Function(...)`, or `child_process.exec` with user input.
-
-## Framework conventions
-
-- React components must be functional (no class components).
-- All API handlers must be wrapped in `withAuth()`.
-
-## What to skip
-
-- Tests are linted separately — don't review test files.
-```
-
-The action reads the file from the PR's base commit. Override the path with `rules_file:` or disable with `rules_file: ""`.
-
-### C. Both
-
-The workflow's `extra_instructions` is appended after the rules file content. Use the file for stable rules and the workflow for quick situational overrides.
+Project-specific rules can still be supplied with `extra_instructions` or `rules_file`.
 
 ## Inputs
 
-| Input                | Default                         | Description                                                       |
-| -------------------- | ------------------------------- | ----------------------------------------------------------------- |
-| `jules_api_key`      | —                               | **Required.** Key from jules.google.com.                          |
-| `github_token`       | —                               | **Required.** `${{ secrets.GITHUB_TOKEN }}`.                      |
-| `fail_on`            | `blocking`                      | `never` \| `blocking` \| `any`. Controls commit-status state.     |
-| `skip_drafts`        | `true`                          | Skip review on draft PRs.                                         |
-| `skip_forks`         | `true`                          | Skip PRs from forks (diff can contain prompt-injection payloads). |
-| `bypass_label`       | `jules-override`                | If the PR has this label, skip the review.                        |
-| `status_context`     | `jules/review`                  | Commit status context name.                                       |
-| `extra_instructions` | `''`                            | Markdown appended to the prompt.                                  |
-| `rules_file`         | `.github/jules-review-rules.md` | Path in repo to load as extra rules. Set empty to disable.        |
-| `timeout_minutes`    | `30`                            | How long to wait for Jules to return a review.                    |
+| Input                | Default                         | Description                                                   |
+| -------------------- | ------------------------------- | ------------------------------------------------------------- |
+| `jules_api_key`      |                                 | Required Jules API key.                                       |
+| `github_token`       |                                 | Required GitHub token, preferably a GitHub App installation token. |
+| `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
+| `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
+| `skip_forks`         | `true`                          | Skip PRs from forks.                                          |
+| `bypass_label`       | `maxi-review-override`          | Label that skips the review.                                  |
+| `status_context`     | `maxi/review`                   | Commit status context name.                                   |
+| `extra_instructions` |                                 | Markdown appended to the review prompt.                       |
+| `rules_file`         | `.github/maxi-review-rules.md`  | Repo file loaded from the base SHA. Set empty to disable.     |
+| `timeout_minutes`    | `30`                            | How long to wait for Jules review output.                     |
+| `analyzer_mode`      | `auto`                          | `auto` or `off`.                                              |
+| `opengrep_json`      |                                 | Path to Opengrep/Semgrep-compatible JSON output.              |
+| `opengrep_sarif`     |                                 | Path to Opengrep/Semgrep-compatible SARIF output.             |
+| `pmd_xml`            |                                 | Path to PMD XML output.                                       |
+| `cpd_xml`            |                                 | Path to CPD XML output.                                       |
+| `command`            |                                 | `/maxi ...` command for `workflow_dispatch`.                  |
+| `pr_number`          |                                 | Pull request number for `workflow_dispatch` commands.         |
 
-## Severity, Confidence, & Verdict
+## Outputs
 
-Jules is instructed to return structured JSON data that parses each finding into its own PR review comment, complete with severity and confidence tags:
+| Output             | Description                                                   |
+| ------------------ | ------------------------------------------------------------- |
+| `review_artifacts` | JSON array emitted by `/maxi harvest` with recorded artifacts. |
 
-- **Severity**:
-  - 🚨 **High**: High-confidence correctness/security flaws, data loss risks, broken auth, obvious bugs.
-  - ⚠️ **Warning**: Meaningful concerns worth addressing but not blocking.
-  - ℹ️ **Info**: Small readability or consistency notes. Used sparingly.
+## Apply-All And Hands-On Fixes
 
-- **Confidence**:
-  - 🟢 **High**
-  - 🟡 **Medium**
-  - 🔴 **Low**
+Structured suggestions can be applied as a batch only when the head SHA is still fresh. Broader findings can be routed to a hands-on Jules fix session only after an explicit `/maxi fix <finding-id>` command, on a same-repository PR branch, with write permissions available.
 
-Jules also generates a summary and a final verdict line:
+Supported PR comment or `workflow_dispatch` commands:
 
-| Verdict   | Meaning                           |
-| --------- | --------------------------------- |
-| `approve` | No blocking issues.               |
-| `comment` | Warnings or infos only.           |
-| `block`   | One or more high severity issues. |
+- `/maxi apply-all`
+- `/maxi fix <finding-id>`
+- `/maxi harvest`
 
-`fail_on` maps verdict → status:
-
-| `fail_on`              | approve | comment     | block       |
-| ---------------------- | ------- | ----------- | ----------- |
-| `never`                | success | success     | success     |
-| `blocking` _(default)_ | success | success     | **failure** |
-| `any`                  | success | **failure** | **failure** |
-
-The **workflow job itself always passes** if the action ran successfully — the status check is what gates merge. Job failures indicate the action broke, not that the review found issues.
-
-## Inner Workings & Architecture
-
-Behind the scenes, this action works by compiling a prompt combining the PR details, the incremental or full diff, your custom instructions, and a strict JSON schema requirement.
-
-- **Incremental Diffing**: On `synchronize` events, the action only pulls the diff between the previous state and the new state, rather than fetching the entire PR diff. This prevents repeating comments on untouched code and speeds up the review process.
-- **Auto-Resolving Threads**: The action fetches open PR review threads and includes them in the prompt. If Jules determines that a new commit fixes the issue raised in a comment, it signals the action to automatically mark the GitHub conversation thread as **resolved**.
-- **JSON Parsing**: By enforcing a strict JSON output from Jules, the action can decouple the language generation from the GitHub API calls, easily formatting individual line comments for `octokit.rest.pulls.createReview`.
-
-## Prerequisites
-
-Your repo must be connected to your Jules account. After authenticating at jules.google.com with GitHub, the repos you authorize become available as sources. To verify, create a file `list-sources.mjs`:
-
-```js
-import { jules } from "@google/jules-sdk";
-for await (const s of jules.sources()) {
-  if (s.type === "githubRepo") {
-    console.log(`${s.githubRepo.owner}/${s.githubRepo.repo}`);
-  }
-}
-```
-
-Then run: `JULES_API_KEY=... node list-sources.mjs`
-
-## Security
-
-- **Only `pull_request` is supported.** `pull_request_target` is rejected — it runs with base-repo write tokens, and exposes the action to prompt-injection via attacker-controlled diffs.
-- **Fork PRs are skipped by default** (`skip_forks: true`). An untrusted fork's diff/PR description can contain prompt-injection payloads.
-- **`rules_file` is loaded from the base SHA**, not the PR head. An attacker cannot change the review rules by editing them in their PR.
-- **All untrusted content is fenced** in the prompt as "UNTRUSTED" with explicit instructions to Jules.
-- **Failure modes are resilient**: if Jules times out, the API errors, or the action crashes, the commit status is set to `error` and the PR comment is updated with a failure note — merge isn't silently blocked by a stale `pending` check.
-
-## Notes
-
-- **Latency**: typical review is 40s–5min.
-- **Cost**: each PR open/push creates one Jules session. Rate-limit via `bypass_label`, label-gated workflow triggers, or `paths:` filters.
-- **Drafts**: skipped by default; mark `ready_for_review` to trigger.
-- **Large diffs**: diff is truncated at 80 KB. When truncated, the prompt tells Jules its review may be incomplete.
+Fork PRs and stale heads are rejected for branch-writing flows.
 
 ## Development
 
-This action uses `pnpm` for package management.
-
-To install dependencies:
-
 ```bash
-pnpm install
+npm install
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test
+npm run build
 ```
 
-To build the action into the `dist` folder:
-
-```bash
-pnpm run build
-```
+The built action in `dist/` is committed for GitHub Action execution.
 
 ## License
 
 MIT
-

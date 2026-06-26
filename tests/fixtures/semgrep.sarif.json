@@ -1,0 +1,45 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "opengrep",
+          "version": "1.2.3",
+          "rules": [
+            {
+              "id": "python.requests.verify-disabled",
+              "name": "requests verify disabled",
+              "helpUri": "https://example.invalid/rules/verify",
+              "properties": {
+                "precision": "high"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "python.requests.verify-disabled",
+          "level": "error",
+          "message": {
+            "text": "TLS certificate verification is disabled."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/client.py"
+                },
+                "region": {
+                  "startLine": 9,
+                  "endLine": 9
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

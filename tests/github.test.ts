@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   fetchDiff,
   loadRulesFromBase,
@@ -7,9 +7,15 @@ import {
   setStatus,
   submitReview,
   fetchOpenThreads,
+  recordReviewArtifactComment,
+  listReviewArtifactComments,
 } from "../src/github.js";
 
 describe("github.ts", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("fetchDiff works with compareCommitsWithBasehead", async () => {
     const octokit = {
       rest: {
@@ -162,10 +168,20 @@ describe("github.ts", () => {
                   comments: {
                     nodes: [
                       {
-                        body: "<!-- jules-inline-comment -->\nMsg",
+                        body: "<!-- maxi-review-inline-comment -->\nMsg",
                         path: "a.ts",
                         line: 10,
                         author: { login: "bot" },
+                        viewerDidAuthor: true,
+                        createdAt: "2026-06-26T02:43:36Z",
+                      },
+                      {
+                        body: "Human reply on the finding",
+                        path: "a.ts",
+                        line: null,
+                        author: { login: "reviewer" },
+                        viewerDidAuthor: false,
+                        createdAt: "2026-06-26T02:46:32Z",
                       },
                     ],
                   },
@@ -188,7 +204,12 @@ describe("github.ts", () => {
                   isResolved: false,
                   comments: {
                     nodes: [
-                      { body: "Normal user comment", path: "c.ts", line: 30 },
+                      {
+                        body: "Normal user comment",
+                        path: "c.ts",
+                        line: 30,
+                        viewerDidAuthor: false,
+                      },
                     ],
                   },
                 },
@@ -207,6 +228,22 @@ describe("github.ts", () => {
                         path: "d.ts",
                         line: null,
                         author: { login: "bot" },
+                        viewerDidAuthor: true,
+                      },
+                    ],
+                  },
+                },
+                {
+                  id: "t6",
+                  isResolved: false,
+                  comments: {
+                    nodes: [
+                      {
+                        body: "<!-- jules-inline-comment -->\nSpoofed Comment",
+                        path: "e.ts",
+                        line: 40,
+                        author: { login: "attacker" },
+                        viewerDidAuthor: false,
                       },
                     ],
                   },
@@ -225,7 +262,23 @@ describe("github.ts", () => {
         threadId: "t1",
         path: "a.ts",
         line: 10,
-        body: "<!-- jules-inline-comment -->\nMsg",
+        body: "<!-- maxi-review-inline-comment -->\nMsg",
+        comments: [
+          {
+            author: "bot",
+            body: "<!-- maxi-review-inline-comment -->\nMsg",
+            line: 10,
+            viewerDidAuthor: true,
+            createdAt: "2026-06-26T02:43:36Z",
+          },
+          {
+            author: "reviewer",
+            body: "Human reply on the finding",
+            line: 10,
+            viewerDidAuthor: false,
+            createdAt: "2026-06-26T02:46:32Z",
+          },
+        ],
       },
       {
         index: 2,
@@ -233,8 +286,18 @@ describe("github.ts", () => {
         path: "d.ts",
         line: 0,
         body: "<!-- jules-inline-comment -->\nNo Line",
+        comments: [
+          {
+            author: "bot",
+            body: "<!-- jules-inline-comment -->\nNo Line",
+            line: 0,
+            viewerDidAuthor: true,
+            createdAt: undefined,
+          },
+        ],
       },
     ]);
+    expect(octokit.graphql.mock.calls[0][0]).toContain("comments(first: 20)");
   });
 
   it("fetchOpenThreads handles empty response", async () => {
@@ -268,6 +331,8 @@ describe("github.ts", () => {
       {
         file: "a.ts",
         line: 10,
+        startLine: 10,
+        endLine: 12,
         severity: "High",
         confidence: "High",
         message: "Msg",
@@ -301,24 +366,102 @@ describe("github.ts", () => {
       comments: [
         {
           path: "a.ts",
-          line: 10,
+          start_line: 10,
+          start_side: "RIGHT",
+          line: 12,
           side: "RIGHT",
-          body: "<!-- jules-inline-comment -->\n**Severity:** 🚨 High | **Confidence:** 🟢 High\n\nMsg\n\n<details>\n<summary>🤖 Prompt for Agents</summary>\n\nFix this issue by doing X\n</details>",
+          body: "<!-- maxi-review-inline-comment -->\n**Severity:** 🚨 High | **Confidence:** 🟢 High\n\nMsg\n\n<details>\n<summary>🤖 Prompt for Agents</summary>\n\nFix this issue by doing X\n</details>",
         },
         {
           path: "b.ts",
           line: 20,
           side: "RIGHT",
-          body: "<!-- jules-inline-comment -->\n**Severity:** ⚠️ Warning | **Confidence:** 🟡 Medium\n\nMsg2",
+          body: "<!-- maxi-review-inline-comment -->\n**Severity:** ⚠️ Warning | **Confidence:** 🟡 Medium\n\nMsg2",
         },
         {
           path: "c.ts",
           line: 30,
           side: "RIGHT",
-          body: "<!-- jules-inline-comment -->\n**Severity:** ℹ️ Info | **Confidence:** 🔴 Low\n\nMsg3",
+          body: "<!-- maxi-review-inline-comment -->\n**Severity:** ℹ️ Info | **Confidence:** 🔴 Low\n\nMsg3",
         },
       ],
     });
+  });
+
+  it("submitReview renders structured replacements as GitHub suggestion fences", async () => {
+    const octokit = {
+      rest: { pulls: { createReview: vi.fn().mockResolvedValue({}) } },
+    } as any;
+
+    await submitReview(octokit, "owner", "repo", 1, "headSHA", "Summary text", [
+      {
+        file: "a.ts",
+        line: 10,
+        startLine: 10,
+        endLine: 10,
+        severity: "Warning",
+        confidence: "High",
+        message: "Use the safer value.",
+        promptForAgents: "",
+        suggestedReplacement: "const value = safeValue();",
+      },
+    ]);
+
+    expect(
+      octokit.rest.pulls.createReview.mock.calls[0][0].comments[0].body
+    ).toContain(
+      "Use the safer value.\n\n```suggestion\nconst value = safeValue();\n```"
+    );
+  });
+
+  it("submitReview records late feedback as an issue comment when review submission is unavailable", async () => {
+    const octokit = {
+      rest: {
+        pulls: {
+          createReview: vi
+            .fn()
+            .mockRejectedValue(new Error("Pull request is closed")),
+        },
+        issues: { createComment: vi.fn().mockResolvedValue({}) },
+      },
+    } as any;
+
+    await submitReview(octokit, "owner", "repo", 1, "headSHA", "Summary text", [
+      {
+        file: "a.ts",
+        line: 10,
+        startLine: 10,
+        endLine: 12,
+        severity: "High",
+        confidence: "High",
+        message: "Msg\n```suggestion\nconst fixed = true;\n```",
+        promptForAgents: "",
+      },
+    ]);
+
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      issue_number: 1,
+      body: expect.stringContaining("Late Maxi review feedback"),
+    });
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("a.ts:10"),
+      })
+    );
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining("a.ts:10-12"),
+      })
+    );
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.stringContaining(
+          "```suggestion\nconst fixed = true;\n```"
+        ),
+      })
+    );
   });
 
   it("setStatus sets commit status", async () => {
@@ -342,5 +485,112 @@ describe("github.ts", () => {
       context: "context",
       description: "desc",
     });
+  });
+
+  it("records harvestable review artifact comments without visible wrapper content", async () => {
+    const octokit = {
+      rest: {
+        issues: {
+          createComment: vi.fn().mockResolvedValue({}),
+        },
+      },
+    } as any;
+
+    await recordReviewArtifactComment(
+      octokit,
+      "owner",
+      "repo",
+      7,
+      "maxi-review-7-head.json",
+      '{"schema":"maxi.review.v1.review-artifact"}'
+    );
+
+    expect(octokit.rest.issues.createComment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: "owner",
+        repo: "repo",
+        issue_number: 7,
+      })
+    );
+    const body = octokit.rest.issues.createComment.mock.calls[0][0].body;
+    expect(body).toContain("<!-- maxi-review artifact -->");
+    expect(body).toBe(
+      `<!-- maxi-review artifact -->
+<!-- maxi-review artifact-data
+name: maxi-review-7-head.json
+encoding: base64
+eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
+-->`
+    );
+  });
+
+  it("lists review artifact comments only from trusted automation authors", async () => {
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "<!-- maxi-review artifact -->\nspoofed",
+                user: { login: "contributor", type: "User" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nwrong bot",
+                user: { login: "other-bot[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\ncurrent app",
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nlegacy action",
+                user: { login: "github-actions[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockResolvedValue({
+            data: { login: "maxi-reviewer[bot]" },
+          }),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual([
+      "<!-- maxi-review artifact -->\ncurrent app",
+      "<!-- maxi-review artifact -->\nlegacy action",
+    ]);
+  });
+
+  it("trusts the GitHub Actions actor when authenticated user lookup fails", async () => {
+    vi.stubEnv("GITHUB_ACTOR", "custom-reviewer[bot]");
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "<!-- maxi-review artifact -->\ncurrent actor",
+                user: { login: "custom-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: "<!-- maxi-review artifact -->\nother bot",
+                user: { login: "other-bot[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockRejectedValue(new Error("api down")),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual(["<!-- maxi-review artifact -->\ncurrent actor"]);
   });
 });

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maxi.tools/schemas/maxi.review.v1.analyzer-finding.schema.json",
+  "title": "Maxi Analyzer Finding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "tool",
+    "ruleId",
+    "severity",
+    "confidence",
+    "message",
+    "path",
+    "startLine",
+    "endLine"
+  ],
+  "properties": {
+    "schema": {
+      "const": "maxi.review.v1.analyzer-finding"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "toolVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ruleId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ruleName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "enum": ["info", "warning", "error"]
+    },
+    "confidence": {
+      "enum": ["low", "medium", "high", "unknown"]
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startLine": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "endLine": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Inclusive ending line. Runtime validation rejects values lower than startLine."
+    },
+    "helpUri": {
+      "type": "string",
+      "format": "uri"
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1
+    },
+    "raw": true
+  }
+}

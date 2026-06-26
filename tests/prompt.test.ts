@@ -12,12 +12,21 @@ describe("buildReviewPrompt", () => {
       openThreads: [],
     });
 
-    expect(prompt).toContain("# Repository\nowner/repo (PR #123)");
-    expect(prompt).toContain("# UNTRUSTED: PR title\nMy PR");
-    expect(prompt).toContain("# UNTRUSTED: PR description\nPR Description");
-    expect(prompt).toContain("```diff\n+ const a = 1;\n```");
-    expect(prompt).not.toContain("# UNTRUSTED: Project-specific rules");
-    expect(prompt).not.toContain("# Trusted: Additional instructions");
+    expect(prompt).toContain("# Repository (trusted)\nowner/repo (PR #123)");
+    expect(prompt).toContain("# PR title (UNTRUSTED data)");
+    expect(prompt).toContain("<<<BEGIN PR_TITLE ");
+    expect(prompt).toContain("My PR");
+    expect(prompt).toContain("# PR description (UNTRUSTED data)");
+    expect(prompt).toContain("<<<BEGIN PR_BODY ");
+    expect(prompt).toContain("PR Description");
+    expect(prompt).toContain("# Incremental diff to review (UNTRUSTED data)");
+    expect(prompt).toContain("<<<BEGIN DIFF ");
+    expect(prompt).toContain("+ const a = 1;");
+    expect(prompt).toContain('"schema": "maxi.review.v1.jules-review"');
+    expect(prompt).toContain('"suggestion"');
+    expect(prompt).toContain('"startLine"');
+    expect(prompt).toContain('"endLine"');
+    expect(prompt).not.toContain("# Project rules (authoritative");
     expect(prompt).not.toContain("NOTE: The diff was truncated");
     expect(prompt).not.toContain("# Open Review Comments");
   });
@@ -46,7 +55,8 @@ describe("buildReviewPrompt", () => {
       openThreads: [],
     });
 
-    expect(prompt).toContain("# UNTRUSTED: PR description\n(no description)");
+    expect(prompt).toContain("# PR description (UNTRUSTED data)");
+    expect(prompt).toContain("(no description)");
   });
 
   it("should include project specific rules", () => {
@@ -60,9 +70,8 @@ describe("buildReviewPrompt", () => {
       openThreads: [],
     });
 
-    expect(prompt).toContain(
-      "# UNTRUSTED: Project-specific rules\nDo not use console.log"
-    );
+    expect(prompt).toContain("# Project rules (authoritative");
+    expect(prompt).toContain("Do not use console.log");
   });
 
   it("should include extra instructions", () => {
@@ -76,7 +85,8 @@ describe("buildReviewPrompt", () => {
       openThreads: [],
     });
 
-    expect(prompt).toContain("# Trusted: Additional instructions\nBe nice");
+    expect(prompt).toContain("# Project rules (authoritative");
+    expect(prompt).toContain("Be nice");
   });
 
   it("should include open threads", () => {
@@ -93,13 +103,88 @@ describe("buildReviewPrompt", () => {
           path: "file.ts",
           line: 10,
           body: "Bad code",
+          comments: [
+            {
+              author: "maxi-reviewer[bot]",
+              body: "Bad code",
+              line: 10,
+              viewerDidAuthor: true,
+              createdAt: "2026-06-26T02:43:36Z",
+            },
+            {
+              author: "maxiboch",
+              body: "I pushed a fix for this, please re-check it.",
+              line: 10,
+              viewerDidAuthor: false,
+              createdAt: "2026-06-26T02:46:32Z",
+            },
+          ],
         },
       ],
     });
 
     expect(prompt).toContain("# Open Review Comments");
-    expect(prompt).toContain(
-      "[Index 1] File: file.ts, Line: 10\nComment: Bad code"
+    expect(prompt).toContain("<<<BEGIN THREAD 1 COMMENT 1 ");
+    expect(prompt).toContain('"index": 1');
+    expect(prompt).toContain('"path": "file.ts"');
+    expect(prompt).toContain('"line": 10');
+    expect(prompt).toContain('"body": "Bad code"');
+    expect(prompt).toContain("maxiboch");
+    expect(prompt).toContain("I pushed a fix for this, please re-check it.");
+    expect(prompt).toContain("<<<BEGIN THREAD 1 COMMENT 2 ");
+    expect(prompt).not.toContain("[Index 1] File: file.ts, Line: 10");
+  });
+
+  it("places schema, analyzer findings, and rules before untrusted diff", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      prTitle: "title",
+      prBody: "body",
+      diff: "diff --git a/src/a.ts b/src/a.ts",
+      openThreads: [],
+      analyzerFindings: [
+        {
+          schema: "maxi.review.v1.analyzer-finding",
+          id: "f1",
+          tool: "opengrep",
+          ruleId: "typescript.no-floating-promises",
+          severity: "warning",
+          confidence: "high",
+          message: "Promise is not awaited.",
+          path: "src/a.ts",
+          startLine: 4,
+          endLine: 4,
+        },
+      ],
+      rules: "# TypeScript\n\n- Flag floating promises.",
+    });
+
+    expect(prompt.indexOf("maxi.review.v1.jules-review")).toBeLessThan(
+      prompt.indexOf("Analyzer findings")
     );
+    expect(prompt.indexOf("Analyzer findings")).toBeLessThan(
+      prompt.indexOf("PR title")
+    );
+    expect(prompt).toContain("# Analyzer findings (UNTRUSTED tool output)");
+    expect(prompt).toContain("<<<BEGIN ANALYZER_FINDINGS ");
+    expect(prompt).not.toContain("```json\n[\n");
+    expect(prompt).toContain("typescript.no-floating-promises");
+    expect(prompt).toContain("# TypeScript");
+  });
+
+  it("requires authoritative evidence before blocking on external tool compatibility", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      prTitle: "Update workflow",
+      prBody: "Use a GitHub App token",
+      diff: "+ uses: actions/create-github-app-token@v3\n+ with:\n+   client-id: ${{ vars.APP_CLIENT_ID }}",
+      openThreads: [],
+    });
+
+    expect(prompt).toContain("External tool and platform compatibility");
+    expect(prompt).toContain("authoritative evidence");
+    expect(prompt).toContain("do not use `block`");
   });
 });

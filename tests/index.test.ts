@@ -16,6 +16,7 @@ describe("index.ts", () => {
   let mockSetFailed: any;
   let mockGetBooleanInput: any;
   let mockInfo: any;
+  let mockWarning: any;
   let mockOctokit: any;
 
   // mock sub-modules
@@ -26,11 +27,21 @@ describe("index.ts", () => {
     resolveThreads: vi.fn(),
     submitReview: vi.fn(),
     setStatus: vi.fn(),
+    recordReviewArtifactComment: vi.fn(),
+    listReviewArtifactComments: vi.fn(),
   };
 
   const mockJulesHelper = {
     runJulesReview: vi.fn(),
     wrapPermissionError: vi.fn(),
+  };
+  const mockReviewCommand = {
+    runReviewCommand: vi.fn(),
+  };
+  const mockArtifact = {
+    default: {
+      uploadArtifact: vi.fn(),
+    },
   };
 
   beforeEach(async () => {
@@ -41,6 +52,7 @@ describe("index.ts", () => {
     mockGetBooleanInput = vi.spyOn(core, "getBooleanInput");
     mockSetFailed = vi.spyOn(core, "setFailed");
     mockInfo = vi.spyOn(core, "info");
+    mockWarning = vi.spyOn(core, "warning");
 
     // Default inputs
     mockGetInput.mockImplementation((name: string) => {
@@ -77,10 +89,13 @@ describe("index.ts", () => {
     // mock helpers
     vi.doMock("../src/github.js", () => mockGithubHelper);
     vi.doMock("../src/jules.js", () => mockJulesHelper);
+    vi.doMock("../src/review-command.js", () => mockReviewCommand);
+    vi.doMock("@actions/artifact", () => mockArtifact);
 
     // default helper returns
     mockGithubHelper.fetchDiff.mockResolvedValue("diff");
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([]);
+    mockGithubHelper.listReviewArtifactComments.mockResolvedValue([]);
     mockGithubHelper.setStatus.mockResolvedValue(undefined);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {
@@ -91,12 +106,32 @@ describe("index.ts", () => {
       sessionId: "session-id",
     });
     mockJulesHelper.wrapPermissionError.mockImplementation((e: any) => e);
+    mockReviewCommand.runReviewCommand.mockResolvedValue(undefined);
+    mockArtifact.default.uploadArtifact.mockResolvedValue({});
   });
 
   const loadIndex = async () => {
     await import("../src/index.js");
-    // Allow promises to flush
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => {
+      const hasFinalStatus = mockGithubHelper.setStatus.mock.calls.some(
+        (call) => call[5] !== "pending"
+      );
+      const hasSkip = mockInfo.mock.calls.some(
+        (call) =>
+          String(call[0]).startsWith("Skipping") ||
+          String(call[0]).startsWith("Bypass label")
+      );
+      if (
+        mockReviewCommand.runReviewCommand.mock.calls.length > 0 ||
+        mockSetFailed.mock.calls.length > 0 ||
+        mockGithubHelper.submitReview.mock.calls.length > 0 ||
+        hasFinalStatus ||
+        hasSkip
+      ) {
+        return;
+      }
+      throw new Error("Action has not settled yet.");
+    });
   };
 
   it("fails if eventName is pull_request_target", async () => {
@@ -113,6 +148,23 @@ describe("index.ts", () => {
     expect(mockSetFailed).toHaveBeenCalledWith(
       expect.stringContaining("Unsupported event")
     );
+  });
+
+  it("routes issue comment events to the review command handler", async () => {
+    (github as any).context.eventName = "issue_comment";
+    (github as any).context.payload = {
+      issue: { number: 1, pull_request: {} },
+      comment: { body: "/maxi apply-all" },
+    };
+    await loadIndex();
+    expect(mockReviewCommand.runReviewCommand).toHaveBeenCalled();
+  });
+
+  it("routes workflow dispatch events to the review command handler", async () => {
+    (github as any).context.eventName = "workflow_dispatch";
+    (github as any).context.payload = { inputs: {} };
+    await loadIndex();
+    expect(mockReviewCommand.runReviewCommand).toHaveBeenCalled();
   });
 
   it("fails if no pull_request payload", async () => {
@@ -209,14 +261,9 @@ describe("index.ts", () => {
     const hugeDiff = "x".repeat(81_000);
     mockGithubHelper.fetchDiff.mockResolvedValue(hugeDiff);
     await loadIndex();
-    // Verify prompt contains truncation note
-    expect(mockJulesHelper.runJulesReview).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.stringContaining(
-        "NOTE: The diff was truncated: original 81000 chars, kept first 80000."
-      ),
-      expect.anything(),
-      expect.anything()
+    const prompt = mockJulesHelper.runJulesReview.mock.calls[0][1];
+    expect(prompt).toContain(
+      "NOTE: The diff was truncated: original 81000 chars, kept first 80000."
     );
   });
 
@@ -226,24 +273,43 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "error",
-      "Jules did not return a valid review in time"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "failure",
+        "Review timed out; see harvested artifact"
+      )
     );
-    expect(mockSetFailed).toHaveBeenCalledWith(
-      expect.stringContaining("Jules returned no review message")
+    expect(mockGithubHelper.submitReview).not.toHaveBeenCalled();
+    expect(mockArtifact.default.uploadArtifact).toHaveBeenCalled();
+    expect(mockWarning).toHaveBeenCalledWith(
+      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
     );
+    expect(mockSetFailed).not.toHaveBeenCalled();
   });
 
   it("resolves open threads if resolvedCommentIds provided", async () => {
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([
-      { index: 1, threadId: "t1" },
-      { index: 2, threadId: "t2" },
+      {
+        index: 1,
+        threadId: "t1",
+        path: "a.ts",
+        line: 1,
+        body: "root 1",
+        comments: [],
+      },
+      {
+        index: 2,
+        threadId: "t2",
+        path: "b.ts",
+        line: 2,
+        body: "root 2",
+        comments: [],
+      },
     ]);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {
@@ -254,9 +320,11 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
-      expect.anything(),
-      ["t2"]
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
+        expect.anything(),
+        ["t2"]
+      )
     );
   });
 
@@ -270,15 +338,19 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.submitReview).toHaveBeenCalled();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "failure",
-      "Blocking issues found"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.submitReview).toHaveBeenCalled()
+    );
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "failure",
+        "Blocking issues found"
+      )
     );
   });
 
@@ -294,14 +366,16 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "success",
-      "Review complete (verdict: block)"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "success",
+        "Review complete (verdict: block)"
+      )
     );
   });
 
@@ -311,14 +385,16 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      "headSHA",
-      expect.anything(),
-      "success",
-      "Approved"
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        "owner",
+        "repo",
+        "headSHA",
+        expect.anything(),
+        "success",
+        "Approved"
+      )
     );
   });
 
@@ -377,7 +453,7 @@ describe("truncate", () => {
   let truncate: any;
 
   beforeEach(async () => {
-    const mod = await import("../src/index.js");
+    const mod = await import("../src/review-pr.js");
     truncate = mod.truncate;
   });
 
@@ -407,7 +483,7 @@ describe("truncate", () => {
   let truncate: any;
 
   beforeEach(async () => {
-    const mod = await import("../src/index.js");
+    const mod = await import("../src/review-pr.js");
     truncate = mod.truncate;
   });
 

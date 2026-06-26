@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pmd-cpd>
+  <duplication lines="8" tokens="42">
+    <file path="src/A.java" line="20"/>
+    <file path="src/B.java" line="31"/>
+    <codefragment>duplicate code</codefragment>
+  </duplication>
+</pmd-cpd>

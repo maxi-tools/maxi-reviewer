@@ -4,6 +4,7 @@ import {
   runJulesReview,
   isAuthError,
   wrapPermissionError,
+  startJulesHandsOnFix,
 } from "../src/jules.js";
 import { jules } from "@google/jules-sdk";
 import * as core from "@actions/core";
@@ -15,6 +16,7 @@ const mockSessionWithHistory = (historyEvents: any[]) => {
     id: "test-session-id",
     info: vi.fn().mockResolvedValue({}),
     hydrate: vi.fn().mockResolvedValue(1),
+    prompt: vi.fn().mockResolvedValue({}),
     history: async function* () {
       for (const event of historyEvents) {
         yield event;
@@ -73,6 +75,370 @@ describe("jules.ts", () => {
       });
     });
 
+    it("continues a previous Jules session before polling for a new review", async () => {
+      const oldReview =
+        '```json\n{"summary": "old", "verdict": "approve"}\n```';
+      const newReview =
+        '```json\n{"summary": "continued", "verdict": "comment", "resolvedCommentIds": [], "newComments": []}\n```';
+      let sent = false;
+      const continuedSession = {
+        id: "previous-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        send: vi.fn().mockImplementation(async () => {
+          sent = true;
+        }),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: sent ? newReview : oldReview,
+          };
+        },
+      };
+      const session = vi.fn().mockReturnValue(continuedSession);
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1, {
+        previousSessionId: "previous-session-id",
+      });
+
+      expect(session).toHaveBeenCalledWith("previous-session-id");
+      expect(session).not.toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "prompt" })
+      );
+      expect(continuedSession.send).toHaveBeenCalledWith("prompt");
+      expect(result).toEqual({
+        reviewResult: {
+          summary: "continued",
+          verdict: "comment",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "previous-session-id",
+      });
+    });
+
+    it("falls back to a new Jules session when previous session continuation fails", async () => {
+      const reviewText =
+        '```json\n{"summary": "fresh", "verdict": "approve"}\n```';
+      const previousSession = {
+        id: "previous-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        send: vi.fn().mockRejectedValue(new Error("session is closed")),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: '```json\n{"summary": "old", "verdict": "approve"}\n```',
+          };
+        },
+      };
+      const freshSession = mockSessionWithHistory([
+        { type: "agentMessaged", message: reviewText },
+      ]);
+      freshSession.id = "fresh-session-id";
+      const session = vi.fn((input: unknown) =>
+        typeof input === "string"
+          ? previousSession
+          : Promise.resolve(freshSession)
+      );
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1, {
+        previousSessionId: "previous-session-id",
+      });
+
+      expect(session).toHaveBeenCalledWith("previous-session-id");
+      expect(session).toHaveBeenCalledWith({
+        prompt: "prompt",
+        source: {},
+        requireApproval: false,
+        autoPr: false,
+      });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Could not continue Jules session previous-session-id; starting a new review session: Error: session is closed"
+      );
+      expect(result.reviewResult?.summary).toBe("fresh");
+      expect(result.sessionId).toBe("fresh-session-id");
+    });
+
+    it("retries without source context when Jules cannot access the repo source", async () => {
+      const reviewText =
+        '```json\n{"summary": "fallback", "verdict": "approve"}\n```';
+      const session = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Could not get source 'maxi/example'"))
+        .mockResolvedValueOnce(
+          mockSessionWithHistory([
+            { type: "agentMessaged", message: reviewText },
+          ])
+        );
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview(
+        "api-key",
+        "prompt",
+        { github: "maxi/example", baseBranch: "main" },
+        1
+      );
+
+      expect(session).toHaveBeenCalledTimes(2);
+      expect(session).toHaveBeenNthCalledWith(1, {
+        prompt: "prompt",
+        source: { github: "maxi/example", baseBranch: "main" },
+        requireApproval: false,
+        autoPr: false,
+      });
+      expect(session).toHaveBeenNthCalledWith(2, {
+        prompt: "prompt",
+        requireApproval: false,
+        autoPr: false,
+      });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Jules could not access source maxi/example; retrying review without source context."
+      );
+      expect(result.reviewResult?.summary).toBe("fallback");
+    });
+
+    it("returns structured maxi review output in the legacy result shape", async () => {
+      const reviewText =
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"structured","verdict":"comment","resolvedCommentIds":[2],"comments":[{"id":"c1","path":"src/a.ts","line":5,"severity":"Warning","confidence":"High","message":"Use this.","promptForAgents":"Fix it.","suggestion":{"path":"src/a.ts","startLine":4,"endLine":5,"replacement":"const ok = true;\\nconst more = true;"}}]}\n```';
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi
+          .fn()
+          .mockResolvedValue(
+            mockSessionWithHistory([
+              { type: "agentMessaged", message: reviewText },
+            ])
+          ),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1);
+
+      expect(result.reviewResult).toEqual({
+        summary: "structured",
+        verdict: "comment",
+        resolvedCommentIds: [2],
+        newComments: [
+          {
+            file: "src/a.ts",
+            line: 5,
+            startLine: 4,
+            endLine: 5,
+            severity: "Warning",
+            confidence: "High",
+            message: "Use this.",
+            promptForAgents: "Fix it.",
+            suggestedReplacement: "const ok = true;\nconst more = true;",
+          },
+        ],
+      });
+    });
+
+    it("asks the same Jules session to revise malformed JSON", async () => {
+      const badReview = '```json\n{"summary":"bad", "verdict":"comment",\n```';
+      const fixedReview =
+        '```json\n{"summary":"fixed","verdict":"comment","resolvedCommentIds":[],"newComments":[]}\n```';
+      let prompted = false;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          prompted = true;
+        }),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: prompted ? fixedReview : badReview,
+          };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1);
+
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining("Fix only the review response JSON")
+      );
+      expect(result).toMatchObject({
+        reviewResult: {
+          summary: "fixed",
+          verdict: "comment",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "test-session-id",
+        rawResponses: [badReview, fixedReview],
+      });
+      expect(result.validationErrors?.[0]).toContain(
+        "Failed to parse Jules response"
+      );
+    });
+
+    it("waits for a new Jules message after requesting JSON repair", async () => {
+      const badReview = '```json\n{"summary":"bad", "verdict":"comment",\n```';
+      const fixedReview =
+        '```json\n{"summary":"fixed","verdict":"comment","resolvedCommentIds":[],"newComments":[]}\n```';
+      let prompted = false;
+      let historyCalls = 0;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          prompted = true;
+        }),
+        history: async function* () {
+          historyCalls++;
+          yield {
+            type: "agentMessaged",
+            message: prompted && historyCalls > 2 ? fixedReview : badReview,
+          };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      const result = await promise;
+
+      expect(result.reviewResult?.summary).toBe("fixed");
+      expect(session.hydrate).toHaveBeenCalledTimes(3);
+    });
+
+    it("asks the same Jules session to revise malformed suggestion formatting", async () => {
+      const badReview =
+        '```json\n{"summary":"test","verdict":"comment","resolvedCommentIds":[],"newComments":[{"file":"a.ts","line":3,"severity":"Warning","confidence":"High","message":"Use a suggestion.\\n```suggestion\\nconst ok = true;","promptForAgents":""}]}\n```';
+      const fixedReview =
+        '```json\n{"summary":"test","verdict":"comment","resolvedCommentIds":[],"newComments":[{"file":"a.ts","line":3,"severity":"Warning","confidence":"High","message":"Use a suggestion.\\n```suggestion\\nconst ok = true;\\n```","promptForAgents":""}]}\n```';
+      let prompted = false;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          prompted = true;
+        }),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: prompted ? fixedReview : badReview,
+          };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1);
+
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining("Fix only the review response formatting")
+      );
+      expect(result.reviewResult?.newComments[0].message).toContain(
+        "```suggestion\nconst ok = true;\n```"
+      );
+    });
+
+    it("asks the same Jules session to revise structured reviews that fail validation", async () => {
+      const badReview =
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"test","verdict":"comment","resolvedCommentIds":[],"comments":[{"id":"c1","path":"src/a.ts","line":9,"severity":"Warning","confidence":"High","message":"Use this.\\n```suggestion\\nconst ok = true;\\n```","suggestion":{"path":"src/a.ts","startLine":9,"endLine":9,"replacement":"const ok = true;"}}]}\n```';
+      const fixedReview =
+        '```json\n{"schema":"maxi.review.v1.jules-review","summary":"test","verdict":"comment","resolvedCommentIds":[],"comments":[{"id":"c1","path":"src/a.ts","line":4,"severity":"Warning","confidence":"High","message":"Use this.\\n```suggestion\\nconst ok = true;\\n```","suggestion":{"path":"src/a.ts","startLine":4,"endLine":4,"replacement":"const ok = true;"}}]}\n```';
+      let prompted = false;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          prompted = true;
+        }),
+        history: async function* () {
+          yield {
+            type: "agentMessaged",
+            message: prompted ? fixedReview : badReview,
+          };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1, {
+        verificationContext: {
+          changedLines: new Map([["src/a.ts", new Set([4])]]),
+          files: new Map([
+            [
+              "src/a.ts",
+              "const old = false;\nconst x = 1;\n\nconst ok = false;\n",
+            ],
+          ]),
+        },
+      });
+
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining("Fix only the Maxi review JSON")
+      );
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "targets a line that is not in the changed diff"
+        )
+      );
+      expect(result.reviewResult?.newComments[0]).toMatchObject({
+        file: "src/a.ts",
+        line: 4,
+        suggestedReplacement: "const ok = true;",
+      });
+    });
+
+    it("keeps the parsed review when a formatting revision returns invalid JSON", async () => {
+      const badFormatReview =
+        '```json\n{"summary":"test","verdict":"comment","resolvedCommentIds":[],"newComments":[{"file":"a.ts","line":3,"severity":"Warning","confidence":"High","message":"Use a suggestion.\\n```suggestion\\nconst ok = true;","promptForAgents":""}]}\n```';
+      let prompted = false;
+      let historyCalls = 0;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          prompted = true;
+        }),
+        history: async function* () {
+          historyCalls++;
+          yield {
+            type: "agentMessaged",
+            message:
+              prompted && historyCalls > 1 ? "not json" : badFormatReview,
+          };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview("api-key", "prompt", {}, 1);
+
+      expect(result.reviewResult?.summary).toBe("test");
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to parse Jules formatting revision")
+      );
+    });
+
     it("returns parsed review result without markdown blocks", async () => {
       const reviewText = '{"summary": "test2", "verdict": "approve"}';
       const mockJulesWith = vi.fn().mockReturnValue({
@@ -95,55 +461,71 @@ describe("jules.ts", () => {
 
     it("handles parsing failure", async () => {
       const reviewText = "invalid json";
+      const session = mockSessionWithHistory([
+        { type: "agentMessaged", message: reviewText },
+      ]);
+      session.prompt = vi.fn().mockResolvedValue({});
       const mockJulesWith = vi.fn().mockReturnValue({
-        session: vi
-          .fn()
-          .mockResolvedValue(
-            mockSessionWithHistory([
-              { type: "agentMessaged", message: reviewText },
-            ])
-          ),
+        session: vi.fn().mockResolvedValue(session),
       });
       (jules as any).with = mockJulesWith;
 
-      const result = await runJulesReview("api-key", "prompt", {}, 1);
-      expect(result).toEqual({
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      await vi.advanceTimersByTimeAsync(60 * 1000 + 1000);
+
+      const result = await promise;
+      expect(result).toMatchObject({
         reviewResult: {
           summary:
-            "Jules returned an invalid response that could not be parsed. No valid code review comments are present.",
+            "Jules returned an invalid response that could not be parsed after a same-session repair attempt. No valid code review comments are present.",
           verdict: "comment",
           resolvedCommentIds: [],
           newComments: [],
         },
         sessionId: "test-session-id",
+        rawResponses: [reviewText, ""],
       });
+      expect(result.validationErrors?.join("\n")).toContain(
+        "Failed to parse repaired Jules response"
+      );
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining("Fix only the review response JSON")
+      );
       expect(core.error).toHaveBeenCalled();
     });
 
     it("handles JSON parse error when block format is invalid fallback", async () => {
       const reviewText = "```json\ninvalid\n```";
+      const session = mockSessionWithHistory([
+        { type: "agentMessaged", message: reviewText },
+      ]);
+      session.prompt = vi.fn().mockResolvedValue({});
       const mockJulesWith = vi.fn().mockReturnValue({
-        session: vi
-          .fn()
-          .mockResolvedValue(
-            mockSessionWithHistory([
-              { type: "agentMessaged", message: reviewText },
-            ])
-          ),
+        session: vi.fn().mockResolvedValue(session),
       });
       (jules as any).with = mockJulesWith;
 
-      const result = await runJulesReview("api-key", "prompt", {}, 1);
-      expect(result).toEqual({
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      await vi.advanceTimersByTimeAsync(60 * 1000 + 1000);
+
+      const result = await promise;
+      expect(result).toMatchObject({
         reviewResult: {
           summary:
-            "Jules returned an invalid response that could not be parsed. No valid code review comments are present.",
+            "Jules returned an invalid response that could not be parsed after a same-session repair attempt. No valid code review comments are present.",
           verdict: "comment",
           resolvedCommentIds: [],
           newComments: [],
         },
         sessionId: "test-session-id",
+        rawResponses: [reviewText, ""],
       });
+      expect(result.validationErrors?.join("\n")).toContain(
+        "Failed to parse repaired Jules response"
+      );
+      expect(session.prompt).toHaveBeenCalledWith(
+        expect.stringContaining("Fix only the review response JSON")
+      );
       expect(core.error).toHaveBeenCalled();
     });
 
@@ -275,6 +657,27 @@ describe("jules.ts", () => {
       await expect(promise).rejects.toThrow(
         "Jules API rejected request (403 Forbidden). Check JULES_API_KEY is valid."
       );
+    });
+  });
+
+  describe("startJulesHandsOnFix", () => {
+    it("starts a Jules session that can commit to the PR branch", async () => {
+      const session = vi.fn().mockResolvedValue({ id: "fix-session-id" });
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const sessionId = await startJulesHandsOnFix("api-key", "fix prompt", {
+        github: "maxi/example",
+        baseBranch: "feature",
+      });
+
+      expect(sessionId).toBe("fix-session-id");
+      expect(session).toHaveBeenCalledWith({
+        prompt: "fix prompt",
+        source: { github: "maxi/example", baseBranch: "feature" },
+        requireApproval: false,
+        autoPr: true,
+      });
     });
   });
 

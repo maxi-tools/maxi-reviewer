@@ -1,0 +1,68 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import {
+  parseOpengrepJson,
+  parseOpengrepSarif,
+} from "../src/analyzers/opengrep.js";
+import { asText } from "../src/analyzers/normalize.js";
+import { parseCpdXml, parsePmdXml } from "../src/analyzers/pmd.js";
+
+const fixture = (name: string) =>
+  readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8");
+
+describe("analyzer parsers", () => {
+  it("normalizes Semgrep-compatible JSON", () => {
+    const findings = parseOpengrepJson(fixture("semgrep.json"));
+    expect(findings).toMatchObject([
+      {
+        schema: "maxi.review.v1.analyzer-finding",
+        tool: "opengrep",
+        ruleId: "typescript.no-floating-promises",
+        severity: "warning",
+        confidence: "high",
+        path: "src/a.ts",
+        startLine: 4,
+        endLine: 4,
+      },
+    ]);
+  });
+
+  it("normalizes SARIF results", () => {
+    const findings = parseOpengrepSarif(fixture("semgrep.sarif.json"));
+    expect(findings[0].ruleId).toBe("python.requests.verify-disabled");
+    expect(findings[0].helpUri).toBe("https://example.invalid/rules/verify");
+  });
+
+  it("normalizes PMD XML violations", () => {
+    const findings = parsePmdXml(fixture("pmd.xml"));
+    expect(findings[0].tool).toBe("pmd");
+    expect(findings[0].path).toBe("src/Main.java");
+    expect(findings[0].helpUri).toBe(
+      "https://example.invalid/pmd/avoid-empty-if"
+    );
+    expect(findings[0].license).toBe("BSD-4-Clause");
+  });
+
+  it("normalizes CPD XML duplicates", () => {
+    const findings = parseCpdXml(fixture("cpd.xml"));
+    expect(findings).toHaveLength(2);
+    expect(findings.map((finding) => finding.path)).toEqual([
+      "src/A.java",
+      "src/B.java",
+    ]);
+    for (const finding of findings) {
+      expect(finding.tool).toBe("cpd");
+      expect(finding.ruleId).toBe("copy-paste-duplicate");
+      expect(finding.helpUri).toBe(
+        "https://pmd.github.io/pmd/pmd_userdocs_cpd.html"
+      );
+      expect(finding.license).toBe("BSD-4-Clause");
+    }
+  });
+
+  it("preserves explicit undefined text fallbacks", () => {
+    expect(asText(undefined, undefined)).toBeUndefined();
+    expect(asText("", undefined)).toBeUndefined();
+    expect(asText(undefined)).toBe("");
+  });
+});

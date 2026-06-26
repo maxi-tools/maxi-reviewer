@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "results": [
+    {
+      "check_id": "typescript.no-floating-promises",
+      "path": "src/a.ts",
+      "start": { "line": 4 },
+      "end": { "line": 4 },
+      "extra": {
+        "message": "Promise is not awaited.",
+        "severity": "WARNING",
+        "metadata": {
+          "confidence": "HIGH",
+          "source": "https://example.invalid/rules/no-floating-promises",
+          "license": "LGPL-2.1-only"
+        }
+      }
+    }
+  ]
+}

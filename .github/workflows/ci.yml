@@ -12,33 +12,27 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20"
-          cache: "pnpm"
+          node-version: "24"
 
       - name: Install dependencies
-        run: pnpm install
+        run: npm install
 
       - name: Prettier Check
-        run: pnpm run format:check
+        run: npm run format:check
 
       - name: Lint
-        run: pnpm run lint
+        run: npm run lint
 
       - name: Build
-        run: pnpm run build
+        run: npm run build
 
-      - name: Test and generate coverage
-        run: pnpm run coverage
+      - name: Test
+        run: npm test
 
       - name: SonarCloud Scan
         if: ${{ secrets.SONAR_TOKEN != '' }}

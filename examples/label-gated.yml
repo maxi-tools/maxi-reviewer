@@ -1,18 +1,21 @@
-name: Jules PR Review (label-gated)
+name: Maxi Review (label-gated)
 on:
   pull_request:
     types: [labeled, synchronize]
 
 jobs:
   review:
-    if: contains(github.event.pull_request.labels.*.name, 'jules-review')
+    if: contains(github.event.pull_request.labels.*.name, 'maxi-review')
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
       contents: read
+      pull-requests: write
       statuses: write
+      actions: write
     steps:
-      - uses: thalesraymond/jules-pr-reviewer@v1
+      - uses: actions/checkout@v4
+
+      - uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

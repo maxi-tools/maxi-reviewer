@@ -103,14 +103,33 @@ describe("buildReviewPrompt", () => {
           path: "file.ts",
           line: 10,
           body: "Bad code",
+          comments: [
+            {
+              author: "maxi-reviewer[bot]",
+              body: "Bad code",
+              line: 10,
+              viewerDidAuthor: true,
+              createdAt: "2026-06-26T02:43:36Z",
+            },
+            {
+              author: "maxiboch",
+              body: "I pushed a fix for this, please re-check it.",
+              line: 10,
+              viewerDidAuthor: false,
+              createdAt: "2026-06-26T02:46:32Z",
+            },
+          ],
         },
       ],
     });
 
     expect(prompt).toContain("# Open Review Comments");
     expect(prompt).toContain("[Index 1] File: file.ts, Line: 10");
-    expect(prompt).toContain("<<<BEGIN THREAD 1 ");
+    expect(prompt).toContain("<<<BEGIN THREAD 1 COMMENT 1 ");
     expect(prompt).toContain("Bad code");
+    expect(prompt).toContain("maxiboch");
+    expect(prompt).toContain("I pushed a fix for this, please re-check it.");
+    expect(prompt).toContain("<<<BEGIN THREAD 1 COMMENT 2 ");
   });
 
   it("places schema, analyzer findings, and rules before untrusted diff", () => {

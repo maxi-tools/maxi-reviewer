@@ -168,6 +168,15 @@ describe("github.ts", () => {
                         line: 10,
                         author: { login: "bot" },
                         viewerDidAuthor: true,
+                        createdAt: "2026-06-26T02:43:36Z",
+                      },
+                      {
+                        body: "Human reply on the finding",
+                        path: "a.ts",
+                        line: 10,
+                        author: { login: "reviewer" },
+                        viewerDidAuthor: false,
+                        createdAt: "2026-06-26T02:46:32Z",
                       },
                     ],
                   },
@@ -249,6 +258,22 @@ describe("github.ts", () => {
         path: "a.ts",
         line: 10,
         body: "<!-- maxi-review-inline-comment -->\nMsg",
+        comments: [
+          {
+            author: "bot",
+            body: "<!-- maxi-review-inline-comment -->\nMsg",
+            line: 10,
+            viewerDidAuthor: true,
+            createdAt: "2026-06-26T02:43:36Z",
+          },
+          {
+            author: "reviewer",
+            body: "Human reply on the finding",
+            line: 10,
+            viewerDidAuthor: false,
+            createdAt: "2026-06-26T02:46:32Z",
+          },
+        ],
       },
       {
         index: 2,
@@ -256,8 +281,18 @@ describe("github.ts", () => {
         path: "d.ts",
         line: 0,
         body: "<!-- jules-inline-comment -->\nNo Line",
+        comments: [
+          {
+            author: "bot",
+            body: "<!-- jules-inline-comment -->\nNo Line",
+            line: 0,
+            viewerDidAuthor: true,
+            createdAt: undefined,
+          },
+        ],
       },
     ]);
+    expect(octokit.graphql.mock.calls[0][0]).toContain("comments(first: 20)");
   });
 
   it("fetchOpenThreads handles empty response", async () => {

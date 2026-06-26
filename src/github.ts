@@ -78,13 +78,14 @@ export async function fetchOpenThreads(
             nodes {
               id
               isResolved
-              comments(first: 1) {
+              comments(first: 20) {
                 nodes {
                   body
                   path
                   line
                   author { login }
                   viewerDidAuthor
+                  createdAt
                 }
               }
             }
@@ -118,6 +119,21 @@ export async function fetchOpenThreads(
         path: firstComment.path,
         line: firstComment.line || 0,
         body: firstComment.body,
+        comments: thread.comments.nodes.map(
+          (comment: {
+            body: string;
+            line?: number | null;
+            author?: { login?: string } | null;
+            viewerDidAuthor?: boolean;
+            createdAt?: string;
+          }) => ({
+            author: comment.author?.login || "unknown",
+            body: comment.body,
+            line: comment.line || 0,
+            viewerDidAuthor: !!comment.viewerDidAuthor,
+            createdAt: comment.createdAt,
+          })
+        ),
       });
     }
   }

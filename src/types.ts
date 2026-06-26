@@ -3,12 +3,21 @@ export type Verdict = "approve" | "comment" | "block";
 export type AnalyzerSeverity = "info" | "warning" | "error";
 export type AnalyzerConfidence = "low" | "medium" | "high" | "unknown";
 
+export interface OpenThreadComment {
+  author: string;
+  body: string;
+  line: number;
+  viewerDidAuthor: boolean;
+  createdAt?: string;
+}
+
 export interface OpenThread {
   index: number;
   threadId: string;
   path: string;
   line: number;
   body: string;
+  comments: OpenThreadComment[];
 }
 
 export interface PromptArgs {

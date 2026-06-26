@@ -274,8 +274,22 @@ describe("index.ts", () => {
 
   it("resolves open threads if resolvedCommentIds provided", async () => {
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([
-      { index: 1, threadId: "t1" },
-      { index: 2, threadId: "t2" },
+      {
+        index: 1,
+        threadId: "t1",
+        path: "a.ts",
+        line: 1,
+        body: "root 1",
+        comments: [],
+      },
+      {
+        index: 2,
+        threadId: "t2",
+        path: "b.ts",
+        line: 2,
+        body: "root 2",
+        comments: [],
+      },
     ]);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {

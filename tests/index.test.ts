@@ -28,6 +28,7 @@ describe("index.ts", () => {
     submitReview: vi.fn(),
     setStatus: vi.fn(),
     recordReviewArtifactComment: vi.fn(),
+    listReviewArtifactComments: vi.fn(),
   };
 
   const mockJulesHelper = {
@@ -94,6 +95,7 @@ describe("index.ts", () => {
     // default helper returns
     mockGithubHelper.fetchDiff.mockResolvedValue("diff");
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([]);
+    mockGithubHelper.listReviewArtifactComments.mockResolvedValue([]);
     mockGithubHelper.setStatus.mockResolvedValue(undefined);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {
@@ -300,9 +302,11 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
-      expect.anything(),
-      ["t2"]
+    await vi.waitFor(() =>
+      expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
+        expect.anything(),
+        ["t2"]
+      )
     );
   });
 

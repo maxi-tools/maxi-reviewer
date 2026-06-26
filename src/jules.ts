@@ -26,17 +26,19 @@ interface JulesSession {
 }
 
 interface JulesSessionClient {
-  session: (config: {
+  session(config: {
     prompt: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     source?: any;
     requireApproval: false;
     autoPr: false;
-  }) => Promise<unknown>;
+  }): Promise<unknown>;
+  session(id: string): unknown;
 }
 
 export interface RunJulesReviewOptions {
   verificationContext?: VerificationContext;
+  previousSessionId?: string;
 }
 
 export async function runJulesReview(
@@ -54,17 +56,22 @@ export async function runJulesReview(
 }> {
   const customJules = jules.with({ apiKey }) as JulesSessionClient;
 
-  core.info("Creating Jules review session…");
-
-  const rawSession = await createReviewSession(customJules, prompt, source);
-  const session = rawSession as unknown as JulesSession;
+  const { session, afterMessage } = await startReviewSession(
+    customJules,
+    prompt,
+    source,
+    options.previousSessionId
+  );
   core.info(`Jules session: ${session.id}`);
 
-  await waitUntilSessionReady(session);
+  if (!afterMessage) {
+    await waitUntilSessionReady(session);
+  }
 
   const reviewMessage = await pollForReview(
     session,
-    timeoutMinutes * 60 * 1000
+    timeoutMinutes * 60 * 1000,
+    afterMessage
   );
   core.info(`Collected review (${reviewMessage.length} chars)`);
 
@@ -180,6 +187,33 @@ export async function runJulesReview(
   };
 }
 
+async function startReviewSession(
+  customJules: JulesSessionClient,
+  prompt: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source: any,
+  previousSessionId?: string
+): Promise<{ session: JulesSession; afterMessage?: string }> {
+  if (previousSessionId) {
+    try {
+      core.info(`Continuing Jules review session ${previousSessionId}…`);
+      const session = customJules.session(previousSessionId) as JulesSession;
+      await session.info();
+      const afterMessage = await latestAgentMessage(session);
+      await sendSessionMessage(session, prompt);
+      return { session, afterMessage };
+    } catch (err) {
+      core.warning(
+        `Could not continue Jules session ${previousSessionId}; starting a new review session: ${String(err)}`
+      );
+    }
+  }
+
+  core.info("Creating Jules review session…");
+  const rawSession = await createReviewSession(customJules, prompt, source);
+  return { session: rawSession as unknown as JulesSession };
+}
+
 async function createReviewSession(
   customJules: JulesSessionClient,
   prompt: string,
@@ -206,6 +240,17 @@ async function createReviewSession(
       autoPr: false,
     });
   }
+}
+
+async function latestAgentMessage(session: JulesSession): Promise<string> {
+  await session.hydrate();
+  let last = "";
+  for await (const activity of session.history()) {
+    if (activity.type === "agentMessaged") {
+      last = activity.message;
+    }
+  }
+  return last;
 }
 
 function isSourceNotFoundError(err: unknown): boolean {

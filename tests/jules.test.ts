@@ -74,6 +74,45 @@ describe("jules.ts", () => {
       });
     });
 
+    it("retries without source context when Jules cannot access the repo source", async () => {
+      const reviewText =
+        '```json\n{"summary": "fallback", "verdict": "approve"}\n```';
+      const session = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Could not get source 'maxi/example'"))
+        .mockResolvedValueOnce(
+          mockSessionWithHistory([
+            { type: "agentMessaged", message: reviewText },
+          ])
+        );
+      const mockJulesWith = vi.fn().mockReturnValue({ session });
+      (jules as any).with = mockJulesWith;
+
+      const result = await runJulesReview(
+        "api-key",
+        "prompt",
+        { github: "maxi/example", baseBranch: "main" },
+        1
+      );
+
+      expect(session).toHaveBeenCalledTimes(2);
+      expect(session).toHaveBeenNthCalledWith(1, {
+        prompt: "prompt",
+        source: { github: "maxi/example", baseBranch: "main" },
+        requireApproval: false,
+        autoPr: false,
+      });
+      expect(session).toHaveBeenNthCalledWith(2, {
+        prompt: "prompt",
+        requireApproval: false,
+        autoPr: false,
+      });
+      expect(core.warning).toHaveBeenCalledWith(
+        "Jules could not access source maxi/example; retrying review without source context."
+      );
+      expect(result.reviewResult?.summary).toBe("fallback");
+    });
+
     it("returns structured maxi review output in the legacy result shape", async () => {
       const reviewText =
         '```json\n{"schema":"maxi.review.v1.jules-review","summary":"structured","verdict":"comment","resolvedCommentIds":[2],"comments":[{"id":"c1","path":"src/a.ts","line":5,"severity":"Warning","confidence":"High","message":"Use this.","promptForAgents":"Fix it.","suggestion":{"path":"src/a.ts","startLine":4,"endLine":5,"replacement":"const ok = true;\\nconst more = true;"}}]}\n```';

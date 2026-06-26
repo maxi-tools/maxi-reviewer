@@ -25,6 +25,16 @@ interface JulesSession {
   send?: (message: string) => Promise<unknown>;
 }
 
+interface JulesSessionClient {
+  session: (config: {
+    prompt: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    source?: any;
+    requireApproval: false;
+    autoPr: false;
+  }) => Promise<unknown>;
+}
+
 export interface RunJulesReviewOptions {
   verificationContext?: VerificationContext;
 }
@@ -42,16 +52,11 @@ export async function runJulesReview(
   rawResponses?: string[];
   validationErrors?: string[];
 }> {
-  const customJules = jules.with({ apiKey });
+  const customJules = jules.with({ apiKey }) as JulesSessionClient;
 
   core.info("Creating Jules review session…");
 
-  const rawSession = await customJules.session({
-    prompt,
-    source,
-    requireApproval: false,
-    autoPr: false,
-  });
+  const rawSession = await createReviewSession(customJules, prompt, source);
   const session = rawSession as unknown as JulesSession;
   core.info(`Jules session: ${session.id}`);
 
@@ -173,6 +178,49 @@ export async function runJulesReview(
     ...(rawResponses.length > 1 ? { rawResponses } : {}),
     ...(validationErrors.length > 0 ? { validationErrors } : {}),
   };
+}
+
+async function createReviewSession(
+  customJules: JulesSessionClient,
+  prompt: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source: any
+): Promise<unknown> {
+  try {
+    return await customJules.session({
+      prompt,
+      source,
+      requireApproval: false,
+      autoPr: false,
+    });
+  } catch (err) {
+    if (!isSourceNotFoundError(err) || source === undefined) {
+      throw err;
+    }
+    core.warning(
+      `Jules could not access source ${formatJulesSource(source)}; retrying review without source context.`
+    );
+    return customJules.session({
+      prompt,
+      requireApproval: false,
+      autoPr: false,
+    });
+  }
+}
+
+function isSourceNotFoundError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  return /^Could not get source /.test(err.message);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatJulesSource(source: any): string {
+  if (source && typeof source.github === "string") {
+    return source.github;
+  }
+  return "configured for this review";
 }
 
 async function requestStructuredValidationRepair(input: {

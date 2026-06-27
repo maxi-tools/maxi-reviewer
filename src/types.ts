@@ -20,6 +20,20 @@ export interface OpenThread {
   comments: OpenThreadComment[];
 }
 
+/** A line-numbered slice of a changed file, centred on a changed hunk. */
+export interface ChangedFileContextWindow {
+  startLine: number;
+  endLine: number;
+  /** Lines [startLine..endLine] of the file at PR head, each prefixed `<n>\t`. */
+  text: string;
+}
+
+/** Surrounding context for one changed file (one or more merged hunk windows). */
+export interface ChangedFileContext {
+  path: string;
+  windows: ChangedFileContextWindow[];
+}
+
 export interface PromptArgs {
   repoFullName: string;
   prNumber: number;
@@ -32,6 +46,12 @@ export interface PromptArgs {
   analyzerFindings?: AnalyzerFinding[];
   rules?: string;
   openThreads: OpenThread[];
+  /**
+   * Line-numbered source around each changed hunk at PR head, derived from the
+   * already-fetched head files. Lets the model reason about callers, types, and
+   * control flow the diff alone omits. Context only — not the review target.
+   */
+  changedFileContext?: ChangedFileContext[];
 }
 
 export interface ReviewComment {

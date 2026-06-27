@@ -26,6 +26,7 @@ import {
 } from "./github.js";
 import { runJulesReview, wrapPermissionError } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
+import { buildChangedFileContext } from "./context-window.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
 import { parseOpengrepJson, parseOpengrepSarif } from "./analyzers/opengrep.js";
@@ -284,6 +285,12 @@ export async function runReviewPr(
       analyzerFindings,
       rules: selectedRules || undefined,
       openThreads: context.openThreads,
+      changedFileContext: buildChangedFileContext(
+        context.files ?? new Map(),
+        // Derive from the (possibly truncated) diff the model actually sees, so
+        // context never covers hunks absent from the visible diff payload.
+        extractChangedLines(diffText)
+      ),
     });
 
     const previousSessionId = await loadPreviousReviewSessionId(

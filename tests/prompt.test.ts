@@ -187,4 +187,53 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("authoritative evidence");
     expect(prompt).toContain("do not use `block`");
   });
+
+  it("omits the changed-file context section when none is provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+ x",
+      openThreads: [],
+    });
+
+    expect(prompt).not.toContain("# Changed files with surrounding context");
+    expect(prompt).not.toContain("<<<BEGIN FILE_CONTEXT ");
+  });
+
+  it("includes nonce-fenced changed-file context before the diff", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+ const a = 1;",
+      openThreads: [],
+      changedFileContext: [
+        {
+          path: "src/net.rs",
+          windows: [
+            {
+              startLine: 1,
+              endLine: 3,
+              text: "1\tfn a() {}\n2\tfn b() {}\n3\tfn c() {}",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      "# Changed files with surrounding context (UNTRUSTED data)"
+    );
+    expect(prompt).toContain("<<<BEGIN FILE_CONTEXT ");
+    expect(prompt).toContain("## src/net.rs");
+    expect(prompt).toContain("@@ lines 1-3 @@");
+    expect(prompt).toContain("2\tfn b() {}");
+    // Context comes before the diff payload.
+    expect(prompt.indexOf("FILE_CONTEXT")).toBeLessThan(
+      prompt.indexOf("<<<BEGIN DIFF ")
+    );
+  });
 });

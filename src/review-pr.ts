@@ -287,7 +287,9 @@ export async function runReviewPr(
       openThreads: context.openThreads,
       changedFileContext: buildChangedFileContext(
         context.files ?? new Map(),
-        context.changedLines ?? new Map()
+        // Derive from the (possibly truncated) diff the model actually sees, so
+        // context never covers hunks absent from the visible diff payload.
+        extractChangedLines(diffText)
       ),
     });
 

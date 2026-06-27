@@ -42842,7 +42842,10 @@ async function runReviewPr(overrides = {}) {
             analyzerFindings,
             rules: selectedRules || undefined,
             openThreads: context.openThreads,
-            changedFileContext: buildChangedFileContext(context.files ?? new Map(), context.changedLines ?? new Map()),
+            changedFileContext: buildChangedFileContext(context.files ?? new Map(), 
+            // Derive from the (possibly truncated) diff the model actually sees, so
+            // context never covers hunks absent from the visible diff payload.
+            extractChangedLines(diffText)),
         });
         const previousSessionId = await loadPreviousReviewSessionId(deps, octokit, owner, repo, prNumber);
         const julesOptions = buildJulesReviewOptions(context);

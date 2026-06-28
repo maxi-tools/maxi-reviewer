@@ -76,22 +76,18 @@ export function parseClosingIssueRefs(
     repo: string;
     number: number;
   }[] = [];
-  for (const m of body.matchAll(URL_RE)) {
-    matches.push({
-      index: m.index ?? 0,
-      owner: m[1],
-      repo: m[2],
-      number: Number(m[3]),
-    });
-  }
-  for (const m of body.matchAll(SHORTHAND_RE)) {
-    matches.push({
-      index: m.index ?? 0,
-      owner: m[1] ?? current.owner,
-      repo: m[2] ?? current.repo,
-      number: Number(m[3]),
-    });
-  }
+  const collect = (re: RegExp): void => {
+    for (const m of body.matchAll(re)) {
+      matches.push({
+        index: m.index ?? 0,
+        owner: m[1] ?? current.owner,
+        repo: m[2] ?? current.repo,
+        number: Number(m[3]),
+      });
+    }
+  };
+  collect(URL_RE);
+  collect(SHORTHAND_RE);
   matches.sort((a, b) => a.index - b.index);
   for (const m of matches) push(m.owner, m.repo, m.number);
   return out;

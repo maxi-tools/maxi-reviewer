@@ -42980,22 +42980,18 @@ function parseClosingIssueRefs(body, current) {
     // the first-seen issue wins when refs exceed the fetch cap, regardless of
     // whether each ref was written as a URL or as #n / owner/repo#n shorthand.
     const matches = [];
-    for (const m of body.matchAll(URL_RE)) {
-        matches.push({
-            index: m.index ?? 0,
-            owner: m[1],
-            repo: m[2],
-            number: Number(m[3]),
-        });
-    }
-    for (const m of body.matchAll(SHORTHAND_RE)) {
-        matches.push({
-            index: m.index ?? 0,
-            owner: m[1] ?? current.owner,
-            repo: m[2] ?? current.repo,
-            number: Number(m[3]),
-        });
-    }
+    const collect = (re) => {
+        for (const m of body.matchAll(re)) {
+            matches.push({
+                index: m.index ?? 0,
+                owner: m[1] ?? current.owner,
+                repo: m[2] ?? current.repo,
+                number: Number(m[3]),
+            });
+        }
+    };
+    collect(URL_RE);
+    collect(SHORTHAND_RE);
     matches.sort((a, b) => a.index - b.index);
     for (const m of matches)
         push(m.owner, m.repo, m.number);

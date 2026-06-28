@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   parseRetrievalRequest,
   formatRetrievalResults,
+  formatInvalidRetrievalRequest,
   createGithubRetrievalProvider,
 } from "../src/retrieval.js";
 
@@ -15,8 +16,10 @@ describe("parseRetrievalRequest", () => {
       }) +
       "\n```";
     const req = parseRetrievalRequest(msg);
-    expect(req).not.toBeNull();
-    expect(req?.requests[0].tool).toBe("read_file");
+    expect(req.kind).toBe("request");
+    if (req.kind === "request") {
+      expect(req.request.requests[0].tool).toBe("read_file");
+    }
   });
 
   it("parses a bare retrieval request object", () => {
@@ -26,7 +29,10 @@ describe("parseRetrievalRequest", () => {
         requests: [{ tool: "grep", pattern: "foo" }],
       })
     );
-    expect(req?.requests).toHaveLength(1);
+    expect(req.kind).toBe("request");
+    if (req.kind === "request") {
+      expect(req.request.requests).toHaveLength(1);
+    }
   });
 
   it("returns null for a review object, not a retrieval request", () => {
@@ -37,22 +43,24 @@ describe("parseRetrievalRequest", () => {
       resolvedCommentIds: [],
       comments: [],
     });
-    expect(parseRetrievalRequest(msg)).toBeNull();
+    expect(parseRetrievalRequest(msg).kind).toBe("none");
   });
 
   it("returns null for prose", () => {
-    expect(parseRetrievalRequest("Sure, here is my review!")).toBeNull();
+    expect(parseRetrievalRequest("Sure, here is my review!").kind).toBe("none");
   });
 
   it("rejects an unknown tool", () => {
-    expect(
-      parseRetrievalRequest(
-        JSON.stringify({
-          schema: "maxi.review.v1.retrieval-request",
-          requests: [{ tool: "delete_file", path: "x" }],
-        })
-      )
-    ).toBeNull();
+    const res = parseRetrievalRequest(
+      JSON.stringify({
+        schema: "maxi.review.v1.retrieval-request",
+        requests: [{ tool: "delete_file", path: "x" }],
+      })
+    );
+    expect(res.kind).toBe("invalid");
+    if (res.kind === "invalid") {
+      expect(res.errors.join(" ")).toContain("tool must be one of");
+    }
   });
 
   it("clamps an oversized request list to 8", () => {
@@ -63,7 +71,10 @@ describe("parseRetrievalRequest", () => {
     const req = parseRetrievalRequest(
       JSON.stringify({ schema: "maxi.review.v1.retrieval-request", requests })
     );
-    expect(req?.requests).toHaveLength(8);
+    expect(req.kind).toBe("request");
+    if (req.kind === "request") {
+      expect(req.request.requests).toHaveLength(8);
+    }
   });
 });
 
@@ -248,5 +259,119 @@ describe("createGithubRetrievalProvider", () => {
     const res = await provider.fulfill({ tool: "read_file", path: "src/a.ts" });
     expect(res.content).toContain("seeded");
     expect(octokit.rest.repos.getContent).not.toHaveBeenCalled();
+  });
+});
+
+describe("formatInvalidRetrievalRequest", () => {
+  it("nonce-fences the schema errors and shows remaining rounds", () => {
+    const out = formatInvalidRetrievalRequest(
+      "NONCEABC",
+      ["requests[0].tool must be one of read_file, grep, list_references"],
+      1
+    );
+    expect(out).toContain("<<<BEGIN RETRIEVAL_REQUEST_ERRORS NONCEABC>>>");
+    expect(out).toContain("<<<END RETRIEVAL_REQUEST_ERRORS NONCEABC>>>");
+    expect(out).toContain("tool must be one of");
+    expect(out).toContain("1 retrieval round(s) left");
+  });
+
+  it("tells the model to finalize when no rounds remain", () => {
+    const out = formatInvalidRetrievalRequest("N", ["bad"], 0);
+    expect(out).toContain("No retrieval rounds remain");
+    expect(out).toContain("maxi.review.v1.jules-review");
+  });
+});
+
+describe("grep truncation signaling", () => {
+  const makeOctokit = (files: Record<string, string>) => ({
+    rest: {
+      repos: {
+        getContent: vi.fn(async ({ path }: { path: string }) => {
+          if (!(path in files)) throw new Error("404");
+          return {
+            data: {
+              content: Buffer.from(files[path], "utf8").toString("base64"),
+            },
+          };
+        }),
+      },
+      git: {
+        getTree: vi.fn(async () => ({
+          data: {
+            truncated: false,
+            tree: Object.keys(files).map((p) => ({ type: "blob", path: p })),
+          },
+        })),
+      },
+    },
+  });
+
+  it("reports candidateCount and truncates when the file cap is hit", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 65; i++) files["src/f" + i + ".ts"] = "needle";
+    const provider = createGithubRetrievalProvider({
+      octokit: makeOctokit(files) as never,
+      owner: "o",
+      repo: "r",
+      headSha: "HEAD",
+    });
+    const res = await provider.fulfill({ tool: "grep", pattern: "needle" });
+    expect(res.ok).toBe(true);
+    expect(res.candidateCount).toBe(65);
+    expect(res.filesSearched).toBe(60);
+    expect(res.truncated).toBe(true);
+  });
+
+  it("does not mark an exhaustive small scan as truncated", async () => {
+    const provider = createGithubRetrievalProvider({
+      octokit: makeOctokit({ "src/a.ts": "needle", "src/b.ts": "x" }) as never,
+      owner: "o",
+      repo: "r",
+      headSha: "HEAD",
+    });
+    const res = await provider.fulfill({ tool: "grep", pattern: "needle" });
+    expect(res.truncated).toBe(false);
+    expect(res.candidateCount).toBe(2);
+  });
+});
+
+describe("grep tree-listing errors", () => {
+  it("returns ok:false on a tree error and retries (no empty-corpus cache)", async () => {
+    let calls = 0;
+    const octokit = {
+      rest: {
+        repos: {
+          getContent: vi.fn(async () => ({
+            data: {
+              content: Buffer.from("needle", "utf8").toString("base64"),
+            },
+          })),
+        },
+        git: {
+          getTree: vi.fn(async () => {
+            calls++;
+            if (calls === 1) throw new Error("503 upstream");
+            return {
+              data: {
+                truncated: false,
+                tree: [{ type: "blob", path: "src/a.ts" }],
+              },
+            };
+          }),
+        },
+      },
+    };
+    const provider = createGithubRetrievalProvider({
+      octokit: octokit as never,
+      owner: "o",
+      repo: "r",
+      headSha: "HEAD",
+    });
+    const first = await provider.fulfill({ tool: "grep", pattern: "needle" });
+    expect(first.ok).toBe(false);
+    expect(first.error).toContain("could not list repository tree");
+    const second = await provider.fulfill({ tool: "grep", pattern: "needle" });
+    expect(second.ok).toBe(true);
+    expect(second.matchCount).toBe(1);
   });
 });

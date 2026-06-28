@@ -13,6 +13,7 @@ import {
   verifyJulesReview,
 } from "./verify-format.js";
 import {
+  formatInvalidRetrievalRequest,
   formatRetrievalResults,
   parseRetrievalRequest,
   RetrievalProvider,
@@ -229,9 +230,38 @@ async function runRetrievalLoop(input: {
   const deadline = Date.now() + timeoutMs;
   let message = input.firstMessage;
   for (let step = 0; step < retrieval.maxSteps; step++) {
-    const request = parseRetrievalRequest(message);
-    if (!request) return message;
+    const parsed = parseRetrievalRequest(message);
+    if (parsed.kind === "none") return message;
     const roundsLeft = retrieval.maxSteps - step - 1;
+    if (parsed.kind === "invalid") {
+      core.info(
+        "Retrieval step " +
+          (step + 1) +
+          ": invalid retrieval-request; returning schema errors for repair."
+      );
+      await sendSessionMessage(
+        session,
+        formatInvalidRetrievalRequest(
+          retrieval.nonce,
+          parsed.errors,
+          roundsLeft
+        )
+      );
+      const repaired = await pollForReview(
+        session,
+        Math.max(0, deadline - Date.now()),
+        message
+      );
+      if (!repaired) {
+        core.warning(
+          "Retrieval loop: no agent reply after invalid-request feedback; stopping."
+        );
+        return message;
+      }
+      message = repaired;
+      continue;
+    }
+    const request = parsed.request;
     core.info(
       `Retrieval step ${step + 1}/${retrieval.maxSteps}: fulfilling ${request.requests.length} request(s); ${roundsLeft} round(s) left.`
     );
@@ -262,7 +292,7 @@ async function runRetrievalLoop(input: {
   }
   // Budget exhausted but the model is still requesting retrieval: nudge once
   // for the final review so we don't return an unparseable request message.
-  if (parseRetrievalRequest(message)) {
+  if (parseRetrievalRequest(message).kind !== "none") {
     core.info("Retrieval budget exhausted; requesting the final review.");
     await sendSessionMessage(
       session,

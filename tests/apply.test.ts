@@ -179,4 +179,134 @@ describe("applyStructuredSuggestions", () => {
     expect(buildApplyAllCommitMessage(3)).toBe("Apply 3 Maxi suggestions");
     expect(buildApplyAllCommitMessage(1)).toBe("Apply 1 Maxi suggestion");
   });
+
+  it("applies a transactional multi-location fix across files", () => {
+    const result = applyStructuredSuggestions(
+      new Map([
+        ["src/a.ts", "a1\na2\na3\n"],
+        ["src/b.ts", "b1\nb2\n"],
+      ]),
+      [
+        {
+          id: "f1",
+          path: "src/a.ts",
+          line: 1,
+          severity: "Warning",
+          confidence: "High",
+          message: "Multi-file fix.",
+          fix: {
+            edits: [
+              { path: "src/a.ts", startLine: 1, endLine: 1, replacement: "A1" },
+              { path: "src/a.ts", startLine: 3, endLine: 3, replacement: "A3" },
+              { path: "src/b.ts", startLine: 2, endLine: 2, replacement: "B2" },
+            ],
+          },
+        } satisfies JulesReviewComment,
+      ]
+    );
+
+    expect(result.files.get("src/a.ts")).toBe("A1\na2\nA3\n");
+    expect(result.files.get("src/b.ts")).toBe("b1\nB2\n");
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toEqual([
+      { file: "src/a.ts", startLine: 3, endLine: 3 },
+      { file: "src/a.ts", startLine: 1, endLine: 1 },
+      { file: "src/b.ts", startLine: 2, endLine: 2 },
+    ]);
+  });
+
+  it("skips an entire multi-location fix when any edit is invalid", () => {
+    const result = applyStructuredSuggestions(
+      new Map([["src/a.ts", "a1\na2\na3\n"]]),
+      [
+        {
+          id: "f2",
+          path: "src/a.ts",
+          line: 1,
+          severity: "Warning",
+          confidence: "High",
+          message: "Atomic fix.",
+          fix: {
+            edits: [
+              { path: "src/a.ts", startLine: 1, endLine: 1, replacement: "A1" },
+              {
+                path: "missing.ts",
+                startLine: 1,
+                endLine: 1,
+                replacement: "X",
+              },
+            ],
+          },
+        } satisfies JulesReviewComment,
+      ]
+    );
+
+    expect(result.files.get("src/a.ts")).toBe("a1\na2\na3\n");
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([
+      { file: "src/a.ts", startLine: 1, endLine: 1, reason: "incomplete fix" },
+      { file: "missing.ts", startLine: 1, endLine: 1, reason: "missing file" },
+    ]);
+  });
+
+  it("skips a multi-location fix whose edits overlap each other", () => {
+    const result = applyStructuredSuggestions(
+      new Map([["src/a.ts", "a1\na2\na3\n"]]),
+      [
+        {
+          id: "f3",
+          path: "src/a.ts",
+          line: 1,
+          severity: "Warning",
+          confidence: "High",
+          message: "Overlapping edits.",
+          fix: {
+            edits: [
+              { path: "src/a.ts", startLine: 1, endLine: 2, replacement: "X" },
+              { path: "src/a.ts", startLine: 2, endLine: 3, replacement: "Y" },
+            ],
+          },
+        } satisfies JulesReviewComment,
+      ]
+    );
+
+    expect(result.files.get("src/a.ts")).toBe("a1\na2\na3\n");
+    expect(result.applied).toEqual([]);
+    expect(result.skipped.map((entry) => entry.reason)).toEqual([
+      "overlapping range",
+      "overlapping range",
+    ]);
+  });
+
+  it("prefers a multi-location fix over a single suggestion on the same comment", () => {
+    const result = applyStructuredSuggestions(
+      new Map([["src/a.ts", "a1\na2\n"]]),
+      [
+        {
+          id: "f4",
+          path: "src/a.ts",
+          line: 1,
+          severity: "Warning",
+          confidence: "High",
+          message: "Both present.",
+          suggestion: {
+            path: "src/a.ts",
+            startLine: 1,
+            endLine: 1,
+            replacement: "IGNORED",
+          },
+          fix: {
+            edits: [
+              { path: "src/a.ts", startLine: 2, endLine: 2, replacement: "A2" },
+            ],
+          },
+        } satisfies JulesReviewComment,
+      ]
+    );
+
+    expect(result.files.get("src/a.ts")).toBe("a1\nA2\n");
+    expect(result.applied).toEqual([
+      { file: "src/a.ts", startLine: 2, endLine: 2 },
+    ]);
+  });
 });

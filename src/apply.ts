@@ -11,7 +11,8 @@ export interface SkippedSuggestion extends AppliedSuggestion {
     | "missing file"
     | "invalid range"
     | "no structured replacement"
-    | "overlapping range";
+    | "overlapping range"
+    | "incomplete fix";
 }
 
 export interface ApplyResult {
@@ -27,6 +28,13 @@ interface NormalizedSuggestion {
   replacement?: string;
 }
 
+interface AcceptedEdit {
+  file: string;
+  startLine: number;
+  endLine: number;
+  replacement: string;
+}
+
 export function applyStructuredSuggestions(
   files: Map<string, string>,
   comments: Array<ReviewComment | JulesReviewComment>
@@ -34,64 +42,125 @@ export function applyStructuredSuggestions(
   const resultFiles = new Map(files);
   const applied: AppliedSuggestion[] = [];
   const skipped: SkippedSuggestion[] = [];
-  const appliedRanges = new Map<string, AppliedSuggestion[]>();
-  // Apply each file's suggestions from bottom to top so replacements that add or
-  // remove lines cannot shift the original line numbers of suggestions above.
-  const sortedSuggestions = comments
-    .map((comment) => normalizeSuggestion(comment))
-    .sort(compareSuggestionsForApply);
+  // Ranges claimed by accepted edits, per file, so a later group cannot edit a
+  // range that overlaps one an earlier accepted group already owns.
+  const claimed = new Map<string, AppliedSuggestion[]>();
+  const acceptedEdits: AcceptedEdit[] = [];
 
-  for (const suggestion of sortedSuggestions) {
-    const skipBase = {
-      file: suggestion.file,
-      startLine: suggestion.startLine,
-      endLine: suggestion.endLine,
-    };
+  const lineCountOf = (file: string): number | undefined => {
+    const content = files.get(file);
+    return content === undefined
+      ? undefined
+      : splitPreservingFinalNewline(content).bodyLines.length;
+  };
 
-    const content = resultFiles.get(suggestion.file);
-    if (content === undefined) {
-      skipped.push({ ...skipBase, reason: "missing file" });
-      continue;
-    }
-    if (suggestion.replacement === undefined) {
-      skipped.push({ ...skipBase, reason: "no structured replacement" });
-      continue;
-    }
+  const rangeOf = (edit: NormalizedSuggestion): AppliedSuggestion => ({
+    file: edit.file,
+    startLine: edit.startLine,
+    endLine: edit.endLine,
+  });
+
+  const reasonFor = (
+    edit: NormalizedSuggestion,
+    groupEdits: NormalizedSuggestion[]
+  ): SkippedSuggestion["reason"] | undefined => {
+    if (!resultFiles.has(edit.file)) return "missing file";
+    if (edit.replacement === undefined) return "no structured replacement";
+    const lineCount = lineCountOf(edit.file);
     if (
-      suggestion.startLine < 1 ||
-      suggestion.endLine < suggestion.startLine ||
-      suggestion.endLine > splitPreservingFinalNewline(content).bodyLines.length
+      lineCount === undefined ||
+      edit.startLine < 1 ||
+      edit.endLine < edit.startLine ||
+      edit.endLine > lineCount
     ) {
-      skipped.push({ ...skipBase, reason: "invalid range" });
-      continue;
+      return "invalid range";
     }
-    if (overlaps(appliedRanges.get(suggestion.file) || [], suggestion)) {
-      skipped.push({ ...skipBase, reason: "overlapping range" });
-      continue;
+    if (overlaps(claimed.get(edit.file) || [], rangeOf(edit))) {
+      return "overlapping range";
     }
-
-    resultFiles.set(
-      suggestion.file,
-      replaceLines(
-        content,
-        suggestion.startLine,
-        suggestion.endLine,
-        suggestion.replacement
-      )
+    const clashesWithSibling = groupEdits.some(
+      (other) =>
+        other !== edit &&
+        other.file === edit.file &&
+        other.startLine <= edit.endLine &&
+        other.endLine >= edit.startLine
     );
-    const appliedSuggestion = {
-      file: suggestion.file,
-      startLine: suggestion.startLine,
-      endLine: suggestion.endLine,
-    };
-    applied.push(appliedSuggestion);
-    appliedRanges.set(suggestion.file, [
-      ...(appliedRanges.get(suggestion.file) || []),
-      appliedSuggestion,
-    ]);
+    if (clashesWithSibling) return "overlapping range";
+    return undefined;
+  };
+
+  // One group per comment: a multi-edit `fix` is applied transactionally
+  // (all-or-nothing), while a single suggestion/legacy replacement is a group of
+  // one — preserving the original single-suggestion behaviour.
+  for (const comment of comments) {
+    const groupEdits = normalizeComment(comment);
+    if (groupEdits.length === 0) continue;
+    const reasons = groupEdits.map((edit) => reasonFor(edit, groupEdits));
+    if (reasons.some((reason) => reason !== undefined)) {
+      groupEdits.forEach((edit, index) =>
+        skipped.push({
+          ...rangeOf(edit),
+          reason: reasons[index] ?? "incomplete fix",
+        })
+      );
+      continue;
+    }
+    for (const edit of groupEdits) {
+      if (edit.replacement === undefined) continue;
+      claimed.set(edit.file, [
+        ...(claimed.get(edit.file) || []),
+        rangeOf(edit),
+      ]);
+      acceptedEdits.push({
+        file: edit.file,
+        startLine: edit.startLine,
+        endLine: edit.endLine,
+        replacement: edit.replacement,
+      });
+    }
+  }
+
+  // Apply accepted edits bottom-to-top within each file so lower edits never
+  // shift the line numbers of higher ones; validation guarantees they do not
+  // overlap.
+  const editsByFile = new Map<string, AcceptedEdit[]>();
+  for (const edit of acceptedEdits) {
+    editsByFile.set(edit.file, [...(editsByFile.get(edit.file) || []), edit]);
+  }
+  for (const file of [...editsByFile.keys()].sort()) {
+    const edits = editsByFile.get(file) || [];
+    edits.sort((a, b) => b.startLine - a.startLine || a.endLine - b.endLine);
+    for (const edit of edits) {
+      const content = resultFiles.get(file);
+      if (content === undefined) continue;
+      resultFiles.set(
+        file,
+        replaceLines(content, edit.startLine, edit.endLine, edit.replacement)
+      );
+      applied.push({ file, startLine: edit.startLine, endLine: edit.endLine });
+    }
   }
 
   return { files: resultFiles, applied, skipped };
+}
+
+function normalizeComment(
+  comment: ReviewComment | JulesReviewComment
+): NormalizedSuggestion[] {
+  if (
+    "fix" in comment &&
+    comment.fix &&
+    Array.isArray(comment.fix.edits) &&
+    comment.fix.edits.length > 0
+  ) {
+    return comment.fix.edits.map((edit) => ({
+      file: edit.path,
+      startLine: edit.startLine,
+      endLine: edit.endLine,
+      replacement: edit.replacement,
+    }));
+  }
+  return [normalizeSuggestion(comment)];
 }
 
 export function validateApplyAllHead(
@@ -170,13 +239,4 @@ function overlaps(
     (existing) =>
       next.startLine <= existing.endLine && next.endLine >= existing.startLine
   );
-}
-
-function compareSuggestionsForApply(
-  left: NormalizedSuggestion,
-  right: NormalizedSuggestion
-): number {
-  const fileOrder = left.file.localeCompare(right.file);
-  if (fileOrder !== 0) return fileOrder;
-  return right.startLine - left.startLine || left.endLine - right.endLine;
 }

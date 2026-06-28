@@ -76,6 +76,7 @@ export function validateJulesReview(
         errors,
         `comments[${index}].suggestion`
       );
+      validateFix(item.fix, errors, `comments[${index}].fix`);
     });
   }
 
@@ -224,6 +225,22 @@ function validateSuggestion(
     errors.push(`${label}.endLine must be greater than or equal to startLine`);
   }
   requireStringValue(suggestion, "replacement", errors, `${label}.`);
+}
+
+function validateFix(value: unknown, errors: string[], label: string): void {
+  if (value === undefined) return;
+  const fix = asRecord(value, errors, label);
+  if (!fix) return;
+  if (!Array.isArray(fix.edits)) {
+    errors.push(`${label}.edits must be an array`);
+    return;
+  }
+  if (fix.edits.length === 0) {
+    errors.push(`${label}.edits must be a non-empty array`);
+  }
+  fix.edits.forEach((edit, index) =>
+    validateSuggestion(edit, errors, `${label}.edits[${index}]`)
+  );
 }
 
 function asRecord(

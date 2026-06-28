@@ -161,6 +161,7 @@ inside the object):
 - \`comments\`: \`[]\` when there are no findings.
 - \`sourceFindingIds\`: analyzer finding ids that support the comment, or omit when the finding is purely from code review.
 - \`suggestion\`: include only when the fix can be applied mechanically to the changed line range. Also mirror the same replacement in a GitHub \`\`\`suggestion fence inside \`message\` when possible. Omit this field for broad or uncertain fixes.
+- \`fix\`: optional machine-applicable change spanning MULTIPLE ranges or files. Provide an edits array of {path, startLine, endLine, replacement} objects; the runner applies every edit atomically (all-or-nothing). Use \`suggestion\` for a single-range inline fix and \`fix\` when one range cannot express the change; omit both when unsure.
 
 # Example reply (the ONLY shape your reply may take)
 For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }\`:

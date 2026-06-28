@@ -105,6 +105,11 @@ export interface ReviewComment {
   message: string;
   promptForAgents: string;
   suggestedReplacement?: string;
+  /**
+   * Optional multi-location fix carried from a structured review (see
+   * StructuredFix). apply.ts prefers this over suggestion/suggestedReplacement.
+   */
+  fix?: StructuredFix;
 }
 
 export interface ReviewResult {

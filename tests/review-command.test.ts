@@ -319,6 +319,57 @@ maxi-review-7-b.json
     expect(plan.commitMessage).toBe("Apply 1 Maxi suggestion");
   });
 
+  it("builds an apply-all plan from a multi-location fix", () => {
+    const plan = buildApplyAllPlan({
+      artifact: {
+        schema: "maxi.review.v1.review-artifact",
+        headSha: "head-a",
+        validatedReview: {
+          schema: "maxi.review.v1.jules-review",
+          summary: "s",
+          verdict: "comment",
+          resolvedCommentIds: [],
+          comments: [
+            {
+              id: "c1",
+              path: "src/a.ts",
+              line: 1,
+              severity: "Warning",
+              confidence: "High",
+              message: "Multi-file fix.",
+              fix: {
+                edits: [
+                  {
+                    path: "src/a.ts",
+                    startLine: 1,
+                    endLine: 1,
+                    replacement: "A1",
+                  },
+                  {
+                    path: "src/b.ts",
+                    startLine: 1,
+                    endLine: 1,
+                    replacement: "B1",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      files: new Map([
+        ["src/a.ts", "a0\n"],
+        ["src/b.ts", "b0\n"],
+      ]),
+      expectedHeadSha: "head-a",
+      currentHeadSha: "head-a",
+    });
+
+    expect(plan.ok).toBe(true);
+    expect(plan.result?.files.get("src/a.ts")).toBe("A1\n");
+    expect(plan.result?.files.get("src/b.ts")).toBe("B1\n");
+  });
+
   it("rejects apply-all plans for stale heads", () => {
     const plan = buildApplyAllPlan({
       artifact: { headSha: "head-a", validatedReview: { comments: [] } },

@@ -281,7 +281,7 @@ async function runApplyAllCommand(
   }
 
   const comments = artifactComments(artifact);
-  const paths = [...new Set(comments.map((comment) => commentPath(comment)))];
+  const paths = [...new Set(comments.flatMap((comment) => commentPaths(comment)))];
   const files = await deps.readFiles({
     owner: context.owner,
     repo: context.repo,
@@ -407,10 +407,15 @@ async function latestReviewArtifact(
   return null;
 }
 
-function commentPath(comment: ReviewComment | JulesReviewComment): string {
-  return "suggestion" in comment && comment.suggestion
-    ? comment.suggestion.path
-    : (comment as ReviewComment).file;
+function commentPaths(comment: ReviewComment | JulesReviewComment): string[] {
+  if ("fix" in comment && comment.fix && comment.fix.edits.length > 0) {
+    return comment.fix.edits.map((edit) => edit.path);
+  }
+  if ("suggestion" in comment && comment.suggestion) {
+    return [comment.suggestion.path];
+  }
+  const legacy = comment as ReviewComment;
+  return legacy.file ? [legacy.file] : [];
 }
 
 function changedFilesOnly(

@@ -309,4 +309,61 @@ describe("applyStructuredSuggestions", () => {
       { file: "src/a.ts", startLine: 2, endLine: 2 },
     ]);
   });
+
+  it("applies a fix carried on a legacy review comment shape", () => {
+    const result = applyStructuredSuggestions(
+      new Map([["src/a.ts", "a1\na2\n"]]),
+      [
+        {
+          ...baseComment,
+          file: "src/a.ts",
+          fix: {
+            edits: [
+              { path: "src/a.ts", startLine: 1, endLine: 1, replacement: "A1" },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(result.files.get("src/a.ts")).toBe("A1\na2\n");
+    expect(result.applied).toEqual([
+      { file: "src/a.ts", startLine: 1, endLine: 1 },
+    ]);
+  });
+
+  it("gives overlap precedence to the bottom-most single suggestion", () => {
+    const result = applyStructuredSuggestions(
+      new Map([["src/a.ts", "a1\na2\na3\n"]]),
+      [
+        {
+          ...baseComment,
+          file: "src/a.ts",
+          startLine: 1,
+          endLine: 2,
+          suggestedReplacement: "TOP",
+        },
+        {
+          ...baseComment,
+          file: "src/a.ts",
+          startLine: 2,
+          endLine: 3,
+          suggestedReplacement: "BOTTOM",
+        },
+      ]
+    );
+
+    expect(result.files.get("src/a.ts")).toBe("a1\nBOTTOM\n");
+    expect(result.applied).toEqual([
+      { file: "src/a.ts", startLine: 2, endLine: 3 },
+    ]);
+    expect(result.skipped).toEqual([
+      {
+        file: "src/a.ts",
+        startLine: 1,
+        endLine: 2,
+        reason: "overlapping range",
+      },
+    ]);
+  });
 });

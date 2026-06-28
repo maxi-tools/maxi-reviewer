@@ -42519,6 +42519,7 @@ function convertStructuredReview(review) {
             message: comment.message,
             promptForAgents: comment.promptForAgents ?? "",
             suggestedReplacement: comment.suggestion?.replacement,
+            fix: comment.fix,
         })),
     };
 }
@@ -44049,11 +44050,17 @@ function applyStructuredSuggestions(files, comments) {
     // range that overlaps one an earlier accepted group already owns.
     const claimed = new Map();
     const acceptedEdits = [];
+    const lineCountCache = new Map();
     const lineCountOf = (file) => {
+        const cached = lineCountCache.get(file);
+        if (cached !== undefined)
+            return cached;
         const content = files.get(file);
-        return content === undefined
-            ? undefined
-            : splitPreservingFinalNewline(content).bodyLines.length;
+        if (content === undefined)
+            return undefined;
+        const count = splitPreservingFinalNewline(content).bodyLines.length;
+        lineCountCache.set(file, count);
+        return count;
     };
     const rangeOf = (edit) => ({
         file: edit.file,
@@ -44086,10 +44093,12 @@ function applyStructuredSuggestions(files, comments) {
     // One group per comment: a multi-edit `fix` is applied transactionally
     // (all-or-nothing), while a single suggestion/legacy replacement is a group of
     // one — preserving the original single-suggestion behaviour.
-    for (const comment of comments) {
-        const groupEdits = normalizeComment(comment);
-        if (groupEdits.length === 0)
-            continue;
+    const groups = comments
+        .map((comment) => normalizeComment(comment))
+        .filter((edits) => edits.length > 0)
+        .map((edits) => ({ edits, lead: [...edits].sort(compareEdits)[0] }))
+        .sort((left, right) => compareEdits(left.lead, right.lead));
+    for (const { edits: groupEdits } of groups) {
         const reasons = groupEdits.map((edit) => reasonFor(edit, groupEdits));
         if (reasons.some((reason) => reason !== undefined)) {
             groupEdits.forEach((edit, index) => skipped.push({
@@ -44138,7 +44147,9 @@ function normalizeComment(comment) {
         comment.fix &&
         Array.isArray(comment.fix.edits) &&
         comment.fix.edits.length > 0) {
-        return comment.fix.edits.map((edit) => ({
+        return comment.fix.edits
+            .filter((edit) => edit !== null && typeof edit === "object")
+            .map((edit) => ({
             file: edit.path,
             startLine: edit.startLine,
             endLine: edit.endLine,
@@ -44196,6 +44207,12 @@ function splitPreservingFinalNewline(content) {
 }
 function overlaps(applied, next) {
     return applied.some((existing) => next.startLine <= existing.endLine && next.endLine >= existing.startLine);
+}
+function compareEdits(left, right) {
+    const fileOrder = left.file.localeCompare(right.file);
+    if (fileOrder !== 0)
+        return fileOrder;
+    return right.startLine - left.startLine || left.endLine - right.endLine;
 }
 
 ;// CONCATENATED MODULE: ./src/hands-on-fix.ts
@@ -44383,7 +44400,7 @@ async function runApplyAllCommand(deps, context, pr, artifact) {
         return;
     }
     const comments = artifactComments(artifact);
-    const paths = [...new Set(comments.map((comment) => commentPath(comment)))];
+    const paths = [...new Set(comments.flatMap((comment) => commentPaths(comment)))];
     const files = await deps.readFiles({
         owner: context.owner,
         repo: context.repo,
@@ -44476,10 +44493,15 @@ async function latestReviewArtifact(deps, owner, repo, issueNumber) {
     }
     return null;
 }
-function commentPath(comment) {
-    return "suggestion" in comment && comment.suggestion
-        ? comment.suggestion.path
-        : comment.file;
+function commentPaths(comment) {
+    if ("fix" in comment && comment.fix && comment.fix.edits.length > 0) {
+        return comment.fix.edits.map((edit) => edit.path);
+    }
+    if ("suggestion" in comment && comment.suggestion) {
+        return [comment.suggestion.path];
+    }
+    const legacy = comment;
+    return legacy.file ? [legacy.file] : [];
 }
 function changedFilesOnly(before, after) {
     return new Map([...after.entries()].filter(([path, content]) => before.get(path) !== content));

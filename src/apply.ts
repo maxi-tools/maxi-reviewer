@@ -47,11 +47,15 @@ export function applyStructuredSuggestions(
   const claimed = new Map<string, AppliedSuggestion[]>();
   const acceptedEdits: AcceptedEdit[] = [];
 
+  const lineCountCache = new Map<string, number>();
   const lineCountOf = (file: string): number | undefined => {
+    const cached = lineCountCache.get(file);
+    if (cached !== undefined) return cached;
     const content = files.get(file);
-    return content === undefined
-      ? undefined
-      : splitPreservingFinalNewline(content).bodyLines.length;
+    if (content === undefined) return undefined;
+    const count = splitPreservingFinalNewline(content).bodyLines.length;
+    lineCountCache.set(file, count);
+    return count;
   };
 
   const rangeOf = (edit: NormalizedSuggestion): AppliedSuggestion => ({
@@ -92,9 +96,13 @@ export function applyStructuredSuggestions(
   // One group per comment: a multi-edit `fix` is applied transactionally
   // (all-or-nothing), while a single suggestion/legacy replacement is a group of
   // one — preserving the original single-suggestion behaviour.
-  for (const comment of comments) {
-    const groupEdits = normalizeComment(comment);
-    if (groupEdits.length === 0) continue;
+  const groups = comments
+    .map((comment) => normalizeComment(comment))
+    .filter((edits) => edits.length > 0)
+    .map((edits) => ({ edits, lead: [...edits].sort(compareEdits)[0] }))
+    .sort((left, right) => compareEdits(left.lead, right.lead));
+
+  for (const { edits: groupEdits } of groups) {
     const reasons = groupEdits.map((edit) => reasonFor(edit, groupEdits));
     if (reasons.some((reason) => reason !== undefined)) {
       groupEdits.forEach((edit, index) =>
@@ -153,12 +161,14 @@ function normalizeComment(
     Array.isArray(comment.fix.edits) &&
     comment.fix.edits.length > 0
   ) {
-    return comment.fix.edits.map((edit) => ({
-      file: edit.path,
-      startLine: edit.startLine,
-      endLine: edit.endLine,
-      replacement: edit.replacement,
-    }));
+    return comment.fix.edits
+      .filter((edit) => edit !== null && typeof edit === "object")
+      .map((edit) => ({
+        file: edit.path,
+        startLine: edit.startLine,
+        endLine: edit.endLine,
+        replacement: edit.replacement,
+      }));
   }
   return [normalizeSuggestion(comment)];
 }
@@ -239,4 +249,13 @@ function overlaps(
     (existing) =>
       next.startLine <= existing.endLine && next.endLine >= existing.startLine
   );
+}
+
+function compareEdits(
+  left: NormalizedSuggestion,
+  right: NormalizedSuggestion
+): number {
+  const fileOrder = left.file.localeCompare(right.file);
+  if (fileOrder !== 0) return fileOrder;
+  return right.startLine - left.startLine || left.endLine - right.endLine;
 }

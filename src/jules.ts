@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import { jules } from "@google/jules-sdk";
-import { ReviewResult } from "./types.js";
+import { ReviewResult, StructuredFix } from "./types.js";
 import {
   buildFormatRepairPrompt,
   buildJsonRepairPrompt,
@@ -484,6 +484,7 @@ function convertStructuredReview(review: {
       endLine?: number;
       replacement: string;
     };
+    fix?: StructuredFix;
   }>;
 }): ReviewResult {
   return {
@@ -500,6 +501,7 @@ function convertStructuredReview(review: {
       message: comment.message,
       promptForAgents: comment.promptForAgents ?? "",
       suggestedReplacement: comment.suggestion?.replacement,
+      fix: comment.fix,
     })),
   };
 }

@@ -24,8 +24,14 @@ import {
   recordReviewArtifactComment,
   listReviewArtifactComments,
 } from "./github.js";
-import { runJulesReview, wrapPermissionError } from "./jules.js";
+import {
+  runJulesReview,
+  wrapPermissionError,
+  RunJulesReviewOptions,
+} from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
+import { createGithubRetrievalProvider } from "./retrieval.js";
+import { makeNonce } from "./untrusted.js";
 import { buildChangedFileContext } from "./context-window.js";
 import {
   DEFAULT_GENERATED_GLOBS,
@@ -42,6 +48,7 @@ import { validateReviewArtifact } from "./schema.js";
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
 const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
+const RETRIEVAL_MAX_STEPS = 4;
 const execFileAsync = promisify(execFile);
 
 interface ArtifactUploader {
@@ -110,13 +117,7 @@ export interface ReviewPrDeps {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     source: any,
     timeoutMinutes: number,
-    options?: {
-      verificationContext?: {
-        files: Map<string, string>;
-        changedLines: Map<string, Set<number>>;
-      };
-      previousSessionId?: string;
-    }
+    options?: RunJulesReviewOptions
   ) => Promise<JulesReviewRunResult>;
   submitReview: typeof submitReview;
   resolveThreads: typeof resolveThreads;
@@ -166,6 +167,9 @@ export async function runReviewPr(
   const extraInstructions = core.getInput("extra_instructions");
   const rulesFilePath = core.getInput("rules_file");
   const analyzerMode = core.getInput("analyzer_mode") || "auto";
+  const retrievalMode = (
+    core.getInput("retrieval_mode") || "off"
+  ).toLowerCase();
   const analyzerOutputPaths = {
     opengrepJson: core.getInput("opengrep_json") || undefined,
     opengrepSarif: core.getInput("opengrep_sarif") || undefined,
@@ -299,7 +303,10 @@ export async function runReviewPr(
     }
     const { text: diffText, truncatedNote } = truncateDiff(reviewDiff, 80_000);
 
+    const nonce = makeNonce();
     const prompt = deps.buildReviewPrompt({
+      nonce,
+      retrievalMode: retrievalMode === "auto",
       repoFullName: `${owner}/${repo}`,
       prNumber,
       prTitle: pr.title || "",
@@ -329,6 +336,19 @@ export async function runReviewPr(
       prNumber
     );
     const julesOptions = buildJulesReviewOptions(context);
+    if (retrievalMode === "auto") {
+      julesOptions.retrieval = {
+        provider: createGithubRetrievalProvider({
+          octokit,
+          owner,
+          repo,
+          headSha,
+          seedFiles: context.files,
+        }),
+        maxSteps: RETRIEVAL_MAX_STEPS,
+        nonce,
+      };
+    }
     if (previousSessionId) {
       julesOptions.previousSessionId = previousSessionId;
     }
@@ -647,13 +667,9 @@ async function loadHeadFiles(
   return files;
 }
 
-function buildJulesReviewOptions(context: PullRequestContext): {
-  verificationContext?: {
-    files: Map<string, string>;
-    changedLines: Map<string, Set<number>>;
-  };
-  previousSessionId?: string;
-} {
+function buildJulesReviewOptions(
+  context: PullRequestContext
+): RunJulesReviewOptions {
   if (!context.files || !context.changedLines) return {};
   return {
     verificationContext: {

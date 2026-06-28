@@ -82,6 +82,45 @@ export function validateJulesReview(
   return { ok: errors.length === 0, value: value as JulesReview, errors };
 }
 
+export function validateRetrievalRequest(
+  value: unknown
+): ValidationResult<unknown> {
+  const errors: string[] = [];
+  const record = asRecord(value, errors, "retrieval-request");
+  if (!record) return { ok: false, errors };
+
+  requireString(record, "schema", "maxi.review.v1.retrieval-request", errors);
+  if (!Array.isArray(record.requests)) {
+    errors.push("requests must be an array");
+    return { ok: false, errors };
+  }
+  if (record.requests.length === 0) {
+    errors.push("requests must be a non-empty array");
+  }
+  record.requests.forEach((entry, index) => {
+    const item = asRecord(entry, errors, "requests[" + index + "]");
+    if (!item) return;
+    const prefix = "requests[" + index + "].";
+    if (item.tool === "read_file") {
+      requireString(item, "path", undefined, errors, prefix);
+      optionalPositiveInt(item, "startLine", errors, prefix);
+      optionalPositiveInt(item, "endLine", errors, prefix);
+    } else if (item.tool === "grep") {
+      requireString(item, "pattern", undefined, errors, prefix);
+      optionalStringField(item, "pathGlob", errors, prefix);
+    } else if (item.tool === "list_references") {
+      requireString(item, "symbol", undefined, errors, prefix);
+      optionalStringField(item, "pathGlob", errors, prefix);
+    } else {
+      errors.push(
+        prefix + "tool must be one of read_file, grep, list_references"
+      );
+    }
+  });
+
+  return { ok: errors.length === 0, value, errors };
+}
+
 export function validateReviewArtifact(
   value: unknown
 ): ValidationResult<ReviewArtifact> {
@@ -233,6 +272,17 @@ function optionalString(
 ): void {
   if (record[key] !== undefined && typeof record[key] !== "string") {
     errors.push(`${key} must be a string`);
+  }
+}
+
+function optionalStringField(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[],
+  prefix = ""
+): void {
+  if (record[key] !== undefined && typeof record[key] !== "string") {
+    errors.push(`${prefix}${key} must be a string`);
   }
 }
 

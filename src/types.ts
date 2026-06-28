@@ -52,6 +52,11 @@ export interface PromptArgs {
    * control flow the diff alone omits. Context only — not the review target.
    */
   changedFileContext?: ChangedFileContext[];
+  /**
+   * Paths of generated/vendored files excluded from the reviewed diff, so the
+   * model knows they changed but are intentionally not under review.
+   */
+  excludedGeneratedPaths?: string[];
 }
 
 export interface ReviewComment {

@@ -27,6 +27,12 @@ import {
 import { runJulesReview, wrapPermissionError } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { buildChangedFileContext } from "./context-window.js";
+import {
+  DEFAULT_GENERATED_GLOBS,
+  filterDiffByPaths,
+  matchesAnyGlob,
+  parseIgnoreGlobs,
+} from "./diff-filter.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
 import { parseOpengrepJson, parseOpengrepSarif } from "./analyzers/opengrep.js";
@@ -256,22 +262,42 @@ export async function runReviewPr(
       rulesFilePath,
     });
 
-    const analyzerFindings = await deps.runAnalyzers({
+    // Empty input → default generated-file globs; "none" → disable filtering;
+    // otherwise the input is the explicit override list.
+    const ignoreGlobsInput = core.getInput("review_ignore_globs").trim();
+    const ignoreGlobs =
+      ignoreGlobsInput.toLowerCase() === "none"
+        ? []
+        : ignoreGlobsInput
+          ? parseIgnoreGlobs(ignoreGlobsInput)
+          : DEFAULT_GENERATED_GLOBS;
+
+    const allAnalyzerFindings = await deps.runAnalyzers({
       changedFiles: context.changedFiles,
       diff: context.diff,
       analyzerMode,
       analyzerOutputPaths,
     });
+    // Drop findings on excluded generated files so they cannot seed comments.
+    const analyzerFindings = allAnalyzerFindings.filter(
+      (f) => !matchesAnyGlob(f.path, ignoreGlobs)
+    );
     const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
     const selectedRules =
       selectedRuleFiles.length > 0
         ? deps.loadSelectedRules(context.changedFiles)
         : "";
 
-    const { text: diffText, truncatedNote } = truncateDiff(
+    const { diff: reviewDiff, excludedPaths } = filterDiffByPaths(
       context.diff,
-      80_000
+      ignoreGlobs
     );
+    if (excludedPaths.length > 0) {
+      core.info(
+        `Excluded ${excludedPaths.length} generated file(s) from the reviewed diff: ${excludedPaths.join(", ")}`
+      );
+    }
+    const { text: diffText, truncatedNote } = truncateDiff(reviewDiff, 80_000);
 
     const prompt = deps.buildReviewPrompt({
       repoFullName: `${owner}/${repo}`,
@@ -285,6 +311,8 @@ export async function runReviewPr(
       analyzerFindings,
       rules: selectedRules || undefined,
       openThreads: context.openThreads,
+      excludedGeneratedPaths:
+        excludedPaths.length > 0 ? excludedPaths : undefined,
       changedFileContext: buildChangedFileContext(
         context.files ?? new Map(),
         // Derive from the (possibly truncated) diff the model actually sees, so
@@ -379,7 +407,9 @@ export async function runReviewPr(
       prNumber,
       headSha,
       finalBody,
-      newComments || []
+      // Never post comments on excluded generated files, even if the model or
+      // an analyzer produced one.
+      (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs))
     );
 
     const { state, description } = statusFromVerdict(verdict, failOn);

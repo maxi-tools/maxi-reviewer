@@ -12,6 +12,12 @@ import {
   VerificationContext,
   verifyJulesReview,
 } from "./verify-format.js";
+import {
+  formatRetrievalResults,
+  parseRetrievalRequest,
+  RetrievalProvider,
+  RetrievalResult,
+} from "./retrieval.js";
 
 interface JulesSession {
   id: string;
@@ -39,6 +45,16 @@ interface JulesSessionClient {
 export interface RunJulesReviewOptions {
   verificationContext?: VerificationContext;
   previousSessionId?: string;
+  /**
+   * Optional agentic retrieval loop. When set, the model may emit
+   * maxi.review.v1.retrieval-request objects before its verdict; each is
+   * fulfilled at the PR head and fed back nonce-fenced, bounded by maxSteps.
+   */
+  retrieval?: {
+    provider: RetrievalProvider;
+    maxSteps: number;
+    nonce: string;
+  };
 }
 
 export async function runJulesReview(
@@ -68,7 +84,7 @@ export async function runJulesReview(
     await waitUntilSessionReady(session);
   }
 
-  const reviewMessage = await pollForReview(
+  let reviewMessage = await pollForReview(
     session,
     timeoutMinutes * 60 * 1000,
     afterMessage
@@ -77,6 +93,15 @@ export async function runJulesReview(
 
   if (!reviewMessage) {
     return { reviewResult: null, sessionId: session.id };
+  }
+
+  if (options.retrieval) {
+    reviewMessage = await runRetrievalLoop({
+      session,
+      firstMessage: reviewMessage,
+      retrieval: options.retrieval,
+      timeoutMs: timeoutMinutes * 60 * 1000,
+    });
   }
 
   let latestReviewMessage = reviewMessage;
@@ -185,6 +210,63 @@ export async function runJulesReview(
     ...(rawResponses.length > 1 ? { rawResponses } : {}),
     ...(validationErrors.length > 0 ? { validationErrors } : {}),
   };
+}
+
+/**
+ * Drive the optional agentic retrieval loop. Starting from the model's first
+ * reply, while it asks for retrieval (a maxi.review.v1.retrieval-request) and
+ * budget remains, fulfil each request at the PR head and feed the results back
+ * nonce-fenced. Returns the first non-retrieval reply (the final review), or
+ * the last reply if the budget or session is exhausted.
+ */
+async function runRetrievalLoop(input: {
+  session: JulesSession;
+  firstMessage: string;
+  retrieval: { provider: RetrievalProvider; maxSteps: number; nonce: string };
+  timeoutMs: number;
+}): Promise<string> {
+  const { session, retrieval, timeoutMs } = input;
+  let message = input.firstMessage;
+  for (let step = 0; step < retrieval.maxSteps; step++) {
+    const request = parseRetrievalRequest(message);
+    if (!request) return message;
+    const roundsLeft = retrieval.maxSteps - step - 1;
+    core.info(
+      `Retrieval step ${step + 1}/${retrieval.maxSteps}: fulfilling ${request.requests.length} request(s); ${roundsLeft} round(s) left.`
+    );
+    const results: RetrievalResult[] = [];
+    for (const req of request.requests) {
+      try {
+        results.push(await retrieval.provider.fulfill(req));
+      } catch (err) {
+        results.push({ tool: req.tool, ok: false, error: errorMessage(err) });
+      }
+    }
+    await sendSessionMessage(
+      session,
+      formatRetrievalResults(retrieval.nonce, results, roundsLeft)
+    );
+    const next = await pollForReview(session, timeoutMs, message);
+    if (!next) {
+      core.warning(
+        "Retrieval loop: no agent reply after returning results; stopping."
+      );
+      return message;
+    }
+    message = next;
+  }
+  // Budget exhausted but the model is still requesting retrieval: nudge once
+  // for the final review so we don't return an unparseable request message.
+  if (parseRetrievalRequest(message)) {
+    core.info("Retrieval budget exhausted; requesting the final review.");
+    await sendSessionMessage(
+      session,
+      formatRetrievalResults(retrieval.nonce, [], 0)
+    );
+    const finalMessage = await pollForReview(session, timeoutMs, message);
+    if (finalMessage) return finalMessage;
+  }
+  return message;
 }
 
 async function startReviewSession(

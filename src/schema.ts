@@ -236,6 +236,17 @@ function optionalString(
   }
 }
 
+function optionalStringField(
+  record: Record<string, unknown>,
+  key: string,
+  errors: string[],
+  prefix = ""
+): void {
+  if (record[key] !== undefined && typeof record[key] !== "string") {
+    errors.push(`${prefix}${key} must be a string`);
+  }
+}
+
 function optionalStringArray(
   record: Record<string, unknown>,
   key: string,

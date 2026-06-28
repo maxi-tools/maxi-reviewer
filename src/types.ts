@@ -57,6 +57,17 @@ export interface PromptArgs {
    * model knows they changed but are intentionally not under review.
    */
   excludedGeneratedPaths?: string[];
+  /**
+   * Per-review nonce for untrusted fences. Supplied by the orchestrator so the
+   * agentic retrieval loop can fence its results with the same token the prompt
+   * uses. When omitted, the prompt builder generates its own.
+   */
+  nonce?: string;
+  /**
+   * When true, include instructions enabling the optional agentic retrieval
+   * step (read_file / grep / list_references at the PR head) before the verdict.
+   */
+  retrievalMode?: boolean;
 }
 
 export interface ReviewComment {

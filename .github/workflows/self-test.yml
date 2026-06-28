@@ -47,3 +47,4 @@ jobs:
           github_token: ${{ steps.app-token.outputs.token }}
           fail_on: blocking
           skip_drafts: false
+          retrieval_mode: auto

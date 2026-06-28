@@ -205,6 +205,19 @@ describe("createGithubRetrievalProvider", () => {
     expect(res.error).toContain("invalid regex");
   });
 
+  it("grep rejects a catastrophic-backtracking pattern", async () => {
+    const octokit = makeOctokit({ "src/a.ts": "x" });
+    const provider = createGithubRetrievalProvider({
+      octokit: octokit as never,
+      owner: "o",
+      repo: "r",
+      headSha: "HEAD",
+    });
+    const res = await provider.fulfill({ tool: "grep", pattern: "(a+)+" });
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("backtracking");
+  });
+
   it("list_references matches whole-word symbol usages", async () => {
     const octokit = makeOctokit({
       "src/a.ts": "fooBar();\n// fooBarBaz unrelated",

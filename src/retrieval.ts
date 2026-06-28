@@ -172,6 +172,16 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Heuristic guard against regex sources that can trigger catastrophic
+ * backtracking such as (a+)+, (a*)*, or (.*)+. A single such match cannot be
+ * interrupted by the wall-clock budget, so reject the pattern up front. The
+ * symbol path never hits this — it builds the regex from an escaped literal.
+ */
+function isUnsafeRegexSource(pattern: string): boolean {
+  return /[+*][)\]][+*{]/.test(pattern);
+}
+
 /** Minimal glob to RegExp supporting **, *, and ? against POSIX paths. */
 function globToRegExp(glob: string): RegExp {
   let out = "^";
@@ -393,6 +403,13 @@ export function createGithubRetrievalProvider(input: {
           return {
             ...echo,
             error: `pattern exceeds ${MAX_PATTERN_LENGTH} chars`,
+          };
+        }
+        if (isUnsafeRegexSource(request.pattern)) {
+          return {
+            ...echo,
+            error:
+              "pattern rejected: nested quantifiers can cause catastrophic backtracking; simplify it",
           };
         }
         let regex: RegExp;

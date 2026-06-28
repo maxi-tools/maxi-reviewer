@@ -236,4 +236,35 @@ describe("buildReviewPrompt", () => {
       prompt.indexOf("<<<BEGIN DIFF ")
     );
   });
+
+  it("lists excluded generated files when provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+ const a = 1;",
+      openThreads: [],
+      excludedGeneratedPaths: ["dist/index.js", "pnpm-lock.yaml"],
+    });
+
+    expect(prompt).toContain(
+      "# Generated files excluded from the diff (NOT under review)"
+    );
+    expect(prompt).toContain("- dist/index.js");
+    expect(prompt).toContain("- pnpm-lock.yaml");
+  });
+
+  it("omits the excluded-files note when none are provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+ x",
+      openThreads: [],
+    });
+
+    expect(prompt).not.toContain("Generated files excluded from the diff");
+  });
 });

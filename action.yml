@@ -65,6 +65,10 @@ inputs:
     description: "Optional path to CPD XML output to ingest."
     required: false
     default: ""
+  review_ignore_globs:
+    description: "Newline- or comma-separated globs for generated/vendored paths to drop from the reviewed diff so the diff budget is spent on source (e.g. a bundled action's dist/). Empty uses a sensible default set (dist/**, *.map, lockfiles, **/generated/**); set to 'none' to disable filtering."
+    required: false
+    default: ""
   command:
     description: "Maxi review command to run for workflow_dispatch, for example /maxi apply-all or /maxi fix <finding-id>."
     required: false

@@ -46,6 +46,7 @@ export function buildReviewPrompt(args: PromptArgs): string {
     rules,
     openThreads,
     changedFileContext,
+    excludedGeneratedPaths,
   } = args;
 
   // Per-review, unguessable boundary for untrusted blocks. Generated at review
@@ -265,6 +266,24 @@ ${untrusted(
 )}`
       : "";
 
+  // Generated/vendored files dropped from the diff. Path list only (capped), so
+  // the model knows they changed but understands they are not under review.
+  const EXCLUDED_NOTE_CAP = 20;
+  const excludedNote =
+    excludedGeneratedPaths && excludedGeneratedPaths.length > 0
+      ? `
+# Generated files excluded from the diff (NOT under review)
+${excludedGeneratedPaths.length} generated/vendored file(s) were omitted from the diff above to keep the review focused on source. Do not comment on them:
+${excludedGeneratedPaths
+  .slice(0, EXCLUDED_NOTE_CAP)
+  .map((p) => `- ${p}`)
+  .join("\n")}${
+          excludedGeneratedPaths.length > EXCLUDED_NOTE_CAP
+            ? `\n- …and ${excludedGeneratedPaths.length - EXCLUDED_NOTE_CAP} more`
+            : ""
+        }`
+      : "";
+
   // ── 3. The untrusted payload last, nonce-fenced ──────────────────────────
   const payload = `
 # Repository (trusted)
@@ -278,6 +297,7 @@ ${untrusted("PR_BODY", prBody || "(no description)")}
 
 # Incremental diff to review (UNTRUSTED data)
 ${diffTruncatedNote ? `NOTE: ${diffTruncatedNote}\n` : ""}${untrusted("DIFF", diff)}
+${excludedNote}
 ${threadsContext}`;
 
   const closer = `

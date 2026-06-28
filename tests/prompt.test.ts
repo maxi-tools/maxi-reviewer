@@ -361,3 +361,39 @@ describe("buildReviewPrompt", () => {
     expect(prompt).not.toContain("incremental review of only the latest push");
   });
 });
+
+describe("buildReviewPrompt CI signal", () => {
+  it("renders the CI signal nonce-fenced when provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+x",
+      openThreads: [],
+      ciSignal: {
+        schema: "maxi.review.v1.ci-signal",
+        checkRuns: [
+          { name: "build", status: "completed", conclusion: "failure" },
+        ],
+        truncated: false,
+      },
+    });
+    expect(prompt).toContain("# CI / test / coverage signal (UNTRUSTED data)");
+    expect(prompt).toContain("<<<BEGIN CI_SIGNAL ");
+    expect(prompt).toContain("maxi.review.v1.ci-signal");
+    expect(prompt).toContain("build");
+  });
+
+  it("omits the CI signal section when not provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+x",
+      openThreads: [],
+    });
+    expect(prompt).not.toContain("# CI / test / coverage signal");
+  });
+});

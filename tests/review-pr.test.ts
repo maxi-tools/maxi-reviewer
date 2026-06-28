@@ -121,6 +121,13 @@ describe("runReviewPr orchestration", () => {
         .mockReturnValue(["rules/typescript.md", "rules/markdown.md"]),
       loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
       runAnalyzers: vi.fn().mockResolvedValue(analyzerFindings),
+      fetchCiSignal: vi.fn().mockResolvedValue({
+        schema: "maxi.review.v1.ci-signal",
+        checkRuns: [
+          { name: "build", status: "completed", conclusion: "success" },
+        ],
+        truncated: false,
+      }),
       buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
       runJulesReview: vi.fn().mockResolvedValue({
         reviewResult: {
@@ -157,6 +164,14 @@ describe("runReviewPr orchestration", () => {
       expect.objectContaining({
         analyzerFindings,
         rules: "# TypeScript",
+      })
+    );
+    expect(deps.fetchCiSignal).toHaveBeenCalled();
+    expect(deps.buildReviewPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ciSignal: expect.objectContaining({
+          schema: "maxi.review.v1.ci-signal",
+        }),
       })
     );
     expect(deps.runJulesReview).toHaveBeenCalledWith(

@@ -8,6 +8,7 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import {
   AnalyzerFinding,
+  CiSignal,
   FailOn,
   LinkedIssue,
   OpenThread,
@@ -31,6 +32,7 @@ import {
   RunJulesReviewOptions,
 } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
+import { fetchCiSignal } from "./ci-signal.js";
 import { createGithubRetrievalProvider } from "./retrieval.js";
 import { fetchLinkedIssues, parseClosingIssueRefs } from "./linked-issues.js";
 import { makeNonce } from "./untrusted.js";
@@ -114,6 +116,16 @@ export interface ReviewPrDeps {
   selectRuleFiles: typeof selectRuleFiles;
   loadSelectedRules: typeof loadSelectedRules;
   runAnalyzers: (input: RunAnalyzerInput) => Promise<AnalyzerFinding[]>;
+  fetchCiSignal: (input: {
+    octokit: Octokit;
+    owner: string;
+    repo: string;
+    headSha: string;
+    ownStatusContext?: string;
+    mode?: string;
+    testReportPath?: string;
+    coverageSummaryPath?: string;
+  }) => Promise<CiSignal | undefined>;
   buildReviewPrompt: typeof buildReviewPrompt;
   runJulesReview: (
     apiKey: string,
@@ -137,6 +149,7 @@ const defaultDeps: ReviewPrDeps = {
   selectRuleFiles,
   loadSelectedRules,
   runAnalyzers,
+  fetchCiSignal,
   buildReviewPrompt,
   runJulesReview,
   submitReview,
@@ -174,6 +187,9 @@ export async function runReviewPr(
   const retrievalMode = (
     core.getInput("retrieval_mode") || "off"
   ).toLowerCase();
+  const ciSignalMode = (core.getInput("ci_signal") || "off").toLowerCase();
+  const testReportPath = core.getInput("test_report") || undefined;
+  const coverageSummaryPath = core.getInput("coverage_summary") || undefined;
   const analyzerOutputPaths = {
     opengrepJson: core.getInput("opengrep_json") || undefined,
     opengrepSarif: core.getInput("opengrep_sarif") || undefined,
@@ -318,10 +334,22 @@ export async function runReviewPr(
     }
     const { text: diffText, truncatedNote } = truncateDiff(reviewDiff, 80_000);
 
+    const ciSignal = await deps.fetchCiSignal({
+      octokit,
+      owner,
+      repo,
+      headSha,
+      ownStatusContext: statusContext,
+      mode: ciSignalMode,
+      testReportPath,
+      coverageSummaryPath,
+    });
+
     const nonce = makeNonce();
     const prompt = deps.buildReviewPrompt({
       nonce,
       retrievalMode: retrievalMode === "auto",
+      ciSignal,
       repoFullName: `${owner}/${repo}`,
       prNumber,
       prTitle: pr.title || "",

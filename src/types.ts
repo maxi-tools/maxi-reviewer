@@ -48,6 +48,36 @@ export interface LinkedIssue {
   truncated: boolean;
 }
 
+/**
+ * CI / test / coverage evidence for the PR head, fetched from GitHub check-runs
+ * and/or supplied report files. Grounds the missing-tests judgement and
+ * the external-tool-compatibility rule (which already asks for an observed
+ * CI/runtime failure) in what CI actually reported. All fields are tool-derived
+ * and rendered as nonce-fenced UNTRUSTED data.
+ */
+export interface CiCheckRun {
+  name: string;
+  /** queued | in_progress | completed */
+  status: string;
+  /** success | failure | neutral | cancelled | timed_out | action_required | skipped */
+  conclusion?: string;
+  /** Check-run output title/summary, capped. */
+  summary?: string;
+  detailsUrl?: string;
+}
+
+export interface CiSignal {
+  schema: "maxi.review.v1.ci-signal";
+  /** Check-runs at the PR head (this review check is excluded). */
+  checkRuns: CiCheckRun[];
+  /** Optional test report text (e.g. a JUnit summary) supplied via input. */
+  testReport?: string;
+  /** Optional coverage summary text (e.g. a coverage delta) supplied via input. */
+  coverageSummary?: string;
+  /** True when any check summary or report text was truncated to its cap. */
+  truncated: boolean;
+}
+
 export interface PromptArgs {
   repoFullName: string;
   prNumber: number;
@@ -58,6 +88,12 @@ export interface PromptArgs {
   extraInstructions?: string;
   rulesFromFile?: string;
   analyzerFindings?: AnalyzerFinding[];
+  /**
+   * CI / test / coverage evidence for the PR head. Rendered as nonce-fenced
+   * UNTRUSTED data so the model can ground missing-tests and external-tool
+   * findings in what CI observed instead of speculation.
+   */
+  ciSignal?: CiSignal;
   rules?: string;
   openThreads: OpenThread[];
   /**

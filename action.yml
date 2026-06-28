@@ -11,7 +11,7 @@ inputs:
     description: "Jules API key (create one at jules.google.com)."
     required: true
   github_token:
-    description: "GitHub token with pull-requests:write, statuses:write, and issues:read (the review fetches linked-issue acceptance criteria) for reviews, plus contents:write and issues:write for /maxi commands. Usually the default GITHUB_TOKEN secret."
+    description: "GitHub token with pull-requests:write, statuses:write, issues:read (the review fetches linked-issue acceptance criteria), and checks:read (when ci_signal is enabled) for reviews, plus contents:write and issues:write for /maxi commands. Usually the default GITHUB_TOKEN secret."
     required: true
   fail_on:
     description: "When to fail the commit status check: never | blocking | any. Default blocking."
@@ -73,6 +73,18 @@ inputs:
     description: Agentic retrieval loop. auto lets the reviewer request read_file, grep, and list_references at the PR head before the verdict; off disables it.
     required: false
     default: 'off'
+  ci_signal:
+    description: "Ingest CI evidence into the review. auto fetches the PR head check-runs (requires checks:read on github_token); off skips them. Supplied test_report/coverage_summary files are ingested regardless."
+    required: false
+    default: "off"
+  test_report:
+    description: "Optional path to a test report file (e.g. a JUnit or text summary) to ingest as CI evidence for the review."
+    required: false
+    default: ""
+  coverage_summary:
+    description: "Optional path to a coverage summary file (e.g. a coverage delta report) to ingest as CI evidence for the review."
+    required: false
+    default: ""
   command:
     description: "Maxi review command to run for workflow_dispatch, for example /maxi apply-all or /maxi fix <finding-id>."
     required: false

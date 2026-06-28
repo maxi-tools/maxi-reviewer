@@ -33,6 +33,7 @@ import {
 } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { fetchCiSignal } from "./ci-signal.js";
+import { enrichCommentsWithAnchors } from "./anchor.js";
 import { createGithubRetrievalProvider } from "./retrieval.js";
 import { fetchLinkedIssues, parseClosingIssueRefs } from "./linked-issues.js";
 import { makeNonce } from "./untrusted.js";
@@ -406,6 +407,16 @@ export async function runReviewPr(
         timeoutMinutes,
         julesOptions
       );
+
+    // Attach drift-tolerant anchors so consumers can re-locate findings after a
+    // rebase or force-push moves the line (issue #16). Additive: a no-op for
+    // comments whose head content is unavailable.
+    if (reviewResult?.newComments && reviewResult.newComments.length > 0) {
+      enrichCommentsWithAnchors(
+        reviewResult.newComments,
+        context.files ?? new Map()
+      );
+    }
 
     const artifactName = `maxi-review-${prNumber}-${headSha}.json`;
     const artifactContent = buildReviewArtifact({

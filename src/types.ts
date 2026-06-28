@@ -105,6 +105,11 @@ export interface ReviewComment {
   message: string;
   promptForAgents: string;
   suggestedReplacement?: string;
+  /**
+   * Optional multi-location fix carried from a structured review (see
+   * StructuredFix). apply.ts prefers this over suggestion/suggestedReplacement.
+   */
+  fix?: StructuredFix;
 }
 
 export interface ReviewResult {
@@ -139,6 +144,14 @@ export interface StructuredSuggestion {
   replacement: string;
 }
 
+export interface StructuredFix {
+  /**
+   * Edits across one or more files that together make up a single fix. apply.ts
+   * applies them transactionally: either every edit lands or none do.
+   */
+  edits: StructuredSuggestion[];
+}
+
 export interface JulesReviewComment {
   id: string;
   path: string;
@@ -151,6 +164,13 @@ export interface JulesReviewComment {
   promptForAgents?: string;
   sourceFindingIds?: string[];
   suggestion?: StructuredSuggestion;
+  /**
+   * Optional machine-applicable multi-location fix: one or more edits, possibly
+   * across files, applied transactionally. Use when the change cannot be
+   * expressed as the single-range suggestion. The suggestion field is still
+   * used for the GitHub inline-suggestion UX.
+   */
+  fix?: StructuredFix;
 }
 
 export interface JulesReview {

@@ -131,6 +131,26 @@ export interface PromptArgs {
   incrementalReview?: boolean;
 }
 
+/**
+ * Drift-tolerant locator for a finding. The {file,line} pair drifts after a
+ * rebase or force-push; this lets a consumer re-resolve the target by the
+ * hashed content of the line(s) and the enclosing symbol when the line number
+ * no longer matches. Purely additive, emitted alongside line.
+ */
+export interface FindingAnchor {
+  schema: "maxi.review.v1.finding-anchor";
+  /** Line the anchor was computed at (the original, pre-drift location). */
+  line: number;
+  /** Number of lines the target spans (startLine..endLine inclusive). */
+  lineCount: number;
+  /** Hash of the normalized target line(s). */
+  lineHash: string;
+  /** Hash of the target plus surrounding context lines, to disambiguate. */
+  contextHash: string;
+  /** Enclosing definition name when detectable, for coarse relocation. */
+  symbol?: string;
+}
+
 export interface ReviewComment {
   file: string;
   line: number;
@@ -146,6 +166,11 @@ export interface ReviewComment {
    * StructuredFix). apply.ts prefers this over suggestion/suggestedReplacement.
    */
   fix?: StructuredFix;
+  /**
+   * Optional drift-tolerant anchor (content/symbol hash) so consumers can
+   * re-resolve this finding after a rebase or force-push moves the line.
+   */
+  anchor?: FindingAnchor;
 }
 
 export interface ReviewResult {

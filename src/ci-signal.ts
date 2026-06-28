@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { existsSync, readFileSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { CiCheckRun, CiSignal } from "./types.js";
 
 // Keep CI evidence bounded so it never dominates the prompt budget.
@@ -50,27 +50,51 @@ export interface FetchCiSignalInput {
   coverageSummaryPath?: string;
 }
 
-function readReport(
+async function readReport(
   path: string | undefined,
   label: string
-): { text?: string; truncated: boolean } {
+): Promise<{ text?: string; truncated: boolean }> {
   if (!path) return { truncated: false };
-  if (!existsSync(path)) {
-    core.warning("ci-signal: " + label + " file not found at " + path);
+  // Async fs (not existsSync + readFileSync) avoids blocking the event loop and
+  // the TOCTOU race between the existence check and the read. We read at most
+  // MAX_REPORT_CHARS+1 bytes via a file handle rather than the whole file, so a
+  // user-supplied path to a multi-gigabyte file cannot OOM the process.
+  let handle;
+  try {
+    handle = await open(path, "r");
+  } catch (err) {
+    const code = (err as { code?: string })?.code;
+    if (code === "ENOENT") {
+      core.warning("ci-signal: " + label + " file not found at " + path);
+    } else {
+      core.warning(
+        "ci-signal: failed to open " +
+          label +
+          " at " +
+          path +
+          ": " +
+          String(err)
+      );
+    }
     return { truncated: false };
   }
   try {
-    const raw = readFileSync(path, "utf8");
-    const truncated = raw.length > MAX_REPORT_CHARS;
-    return {
-      text: truncated ? raw.slice(0, MAX_REPORT_CHARS) : raw,
-      truncated,
-    };
+    // One extra byte so a file exactly at the cap is not falsely flagged.
+    const cap = MAX_REPORT_CHARS + 1;
+    const buffer = Buffer.alloc(cap);
+    const { bytesRead } = await handle.read(buffer, 0, cap, 0);
+    const truncated = bytesRead > MAX_REPORT_CHARS;
+    const text = buffer
+      .subarray(0, Math.min(bytesRead, MAX_REPORT_CHARS))
+      .toString("utf8");
+    return { text, truncated };
   } catch (err) {
     core.warning(
       "ci-signal: failed to read " + label + " at " + path + ": " + String(err)
     );
     return { truncated: false };
+  } finally {
+    await handle.close();
   }
 }
 
@@ -98,11 +122,22 @@ export async function fetchCiSignal(
       const own = input.ownStatusContext
         ? input.ownStatusContext.toLowerCase()
         : undefined;
+      const currentRunId = process.env.GITHUB_RUN_ID;
       for (const run of res.data.check_runs ?? []) {
         const name = (run.name ?? "").trim();
         if (!name) continue;
-        // Exclude this review own check so the model never reasons about its
-        // own pending/failed status, and to avoid a feedback loop.
+        // Exclude this workflow run own check-run (matched by run id in the
+        // details URL) and any check sharing this review status context, so the
+        // model never reasons about the review own pending/failed status, and to
+        // avoid a feedback loop. Check-run names rarely equal the status
+        // context, so the run-id match is the reliable guard.
+        if (
+          currentRunId &&
+          run.details_url &&
+          run.details_url.includes("/actions/runs/" + currentRunId)
+        ) {
+          continue;
+        }
         if (own && name.toLowerCase() === own) continue;
         const rawSummary = run.output?.summary ?? run.output?.title ?? "";
         const summaryTruncated = rawSummary.length > MAX_SUMMARY_CHARS;
@@ -125,8 +160,11 @@ export async function fetchCiSignal(
     }
   }
 
-  const testReport = readReport(input.testReportPath, "test_report");
-  const coverage = readReport(input.coverageSummaryPath, "coverage_summary");
+  const testReport = await readReport(input.testReportPath, "test_report");
+  const coverage = await readReport(
+    input.coverageSummaryPath,
+    "coverage_summary"
+  );
   if (testReport.truncated || coverage.truncated) truncated = true;
 
   if (checkRuns.length === 0 && !testReport.text && !coverage.text) {

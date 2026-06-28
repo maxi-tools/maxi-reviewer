@@ -147,7 +147,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | Input                | Default                         | Description                                                   |
 | -------------------- | ------------------------------- | ------------------------------------------------------------- |
 | `jules_api_key`      |                                 | Required Jules API key.                                       |
-| `github_token`       |                                 | Required GitHub token (App installation token preferred). Reviews also read linked issues, so the token needs issues:read; /maxi commands additionally need contents:write and issues:write. |
+| `github_token`       |                                 | Required GitHub token (App installation token preferred). Reviews also read linked issues, so the token needs issues:read; /maxi commands additionally need contents:write and issues:write. Enabling `ci_signal: auto` also needs checks:read. |
 | `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
 | `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
 | `skip_forks`         | `true`                          | Skip PRs from forks.                                          |
@@ -161,6 +161,9 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `opengrep_sarif`     |                                 | Path to Opengrep/Semgrep-compatible SARIF output.             |
 | `pmd_xml`            |                                 | Path to PMD XML output.                                       |
 | `cpd_xml`            |                                 | Path to CPD XML output.                                       |
+| `ci_signal` | `off` | `auto` fetches PR head check-runs (needs checks:read) as review evidence; `off` skips them. Supplied report files are ingested regardless. |
+| `test_report` | | Path to a test report file (e.g. a JUnit or text summary) to ingest as CI evidence. |
+| `coverage_summary` | | Path to a coverage summary file (e.g. a coverage delta) to ingest as CI evidence. |
 | `command`            |                                 | `/maxi ...` command for `workflow_dispatch`.                  |
 | `pr_number`          |                                 | Pull request number for `workflow_dispatch` commands.         |
 

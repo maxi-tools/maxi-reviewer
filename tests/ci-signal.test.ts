@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetchCiSignal } from "../src/ci-signal.js";
@@ -88,23 +88,27 @@ describe("fetchCiSignal", () => {
 
   it("ingests supplied test and coverage report files regardless of mode", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ci-signal-"));
-    const testReportPath = join(dir, "report.txt");
-    const coveragePath = join(dir, "cov.txt");
-    writeFileSync(testReportPath, "5 passed, 0 failed");
-    writeFileSync(coveragePath, "coverage 92pct (+1pct)");
-    const octokit = octokitWith([]);
-    const sig = await fetchCiSignal({
-      octokit: octokit as never,
-      owner: "o",
-      repo: "r",
-      headSha: "HEAD",
-      mode: "off",
-      testReportPath,
-      coverageSummaryPath: coveragePath,
-    });
-    expect(octokit.rest.checks.listForRef).not.toHaveBeenCalled();
-    expect(sig?.testReport).toContain("5 passed");
-    expect(sig?.coverageSummary).toContain("92pct");
+    try {
+      const testReportPath = join(dir, "report.txt");
+      const coveragePath = join(dir, "cov.txt");
+      writeFileSync(testReportPath, "5 passed, 0 failed");
+      writeFileSync(coveragePath, "coverage 92pct (+1pct)");
+      const octokit = octokitWith([]);
+      const sig = await fetchCiSignal({
+        octokit: octokit as never,
+        owner: "o",
+        repo: "r",
+        headSha: "HEAD",
+        mode: "off",
+        testReportPath,
+        coverageSummaryPath: coveragePath,
+      });
+      expect(octokit.rest.checks.listForRef).not.toHaveBeenCalled();
+      expect(sig?.testReport).toContain("5 passed");
+      expect(sig?.coverageSummary).toContain("92pct");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("returns undefined when there is no evidence", async () => {

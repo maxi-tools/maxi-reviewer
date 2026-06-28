@@ -43068,24 +43068,49 @@ schema above — and nothing else. No prose. No text outside the block.`;
 const MAX_CHECK_RUNS = 40;
 const MAX_SUMMARY_CHARS = 2_000;
 const MAX_REPORT_CHARS = 16_000;
-function readReport(path, label) {
+async function readReport(path, label) {
     if (!path)
         return { truncated: false };
-    if (!(0,external_node_fs_.existsSync)(path)) {
-        core/* warning */.$e("ci-signal: " + label + " file not found at " + path);
+    // Async fs (not existsSync + readFileSync) avoids blocking the event loop and
+    // the TOCTOU race between the existence check and the read. We read at most
+    // MAX_REPORT_CHARS+1 bytes via a file handle rather than the whole file, so a
+    // user-supplied path to a multi-gigabyte file cannot OOM the process.
+    let handle;
+    try {
+        handle = await (0,promises_.open)(path, "r");
+    }
+    catch (err) {
+        const code = err?.code;
+        if (code === "ENOENT") {
+            core/* warning */.$e("ci-signal: " + label + " file not found at " + path);
+        }
+        else {
+            core/* warning */.$e("ci-signal: failed to open " +
+                label +
+                " at " +
+                path +
+                ": " +
+                String(err));
+        }
         return { truncated: false };
     }
     try {
-        const raw = (0,external_node_fs_.readFileSync)(path, "utf8");
-        const truncated = raw.length > MAX_REPORT_CHARS;
-        return {
-            text: truncated ? raw.slice(0, MAX_REPORT_CHARS) : raw,
-            truncated,
-        };
+        // One extra byte so a file exactly at the cap is not falsely flagged.
+        const cap = MAX_REPORT_CHARS + 1;
+        const buffer = Buffer.alloc(cap);
+        const { bytesRead } = await handle.read(buffer, 0, cap, 0);
+        const truncated = bytesRead > MAX_REPORT_CHARS;
+        const text = buffer
+            .subarray(0, Math.min(bytesRead, MAX_REPORT_CHARS))
+            .toString("utf8");
+        return { text, truncated };
     }
     catch (err) {
         core/* warning */.$e("ci-signal: failed to read " + label + " at " + path + ": " + String(err));
         return { truncated: false };
+    }
+    finally {
+        await handle.close();
     }
 }
 /**
@@ -43109,12 +43134,21 @@ async function fetchCiSignal(input) {
             const own = input.ownStatusContext
                 ? input.ownStatusContext.toLowerCase()
                 : undefined;
+            const currentRunId = process.env.GITHUB_RUN_ID;
             for (const run of res.data.check_runs ?? []) {
                 const name = (run.name ?? "").trim();
                 if (!name)
                     continue;
-                // Exclude this review own check so the model never reasons about its
-                // own pending/failed status, and to avoid a feedback loop.
+                // Exclude this workflow run own check-run (matched by run id in the
+                // details URL) and any check sharing this review status context, so the
+                // model never reasons about the review own pending/failed status, and to
+                // avoid a feedback loop. Check-run names rarely equal the status
+                // context, so the run-id match is the reliable guard.
+                if (currentRunId &&
+                    run.details_url &&
+                    run.details_url.includes("/actions/runs/" + currentRunId)) {
+                    continue;
+                }
                 if (own && name.toLowerCase() === own)
                     continue;
                 const rawSummary = run.output?.summary ?? run.output?.title ?? "";
@@ -43140,8 +43174,8 @@ async function fetchCiSignal(input) {
             core/* warning */.$e("ci-signal: failed to list check-runs: " + String(err));
         }
     }
-    const testReport = readReport(input.testReportPath, "test_report");
-    const coverage = readReport(input.coverageSummaryPath, "coverage_summary");
+    const testReport = await readReport(input.testReportPath, "test_report");
+    const coverage = await readReport(input.coverageSummaryPath, "coverage_summary");
     if (testReport.truncated || coverage.truncated)
         truncated = true;
     if (checkRuns.length === 0 && !testReport.text && !coverage.text) {

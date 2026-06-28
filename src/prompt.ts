@@ -49,6 +49,7 @@ export function buildReviewPrompt(args: PromptArgs): string {
     excludedGeneratedPaths,
     retrievalMode,
     linkedIssues,
+    incrementalReview,
   } = args;
 
   // Per-review, unguessable boundary for untrusted blocks. Generated at review
@@ -345,6 +346,11 @@ and acceptance criteria. Surface unmet or only partially-met requirements as
 \`Warning\` (or \`High\` only when the PR clearly breaks what the issue asked
 for). Do NOT raise \`block\` merely because a criterion is subjective or
 arguably unmet, and do not invent acceptance criteria the issue does not state.
+${
+  incrementalReview
+    ? "NOTE: This is an incremental review of only the latest push, not the whole PR. Earlier commits in this PR may already satisfy these criteria, so do not report acceptance criteria as unmet based on this partial diff; only flag linked-issue criteria that THIS diff actively contradicts or regresses."
+    : ""
+}
 
 ${untrusted(
   "LINKED_ISSUES",

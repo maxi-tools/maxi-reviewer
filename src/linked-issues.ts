@@ -1,4 +1,3 @@
-import * as github from "@actions/github";
 import * as core from "@actions/core";
 import { LinkedIssue } from "./types.js";
 
@@ -114,8 +113,33 @@ const DEFAULT_MAX_BODY_CHARS = 8000;
  * rather than failing the review. Bodies are capped and truncation is flagged so
  * the downstream prompt can say so.
  */
+/**
+ * The slice of the Octokit client this module needs: reading a single issue.
+ * Narrowing the dependency to this structural type lets tests pass a typed
+ * fake without bypassing the type system, while the full client returned by
+ * github.getOctokit still satisfies it.
+ */
+export interface IssueReadClient {
+  rest: {
+    issues: {
+      get: (params: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+      }) => Promise<{
+        data: {
+          title?: string | null;
+          body?: string | null;
+          state?: string;
+          pull_request?: unknown;
+        };
+      }>;
+    };
+  };
+}
+
 export async function fetchLinkedIssues(
-  octokit: ReturnType<typeof github.getOctokit>,
+  octokit: IssueReadClient,
   refs: IssueRef[],
   options: FetchLinkedIssuesOptions = {}
 ): Promise<LinkedIssue[]> {

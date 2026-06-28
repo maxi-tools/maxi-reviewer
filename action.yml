@@ -11,7 +11,7 @@ inputs:
     description: "Jules API key (create one at jules.google.com)."
     required: true
   github_token:
-    description: "GitHub token with pull-requests:write and statuses:write for reviews, plus contents:write and issues:write for /maxi commands. Usually the default GITHUB_TOKEN secret."
+    description: "GitHub token with pull-requests:write, statuses:write, and issues:read (the review fetches linked-issue acceptance criteria) for reviews, plus contents:write and issues:write for /maxi commands. Usually the default GITHUB_TOKEN secret."
     required: true
   fail_on:
     description: "When to fail the commit status check: never | blocking | any. Default blocking."

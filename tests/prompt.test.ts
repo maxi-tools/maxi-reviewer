@@ -327,4 +327,37 @@ describe("buildReviewPrompt", () => {
 
     expect(prompt).not.toContain("# Linked issue acceptance criteria");
   });
+
+  it("adds the incremental-review qualifier when incrementalReview is set", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "Closes #1",
+      diff: "+ x",
+      openThreads: [],
+      incrementalReview: true,
+      linkedIssues: [
+        { number: 1, title: "T", body: "b", state: "open", truncated: false },
+      ],
+    });
+
+    expect(prompt).toContain("incremental review of only the latest push");
+  });
+
+  it("omits the incremental qualifier on a full review", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "Closes #1",
+      diff: "+ x",
+      openThreads: [],
+      linkedIssues: [
+        { number: 1, title: "T", body: "b", state: "open", truncated: false },
+      ],
+    });
+
+    expect(prompt).not.toContain("incremental review of only the latest push");
+  });
 });

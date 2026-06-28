@@ -109,6 +109,7 @@ export interface ReviewPrDeps {
     baseShaForDiff: string;
     headSha: string;
     rulesFilePath: string;
+    groundInLinkedIssues: boolean;
   }) => Promise<PullRequestContext>;
   selectRuleFiles: typeof selectRuleFiles;
   loadSelectedRules: typeof loadSelectedRules;
@@ -258,6 +259,16 @@ export async function runReviewPr(
       core.info(`Reviewing full PR diff from ${baseShaForDiff} to ${headSha}`);
     }
 
+    const isIncrementalReview =
+      ctx.payload.action === "synchronize" && !!ctx.payload.before;
+    // GitHub only honours PR-body closing keywords when the PR targets the
+    // repository default branch; for backport/release PRs to other branches the
+    // referenced issues are not actually linked, so skip acceptance-criteria
+    // grounding there to avoid false unmet-requirement findings.
+    const defaultBranch = ctx.payload.repository?.default_branch;
+    const groundInLinkedIssues =
+      !defaultBranch || pr.base.ref === defaultBranch;
+
     const context = await deps.fetchPullRequestContext({
       octokit,
       owner,
@@ -267,6 +278,7 @@ export async function runReviewPr(
       baseShaForDiff,
       headSha,
       rulesFilePath,
+      groundInLinkedIssues,
     });
 
     // Empty input → default generated-file globs; "none" → disable filtering;
@@ -322,6 +334,7 @@ export async function runReviewPr(
       rules: selectedRules || undefined,
       openThreads: context.openThreads,
       linkedIssues: context.linkedIssues,
+      incrementalReview: isIncrementalReview,
       excludedGeneratedPaths:
         excludedPaths.length > 0 ? excludedPaths : undefined,
       changedFileContext: buildChangedFileContext(
@@ -476,6 +489,7 @@ export async function fetchPullRequestContext(input: {
   baseShaForDiff: string;
   headSha: string;
   rulesFilePath: string;
+  groundInLinkedIssues: boolean;
 }): Promise<PullRequestContext> {
   const diff = await fetchDiff(
     input.octokit,
@@ -505,10 +519,12 @@ export async function fetchPullRequestContext(input: {
   );
   const changedFiles = extractChangedFiles(diff);
 
-  const linkedIssueRefs = parseClosingIssueRefs(input.pr.body, {
-    owner: input.owner,
-    repo: input.repo,
-  });
+  const linkedIssueRefs = input.groundInLinkedIssues
+    ? parseClosingIssueRefs(input.pr.body, {
+        owner: input.owner,
+        repo: input.repo,
+      })
+    : [];
   const linkedIssues =
     linkedIssueRefs.length > 0
       ? await fetchLinkedIssues(input.octokit, linkedIssueRefs)

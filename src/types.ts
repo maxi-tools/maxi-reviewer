@@ -87,6 +87,12 @@ export interface PromptArgs {
    * grounding. Rendered as nonce-fenced UNTRUSTED data.
    */
   linkedIssues?: LinkedIssue[];
+  /**
+   * True when this is an incremental (synchronize) review whose diff covers
+   * only the latest push, not the whole PR. Lets the prompt qualify linked-issue
+   * grounding so a partial diff does not trigger spurious unmet-criteria findings.
+   */
+  incrementalReview?: boolean;
 }
 
 export interface ReviewComment {

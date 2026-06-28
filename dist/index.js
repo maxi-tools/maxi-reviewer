@@ -42621,7 +42621,7 @@ function wrapPermissionError(err, needed, op) {
  * bundles it (see FORK.md in this directory).
  */
 function buildReviewPrompt(args) {
-    const { repoFullName, prNumber, prTitle, prBody, diff, diffTruncatedNote, extraInstructions, rulesFromFile, analyzerFindings, rules, openThreads, changedFileContext, excludedGeneratedPaths, retrievalMode, linkedIssues, } = args;
+    const { repoFullName, prNumber, prTitle, prBody, diff, diffTruncatedNote, extraInstructions, rulesFromFile, analyzerFindings, rules, openThreads, changedFileContext, excludedGeneratedPaths, retrievalMode, linkedIssues, incrementalReview, } = args;
     // Per-review, unguessable boundary for untrusted blocks. Generated at review
     // time (or supplied by the orchestrator so the retrieval loop can reuse the
     // same token), so a PR author -- who writes their content earlier -- cannot
@@ -42883,6 +42883,9 @@ and acceptance criteria. Surface unmet or only partially-met requirements as
 \`Warning\` (or \`High\` only when the PR clearly breaks what the issue asked
 for). Do NOT raise \`block\` merely because a criterion is subjective or
 arguably unmet, and do not invent acceptance criteria the issue does not state.
+${incrementalReview
+            ? "NOTE: This is an incremental review of only the latest push, not the whole PR. Earlier commits in this PR may already satisfy these criteria, so do not report acceptance criteria as unmet based on this partial diff; only flag linked-issue criteria that THIS diff actively contradicts or regresses."
+            : ""}
 
 ${untrusted("LINKED_ISSUES", linkedIssues
             .map((iss) => {
@@ -43000,12 +43003,6 @@ function parseClosingIssueRefs(body, current) {
 }
 const DEFAULT_MAX_ISSUES = 5;
 const DEFAULT_MAX_BODY_CHARS = 8000;
-/**
- * Fetch the title/body/state of each referenced issue. Failures (deleted issue,
- * a PR number mistaken for an issue, missing permission) are logged and skipped
- * rather than failing the review. Bodies are capped and truncation is flagged so
- * the downstream prompt can say so.
- */
 async function fetchLinkedIssues(octokit, refs, options = {}) {
     const maxIssues = options.maxIssues ?? DEFAULT_MAX_ISSUES;
     const maxBodyChars = options.maxBodyChars ?? DEFAULT_MAX_BODY_CHARS;
@@ -43616,6 +43613,13 @@ async function runReviewPr(overrides = {}) {
         else {
             core/* info */.pq(`Reviewing full PR diff from ${baseShaForDiff} to ${headSha}`);
         }
+        const isIncrementalReview = ctx.payload.action === "synchronize" && !!ctx.payload.before;
+        // GitHub only honours PR-body closing keywords when the PR targets the
+        // repository default branch; for backport/release PRs to other branches the
+        // referenced issues are not actually linked, so skip acceptance-criteria
+        // grounding there to avoid false unmet-requirement findings.
+        const defaultBranch = ctx.payload.repository?.default_branch;
+        const groundInLinkedIssues = !defaultBranch || pr.base.ref === defaultBranch;
         const context = await deps.fetchPullRequestContext({
             octokit,
             owner,
@@ -43625,6 +43629,7 @@ async function runReviewPr(overrides = {}) {
             baseShaForDiff,
             headSha,
             rulesFilePath,
+            groundInLinkedIssues,
         });
         // Empty input → default generated-file globs; "none" → disable filtering;
         // otherwise the input is the explicit override list.
@@ -43667,6 +43672,7 @@ async function runReviewPr(overrides = {}) {
             rules: selectedRules || undefined,
             openThreads: context.openThreads,
             linkedIssues: context.linkedIssues,
+            incrementalReview: isIncrementalReview,
             excludedGeneratedPaths: excludedPaths.length > 0 ? excludedPaths : undefined,
             changedFileContext: buildChangedFileContext(context.files ?? new Map(), 
             // Derive from the (possibly truncated) diff the model actually sees, so
@@ -43753,10 +43759,12 @@ async function fetchPullRequestContext(input) {
     }
     const openThreads = await fetchOpenThreads(input.octokit, input.owner, input.repo, input.pr.number);
     const changedFiles = extractChangedFiles(diff);
-    const linkedIssueRefs = parseClosingIssueRefs(input.pr.body, {
-        owner: input.owner,
-        repo: input.repo,
-    });
+    const linkedIssueRefs = input.groundInLinkedIssues
+        ? parseClosingIssueRefs(input.pr.body, {
+            owner: input.owner,
+            repo: input.repo,
+        })
+        : [];
     const linkedIssues = linkedIssueRefs.length > 0
         ? await fetchLinkedIssues(input.octokit, linkedIssueRefs)
         : [];

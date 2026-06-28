@@ -147,7 +147,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | Input                | Default                         | Description                                                   |
 | -------------------- | ------------------------------- | ------------------------------------------------------------- |
 | `jules_api_key`      |                                 | Required Jules API key.                                       |
-| `github_token`       |                                 | Required GitHub token, preferably a GitHub App installation token. |
+| `github_token`       |                                 | Required GitHub token (App installation token preferred). Reviews also read linked issues, so the token needs issues:read; /maxi commands additionally need contents:write and issues:write. |
 | `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
 | `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
 | `skip_forks`         | `true`                          | Skip PRs from forks.                                          |

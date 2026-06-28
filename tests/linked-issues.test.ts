@@ -134,8 +134,7 @@ describe("fetchLinkedIssues", () => {
     const octokit = octokitWith({
       13: { title: "Ground review", body: "Acceptance: do X", state: "open" },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = await fetchLinkedIssues(octokit as any, [ref(13)]);
+    const out = await fetchLinkedIssues(octokit, [ref(13)]);
     expect(out).toEqual([
       {
         number: 13,
@@ -153,12 +152,9 @@ describe("fetchLinkedIssues", () => {
       2: { title: "b", body: "", state: "open" },
       3: { title: "c", body: "", state: "open" },
     });
-    const out = await fetchLinkedIssues(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      octokit as any,
-      [ref(1), ref(2), ref(3)],
-      { maxIssues: 2 }
-    );
+    const out = await fetchLinkedIssues(octokit, [ref(1), ref(2), ref(3)], {
+      maxIssues: 2,
+    });
     expect(out.map((i) => i.number)).toEqual([1, 2]);
     expect(octokit.rest.issues.get).toHaveBeenCalledTimes(2);
   });
@@ -167,12 +163,9 @@ describe("fetchLinkedIssues", () => {
     const octokit = octokitWith({
       1: { title: "t", body: "x".repeat(50), state: "open" },
     });
-    const out = await fetchLinkedIssues(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      octokit as any,
-      [ref(1)],
-      { maxBodyChars: 10 }
-    );
+    const out = await fetchLinkedIssues(octokit, [ref(1)], {
+      maxBodyChars: 10,
+    });
     expect(out[0].body).toBe("x".repeat(10));
     expect(out[0].truncated).toBe(true);
   });
@@ -181,8 +174,7 @@ describe("fetchLinkedIssues", () => {
     const octokit = octokitWith({
       1: { title: "a PR", body: "", state: "open", pull_request: { url: "x" } },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = await fetchLinkedIssues(octokit as any, [ref(1)]);
+    const out = await fetchLinkedIssues(octokit, [ref(1)]);
     expect(out).toEqual([]);
   });
 
@@ -191,8 +183,7 @@ describe("fetchLinkedIssues", () => {
       1: new Error("404"),
       2: { title: "ok", body: "b", state: "closed" },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = await fetchLinkedIssues(octokit as any, [ref(1), ref(2)]);
+    const out = await fetchLinkedIssues(octokit, [ref(1), ref(2)]);
     expect(out.map((i) => i.number)).toEqual([2]);
     expect(out[0].state).toBe("closed");
   });
@@ -201,8 +192,7 @@ describe("fetchLinkedIssues", () => {
     const octokit = octokitWith({
       1: { title: "t", body: "b", state: "weird" },
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = await fetchLinkedIssues(octokit as any, [ref(1)]);
+    const out = await fetchLinkedIssues(octokit, [ref(1)]);
     expect(out[0].state).toBe("open");
   });
 });

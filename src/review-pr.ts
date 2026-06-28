@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   AnalyzerFinding,
   FailOn,
+  LinkedIssue,
   OpenThread,
   ReviewArtifact,
   ReviewComment,
@@ -31,6 +32,7 @@ import {
 } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { createGithubRetrievalProvider } from "./retrieval.js";
+import { fetchLinkedIssues, parseClosingIssueRefs } from "./linked-issues.js";
 import { makeNonce } from "./untrusted.js";
 import { buildChangedFileContext } from "./context-window.js";
 import {
@@ -69,6 +71,7 @@ export interface PullRequestContext {
   changedLines?: Map<string, Set<number>>;
   rulesFromFile?: string;
   openThreads: OpenThread[];
+  linkedIssues: LinkedIssue[];
 }
 
 export interface RunAnalyzerInput {
@@ -101,11 +104,12 @@ export interface ReviewPrDeps {
     octokit: Octokit;
     owner: string;
     repo: string;
-    pr: { number: number };
+    pr: { number: number; body?: string | null };
     baseSha: string;
     baseShaForDiff: string;
     headSha: string;
     rulesFilePath: string;
+    groundInLinkedIssues: boolean;
   }) => Promise<PullRequestContext>;
   selectRuleFiles: typeof selectRuleFiles;
   loadSelectedRules: typeof loadSelectedRules;
@@ -255,6 +259,16 @@ export async function runReviewPr(
       core.info(`Reviewing full PR diff from ${baseShaForDiff} to ${headSha}`);
     }
 
+    const isIncrementalReview =
+      ctx.payload.action === "synchronize" && !!ctx.payload.before;
+    // GitHub only honours PR-body closing keywords when the PR targets the
+    // repository default branch; for backport/release PRs to other branches the
+    // referenced issues are not actually linked, so skip acceptance-criteria
+    // grounding there to avoid false unmet-requirement findings.
+    const defaultBranch = ctx.payload.repository?.default_branch;
+    const groundInLinkedIssues =
+      !defaultBranch || pr.base.ref === defaultBranch;
+
     const context = await deps.fetchPullRequestContext({
       octokit,
       owner,
@@ -264,6 +278,7 @@ export async function runReviewPr(
       baseShaForDiff,
       headSha,
       rulesFilePath,
+      groundInLinkedIssues,
     });
 
     // Empty input → default generated-file globs; "none" → disable filtering;
@@ -318,6 +333,8 @@ export async function runReviewPr(
       analyzerFindings,
       rules: selectedRules || undefined,
       openThreads: context.openThreads,
+      linkedIssues: context.linkedIssues,
+      incrementalReview: isIncrementalReview,
       excludedGeneratedPaths:
         excludedPaths.length > 0 ? excludedPaths : undefined,
       changedFileContext: buildChangedFileContext(
@@ -467,11 +484,12 @@ export async function fetchPullRequestContext(input: {
   octokit: Octokit;
   owner: string;
   repo: string;
-  pr: { number: number };
+  pr: { number: number; body?: string | null };
   baseSha: string;
   baseShaForDiff: string;
   headSha: string;
   rulesFilePath: string;
+  groundInLinkedIssues: boolean;
 }): Promise<PullRequestContext> {
   const diff = await fetchDiff(
     input.octokit,
@@ -501,9 +519,21 @@ export async function fetchPullRequestContext(input: {
   );
   const changedFiles = extractChangedFiles(diff);
 
+  const linkedIssueRefs = input.groundInLinkedIssues
+    ? parseClosingIssueRefs(input.pr.body, {
+        owner: input.owner,
+        repo: input.repo,
+      })
+    : [];
+  const linkedIssues =
+    linkedIssueRefs.length > 0
+      ? await fetchLinkedIssues(input.octokit, linkedIssueRefs)
+      : [];
+
   return {
     diff,
     changedFiles,
+    linkedIssues,
     files: await loadHeadFiles(
       input.octokit,
       input.owner,

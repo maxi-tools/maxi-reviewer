@@ -114,6 +114,7 @@ describe("runReviewPr orchestration", () => {
         changedLines: new Map([["src/a.ts", new Set([1])]]),
         rulesFromFile: undefined,
         openThreads: [],
+        linkedIssues: [],
       }),
       selectRuleFiles: vi
         .fn()
@@ -210,6 +211,7 @@ describe("runReviewPr orchestration", () => {
         changedLines: new Map([["src/a.ts", new Set([1])]]),
         rulesFromFile: undefined,
         openThreads: [],
+        linkedIssues: [],
       }),
       selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
       loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
@@ -258,6 +260,7 @@ describe("runReviewPr orchestration", () => {
         changedLines: new Map([["src/a.ts", new Set([1])]]),
         rulesFromFile: undefined,
         openThreads: [],
+        linkedIssues: [],
       }),
       selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
       loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
@@ -319,6 +322,7 @@ describe("runReviewPr orchestration", () => {
         changedLines: new Map([["src/a.ts", new Set([1])]]),
         rulesFromFile: undefined,
         openThreads: [],
+        linkedIssues: [],
       }),
       selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
       loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),

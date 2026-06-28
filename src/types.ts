@@ -34,6 +34,20 @@ export interface ChangedFileContext {
   windows: ChangedFileContextWindow[];
 }
 
+/**
+ * Issues this PR declares it closes (via closing keywords in the PR body),
+ * fetched so the model can check the diff against their acceptance criteria.
+ * Title/body are attacker-controllable and MUST be nonce-fenced when rendered.
+ */
+export interface LinkedIssue {
+  number: number;
+  title: string;
+  body: string;
+  state: "open" | "closed";
+  /** True when the body was truncated to the per-issue character cap. */
+  truncated: boolean;
+}
+
 export interface PromptArgs {
   repoFullName: string;
   prNumber: number;
@@ -68,6 +82,17 @@ export interface PromptArgs {
    * step (read_file / grep / list_references at the PR head) before the verdict.
    */
   retrievalMode?: boolean;
+  /**
+   * Issues this PR declares it closes, fetched for acceptance-criteria
+   * grounding. Rendered as nonce-fenced UNTRUSTED data.
+   */
+  linkedIssues?: LinkedIssue[];
+  /**
+   * True when this is an incremental (synchronize) review whose diff covers
+   * only the latest push, not the whole PR. Lets the prompt qualify linked-issue
+   * grounding so a partial diff does not trigger spurious unmet-criteria findings.
+   */
+  incrementalReview?: boolean;
 }
 
 export interface ReviewComment {

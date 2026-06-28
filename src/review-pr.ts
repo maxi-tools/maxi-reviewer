@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   AnalyzerFinding,
   CiSignal,
+  ExistingFinding,
   FailOn,
   LinkedIssue,
   OpenThread,
@@ -20,6 +21,7 @@ import {
   fetchDiff,
   loadRulesFromBase,
   fetchOpenThreads,
+  fetchExistingFindings,
   resolveThreads,
   submitReview,
   setStatus,
@@ -117,6 +119,12 @@ export interface ReviewPrDeps {
   selectRuleFiles: typeof selectRuleFiles;
   loadSelectedRules: typeof loadSelectedRules;
   runAnalyzers: (input: RunAnalyzerInput) => Promise<AnalyzerFinding[]>;
+  fetchExistingFindings: (
+    octokit: Octokit,
+    owner: string,
+    repo: string,
+    prNumber: number
+  ) => Promise<ExistingFinding[]>;
   fetchCiSignal: (input: {
     octokit: Octokit;
     owner: string;
@@ -151,6 +159,7 @@ const defaultDeps: ReviewPrDeps = {
   loadSelectedRules,
   runAnalyzers,
   fetchCiSignal,
+  fetchExistingFindings,
   buildReviewPrompt,
   runJulesReview,
   submitReview,
@@ -191,6 +200,9 @@ export async function runReviewPr(
   const ciSignalMode = (core.getInput("ci_signal") || "off").toLowerCase();
   const testReportPath = core.getInput("test_report") || undefined;
   const coverageSummaryPath = core.getInput("coverage_summary") || undefined;
+  const dedupeReviewers = (
+    core.getInput("dedupe_reviewers") || "off"
+  ).toLowerCase();
   const analyzerOutputPaths = {
     opengrepJson: core.getInput("opengrep_json") || undefined,
     opengrepSarif: core.getInput("opengrep_sarif") || undefined,
@@ -346,11 +358,19 @@ export async function runReviewPr(
       coverageSummaryPath,
     });
 
+    // Other reviewers active inline findings, so the model can avoid restating
+    // them (issue #15). Opt-in; best-effort (an empty list when disabled).
+    const existingFindings =
+      dedupeReviewers === "auto"
+        ? await deps.fetchExistingFindings(octokit, owner, repo, prNumber)
+        : [];
+
     const nonce = makeNonce();
     const prompt = deps.buildReviewPrompt({
       nonce,
       retrievalMode: retrievalMode === "auto",
       ciSignal,
+      existingFindings,
       repoFullName: `${owner}/${repo}`,
       prNumber,
       prTitle: pr.title || "",

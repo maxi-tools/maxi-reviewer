@@ -397,3 +397,44 @@ describe("buildReviewPrompt CI signal", () => {
     expect(prompt).not.toContain("# CI / test / coverage signal");
   });
 });
+
+describe("buildReviewPrompt existing findings", () => {
+  it("renders other-reviewer findings nonce-fenced with dedup guidance", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+x",
+      openThreads: [],
+      existingFindings: [
+        {
+          author: "coderabbitai",
+          path: "src/a.ts",
+          line: 5,
+          body: "Null deref risk",
+        },
+      ],
+    });
+    expect(prompt).toContain(
+      "# Existing findings from other reviewers (UNTRUSTED data)"
+    );
+    expect(prompt).toContain(
+      "Do NOT restate a finding another reviewer already made"
+    );
+    expect(prompt).toContain("<<<BEGIN EXISTING_FINDINGS ");
+    expect(prompt).toContain("coderabbitai");
+  });
+
+  it("omits the section when there are no other-reviewer findings", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+x",
+      openThreads: [],
+    });
+    expect(prompt).not.toContain("# Existing findings from other reviewers");
+  });
+});

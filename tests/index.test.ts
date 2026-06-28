@@ -24,6 +24,7 @@ describe("index.ts", () => {
     fetchDiff: vi.fn(),
     loadRulesFromBase: vi.fn(),
     fetchOpenThreads: vi.fn(),
+    fetchExistingFindings: vi.fn(),
     resolveThreads: vi.fn(),
     submitReview: vi.fn(),
     setStatus: vi.fn(),
@@ -95,6 +96,7 @@ describe("index.ts", () => {
     // default helper returns
     mockGithubHelper.fetchDiff.mockResolvedValue("diff");
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([]);
+    mockGithubHelper.fetchExistingFindings.mockResolvedValue([]);
     mockGithubHelper.listReviewArtifactComments.mockResolvedValue([]);
     mockGithubHelper.setStatus.mockResolvedValue(undefined);
     mockJulesHelper.runJulesReview.mockResolvedValue({

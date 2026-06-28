@@ -7,6 +7,7 @@ import {
   setStatus,
   submitReview,
   fetchOpenThreads,
+  fetchExistingFindings,
   recordReviewArtifactComment,
   listReviewArtifactComments,
 } from "../src/github.js";
@@ -592,5 +593,98 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
     await expect(
       listReviewArtifactComments(octokit, "owner", "repo", 7)
     ).resolves.toEqual(["<!-- maxi-review artifact -->\ncurrent actor"]);
+  });
+});
+
+describe("fetchExistingFindings", () => {
+  const makeOctokit = (nodes: unknown[]) => ({
+    graphql: vi.fn().mockResolvedValue({
+      repository: { pullRequest: { reviewThreads: { nodes } } },
+    }),
+  });
+
+  it("returns non-self unresolved findings and skips self and resolved", async () => {
+    const octokit = makeOctokit([
+      {
+        isResolved: false,
+        comments: {
+          nodes: [
+            {
+              body: "Self comment",
+              path: "a.ts",
+              line: 3,
+              author: { login: "maxi" },
+              viewerDidAuthor: true,
+            },
+          ],
+        },
+      },
+      {
+        isResolved: false,
+        comments: {
+          nodes: [
+            {
+              body: "CodeRabbit finding here",
+              path: "b.ts",
+              line: 7,
+              author: { login: "coderabbitai" },
+              viewerDidAuthor: false,
+            },
+          ],
+        },
+      },
+      {
+        isResolved: true,
+        comments: {
+          nodes: [
+            {
+              body: "Resolved other",
+              path: "c.ts",
+              line: 9,
+              author: { login: "cubic" },
+              viewerDidAuthor: false,
+            },
+          ],
+        },
+      },
+    ]);
+    const out = await fetchExistingFindings(octokit as any, "o", "r", 1);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      author: "coderabbitai",
+      path: "b.ts",
+      line: 7,
+    });
+    expect(out[0].body).toContain("CodeRabbit finding");
+  });
+
+  it("caps the body length", async () => {
+    const big = "y".repeat(700);
+    const octokit = makeOctokit([
+      {
+        isResolved: false,
+        comments: {
+          nodes: [
+            {
+              body: big,
+              path: "a.ts",
+              line: 1,
+              author: { login: "codex" },
+              viewerDidAuthor: false,
+            },
+          ],
+        },
+      },
+    ]);
+    const out = await fetchExistingFindings(octokit as any, "o", "r", 1, {
+      maxBodyChars: 100,
+    });
+    expect(out[0].body.length).toBe(100);
+  });
+
+  it("returns an empty list on a graphql error", async () => {
+    const octokit = { graphql: vi.fn().mockRejectedValue(new Error("boom")) };
+    const out = await fetchExistingFindings(octokit as any, "o", "r", 1);
+    expect(out).toEqual([]);
   });
 });

@@ -78,6 +78,18 @@ export interface CiSignal {
   truncated: boolean;
 }
 
+/**
+ * A finding another reviewer (bot or human) already posted as an inline comment
+ * on this PR, fetched so the model can avoid restating it. The author and body
+ * are attacker-influenceable and rendered as nonce-fenced UNTRUSTED data.
+ */
+export interface ExistingFinding {
+  author: string;
+  path: string;
+  line: number;
+  body: string;
+}
+
 export interface PromptArgs {
   repoFullName: string;
   prNumber: number;
@@ -94,6 +106,11 @@ export interface PromptArgs {
    * findings in what CI observed instead of speculation.
    */
   ciSignal?: CiSignal;
+  /**
+   * Active inline findings from OTHER reviewers (CodeRabbit, Codacy, Codex,
+   * cubic, ...) so the model can avoid restating them. Nonce-fenced UNTRUSTED.
+   */
+  existingFindings?: ExistingFinding[];
   rules?: string;
   openThreads: OpenThread[];
   /**

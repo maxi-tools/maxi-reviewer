@@ -55,6 +55,11 @@ export function parseIgnoreGlobs(raw: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+/** True if `path` matches any of the given globs. */
+export function matchesAnyGlob(path: string, globs: string[]): boolean {
+  return globs.some((g) => globToRegExp(g).test(path));
+}
+
 export interface FilteredDiff {
   diff: string;
   excludedPaths: string[];
@@ -83,7 +88,8 @@ export function filterDiffByPaths(
       if (section.length > 0) kept.push(section); // preamble before first file
       continue;
     }
-    const match = section.match(/^diff --git a\/.* b\/(.+)$/m);
+    // Non-greedy a/ path so a filename containing " b/" is not mis-split.
+    const match = section.match(/^diff --git a\/.*? b\/(.+)$/m);
     const path = match ? match[1].trim() : undefined;
     if (path && matchers.some((re) => re.test(path))) {
       excludedPaths.push(path);

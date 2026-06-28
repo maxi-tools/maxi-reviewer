@@ -30,6 +30,7 @@ import { buildChangedFileContext } from "./context-window.js";
 import {
   DEFAULT_GENERATED_GLOBS,
   filterDiffByPaths,
+  matchesAnyGlob,
   parseIgnoreGlobs,
 } from "./diff-filter.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
@@ -261,18 +262,6 @@ export async function runReviewPr(
       rulesFilePath,
     });
 
-    const analyzerFindings = await deps.runAnalyzers({
-      changedFiles: context.changedFiles,
-      diff: context.diff,
-      analyzerMode,
-      analyzerOutputPaths,
-    });
-    const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
-    const selectedRules =
-      selectedRuleFiles.length > 0
-        ? deps.loadSelectedRules(context.changedFiles)
-        : "";
-
     // Empty input → default generated-file globs; "none" → disable filtering;
     // otherwise the input is the explicit override list.
     const ignoreGlobsInput = core.getInput("review_ignore_globs").trim();
@@ -282,6 +271,23 @@ export async function runReviewPr(
         : ignoreGlobsInput
           ? parseIgnoreGlobs(ignoreGlobsInput)
           : DEFAULT_GENERATED_GLOBS;
+
+    const allAnalyzerFindings = await deps.runAnalyzers({
+      changedFiles: context.changedFiles,
+      diff: context.diff,
+      analyzerMode,
+      analyzerOutputPaths,
+    });
+    // Drop findings on excluded generated files so they cannot seed comments.
+    const analyzerFindings = allAnalyzerFindings.filter(
+      (f) => !matchesAnyGlob(f.path, ignoreGlobs)
+    );
+    const selectedRuleFiles = deps.selectRuleFiles(context.changedFiles);
+    const selectedRules =
+      selectedRuleFiles.length > 0
+        ? deps.loadSelectedRules(context.changedFiles)
+        : "";
+
     const { diff: reviewDiff, excludedPaths } = filterDiffByPaths(
       context.diff,
       ignoreGlobs
@@ -401,7 +407,9 @@ export async function runReviewPr(
       prNumber,
       headSha,
       finalBody,
-      newComments || []
+      // Never post comments on excluded generated files, even if the model or
+      // an analyzer produced one.
+      (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs))
     );
 
     const { state, description } = statusFromVerdict(verdict, failOn);

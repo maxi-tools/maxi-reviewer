@@ -251,6 +251,8 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain(
       "# Generated files excluded from the diff (NOT under review)"
     );
+    // Paths come from the diff (attacker-controlled) → must be nonce-fenced.
+    expect(prompt).toContain("<<<BEGIN EXCLUDED_PATHS ");
     expect(prompt).toContain("- dist/index.js");
     expect(prompt).toContain("- pnpm-lock.yaml");
   });

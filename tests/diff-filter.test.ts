@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_GENERATED_GLOBS,
   globToRegExp,
+  matchesAnyGlob,
   parseIgnoreGlobs,
   filterDiffByPaths,
 } from "../src/diff-filter.js";
@@ -88,5 +89,29 @@ describe("filterDiffByPaths", () => {
     const result = filterDiffByPaths(onlyGenerated, DEFAULT_GENERATED_GLOBS);
     expect(result.excludedPaths).toEqual([]);
     expect(result.diff).toBe(onlyGenerated);
+  });
+
+  it('extracts paths containing " b/" without mis-splitting', () => {
+    const tricky = "src/folder b/file.ts";
+    const result = filterDiffByPaths(
+      fileSection(tricky) + fileSection("dist/x.js"),
+      DEFAULT_GENERATED_GLOBS
+    );
+    expect(result.excludedPaths).toEqual(["dist/x.js"]);
+    expect(result.diff).toContain(tricky);
+  });
+});
+
+describe("matchesAnyGlob", () => {
+  it("returns true only when a glob matches", () => {
+    expect(matchesAnyGlob("dist/index.js", DEFAULT_GENERATED_GLOBS)).toBe(true);
+    expect(matchesAnyGlob("pnpm-lock.yaml", DEFAULT_GENERATED_GLOBS)).toBe(
+      true
+    );
+    expect(matchesAnyGlob("src/index.ts", DEFAULT_GENERATED_GLOBS)).toBe(false);
+  });
+
+  it("is false for an empty glob list", () => {
+    expect(matchesAnyGlob("dist/index.js", [])).toBe(false);
   });
 });

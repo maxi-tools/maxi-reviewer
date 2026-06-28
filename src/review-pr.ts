@@ -776,7 +776,17 @@ export function latestReviewArtifactSessionId(
 ): string | undefined {
   for (const body of [...comments].reverse()) {
     const artifact = extractReviewArtifactFromComment(body);
-    if (artifact?.sessionId) return artifact.sessionId;
+    if (!artifact?.sessionId) continue;
+    // Never resume a session that produced no review. A hung/stuck Jules session
+    // (no responses, no validated review) would otherwise be resumed on every
+    // retry via startReviewSession(previousSessionId) and time out identically,
+    // trapping the PR. Treat it as dead, keep looking for an older session that
+    // actually responded, and fall back to a fresh session when none did.
+    const responded =
+      (artifact.rawJulesResponses?.length ?? 0) > 0 ||
+      artifact.validatedReview != null;
+    if (!responded) continue;
+    return artifact.sessionId;
   }
   return undefined;
 }

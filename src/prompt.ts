@@ -332,7 +332,8 @@ ${untrusted("EXCLUDED_PATHS", excludedPathList)}`
   // The issue title/body are attacker-controllable (anyone can open or edit an
   // issue), so the whole block is nonce-fenced as UNTRUSTED data. The guidance
   // lives inside the section so it only appears when there is an issue to check.
-  const LINKED_ISSUE_BODY_DISPLAY_CAP = 8000;
+  // The body is already capped by fetchLinkedIssues (single source of truth for
+  // the size limit); here we only render it and surface the truncation flag.
   const linkedIssuesSection =
     linkedIssues && linkedIssues.length > 0
       ? `
@@ -350,15 +351,8 @@ ${untrusted(
   linkedIssues
     .map((iss) => {
       const body = iss.body && iss.body.trim() ? iss.body : "(no description)";
-      const capped =
-        body.length > LINKED_ISSUE_BODY_DISPLAY_CAP
-          ? body.slice(0, LINKED_ISSUE_BODY_DISPLAY_CAP)
-          : body;
-      const truncatedNote =
-        iss.truncated || body.length > LINKED_ISSUE_BODY_DISPLAY_CAP
-          ? " [body truncated]"
-          : "";
-      return `## Issue #${iss.number} (${iss.state})${truncatedNote}\nTitle: ${iss.title || "(no title)"}\n\n${capped}`;
+      const truncatedNote = iss.truncated ? " [body truncated]" : "";
+      return `## Issue #${iss.number} (${iss.state})${truncatedNote}\nTitle: ${iss.title || "(no title)"}\n\n${body}`;
     })
     .join("\n\n")
 )}`

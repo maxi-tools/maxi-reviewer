@@ -42871,7 +42871,8 @@ ${untrusted("EXCLUDED_PATHS", excludedPathList)}`
     // The issue title/body are attacker-controllable (anyone can open or edit an
     // issue), so the whole block is nonce-fenced as UNTRUSTED data. The guidance
     // lives inside the section so it only appears when there is an issue to check.
-    const LINKED_ISSUE_BODY_DISPLAY_CAP = 8000;
+    // The body is already capped by fetchLinkedIssues (single source of truth for
+    // the size limit); here we only render it and surface the truncation flag.
     const linkedIssuesSection = linkedIssues && linkedIssues.length > 0
         ? `
 # Linked issue acceptance criteria (UNTRUSTED data)
@@ -42886,13 +42887,8 @@ arguably unmet, and do not invent acceptance criteria the issue does not state.
 ${untrusted("LINKED_ISSUES", linkedIssues
             .map((iss) => {
             const body = iss.body && iss.body.trim() ? iss.body : "(no description)";
-            const capped = body.length > LINKED_ISSUE_BODY_DISPLAY_CAP
-                ? body.slice(0, LINKED_ISSUE_BODY_DISPLAY_CAP)
-                : body;
-            const truncatedNote = iss.truncated || body.length > LINKED_ISSUE_BODY_DISPLAY_CAP
-                ? " [body truncated]"
-                : "";
-            return `## Issue #${iss.number} (${iss.state})${truncatedNote}\nTitle: ${iss.title || "(no title)"}\n\n${capped}`;
+            const truncatedNote = iss.truncated ? " [body truncated]" : "";
+            return `## Issue #${iss.number} (${iss.state})${truncatedNote}\nTitle: ${iss.title || "(no title)"}\n\n${body}`;
         })
             .join("\n\n"))}`
         : "";
@@ -42977,14 +42973,29 @@ function parseClosingIssueRefs(body, current) {
         seen.add(num);
         out.push({ owner: current.owner, repo: current.repo, number: num });
     };
+    // Collect matches from both forms, then order them by position in the body so
+    // the first-seen issue wins when refs exceed the fetch cap, regardless of
+    // whether each ref was written as a URL or as #n / owner/repo#n shorthand.
+    const matches = [];
     for (const m of body.matchAll(URL_RE)) {
-        push(m[1], m[2], Number(m[3]));
+        matches.push({
+            index: m.index ?? 0,
+            owner: m[1],
+            repo: m[2],
+            number: Number(m[3]),
+        });
     }
     for (const m of body.matchAll(SHORTHAND_RE)) {
-        const owner = m[1] ?? current.owner;
-        const repo = m[2] ?? current.repo;
-        push(owner, repo, Number(m[3]));
+        matches.push({
+            index: m.index ?? 0,
+            owner: m[1] ?? current.owner,
+            repo: m[2] ?? current.repo,
+            number: Number(m[3]),
+        });
     }
+    matches.sort((a, b) => a.index - b.index);
+    for (const m of matches)
+        push(m.owner, m.repo, m.number);
     return out;
 }
 const DEFAULT_MAX_ISSUES = 5;

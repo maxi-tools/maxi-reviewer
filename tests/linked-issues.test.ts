@@ -68,6 +68,22 @@ describe("parseClosingIssueRefs", () => {
     ).toEqual([{ owner: "maxi-tools", repo: "maxi-reviewer", number: 100 }]);
   });
 
+  it("orders mixed URL and shorthand refs by position in the body", () => {
+    const body =
+      "fixes #1, resolves https://github.com/maxi-tools/maxi-reviewer/issues/2, closes #3";
+    expect(parseClosingIssueRefs(body, REPO).map((r) => r.number)).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it("orders a leading URL ref before a later shorthand ref", () => {
+    const body =
+      "closes https://github.com/maxi-tools/maxi-reviewer/issues/5 and fixes #4";
+    expect(parseClosingIssueRefs(body, REPO).map((r) => r.number)).toEqual([
+      5, 4,
+    ]);
+  });
+
   it("dedupes repeated references and preserves first-seen order", () => {
     const refs = parseClosingIssueRefs(
       "Closes #3, fixes #5, resolves #3",

@@ -41890,7 +41890,7 @@ const SOURCE_EXTENSIONS = new Set([
  * consistent across the review and retrieval paths.
  */
 function extractJson(message) {
-    const fenced = message.match(/```json\n([\s\S]*?)\n```/);
+    const fenced = message.match(/```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/i);
     const candidates = [fenced ? fenced[1] : undefined, message];
     for (const candidate of candidates) {
         if (!candidate)
@@ -41989,12 +41989,23 @@ function createGithubRetrievalProvider(input) {
                 cache.set(path, text);
                 return text;
             }
+            // Resolved but not a readable file (directory, submodule, too large):
+            // genuinely unavailable, so remember it.
+            missing.add(path);
+            return null;
         }
         catch (err) {
             core/* info */.pq(`retrieval: getContent failed for ${path}: ${String(err)}`);
+            const status = err && typeof err === "object" && "status" in err
+                ? err.status
+                : undefined;
+            // Only remember genuine 404s; transient failures (rate limits, 5xx)
+            // must not permanently mask a file that exists at head.
+            if (status === 404 || /\b404\b/.test(String(err))) {
+                missing.add(path);
+            }
+            return null;
         }
-        missing.add(path);
-        return null;
     }
     async function listSourceFiles(pathGlob) {
         if (!treePaths) {
@@ -42289,6 +42300,7 @@ source, timeoutMinutes, options = {}) {
  */
 async function runRetrievalLoop(input) {
     const { session, retrieval, timeoutMs } = input;
+    const deadline = Date.now() + timeoutMs;
     let message = input.firstMessage;
     for (let step = 0; step < retrieval.maxSteps; step++) {
         const request = parseRetrievalRequest(message);
@@ -42306,7 +42318,7 @@ async function runRetrievalLoop(input) {
             }
         }
         await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft));
-        const next = await pollForReview(session, timeoutMs, message);
+        const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
         if (!next) {
             core/* warning */.$e("Retrieval loop: no agent reply after returning results; stopping.");
             return message;
@@ -42318,7 +42330,7 @@ async function runRetrievalLoop(input) {
     if (parseRetrievalRequest(message)) {
         core/* info */.pq("Retrieval budget exhausted; requesting the final review.");
         await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0));
-        const finalMessage = await pollForReview(session, timeoutMs, message);
+        const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
         if (finalMessage)
             return finalMessage;
     }
@@ -42444,7 +42456,7 @@ function parseJulesResponse(message) {
     catch {
         // Fall back to the legacy Jules response shape while callers migrate.
     }
-    const jsonMatch = message.match(/```json\n([\s\S]*?)\n```/);
+    const jsonMatch = message.match(/```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/i);
     if (jsonMatch) {
         try {
             return JSON.parse(jsonMatch[1]);

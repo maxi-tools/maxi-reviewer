@@ -135,7 +135,7 @@ export interface RetrievalProvider {
  * consistent across the review and retrieval paths.
  */
 function extractJson(message: string): unknown {
-  const fenced = message.match(/```json\n([\s\S]*?)\n```/);
+  const fenced = message.match(/```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/i);
   const candidates = [fenced ? fenced[1] : undefined, message];
   for (const candidate of candidates) {
     if (!candidate) continue;
@@ -243,11 +243,23 @@ export function createGithubRetrievalProvider(input: {
         cache.set(path, text);
         return text;
       }
+      // Resolved but not a readable file (directory, submodule, too large):
+      // genuinely unavailable, so remember it.
+      missing.add(path);
+      return null;
     } catch (err) {
       core.info(`retrieval: getContent failed for ${path}: ${String(err)}`);
+      const status =
+        err && typeof err === "object" && "status" in err
+          ? (err as { status?: number }).status
+          : undefined;
+      // Only remember genuine 404s; transient failures (rate limits, 5xx)
+      // must not permanently mask a file that exists at head.
+      if (status === 404 || /\b404\b/.test(String(err))) {
+        missing.add(path);
+      }
+      return null;
     }
-    missing.add(path);
-    return null;
   }
 
   async function listSourceFiles(pathGlob?: string): Promise<string[]> {

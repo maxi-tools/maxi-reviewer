@@ -226,6 +226,7 @@ async function runRetrievalLoop(input: {
   timeoutMs: number;
 }): Promise<string> {
   const { session, retrieval, timeoutMs } = input;
+  const deadline = Date.now() + timeoutMs;
   let message = input.firstMessage;
   for (let step = 0; step < retrieval.maxSteps; step++) {
     const request = parseRetrievalRequest(message);
@@ -246,7 +247,11 @@ async function runRetrievalLoop(input: {
       session,
       formatRetrievalResults(retrieval.nonce, results, roundsLeft)
     );
-    const next = await pollForReview(session, timeoutMs, message);
+    const next = await pollForReview(
+      session,
+      Math.max(0, deadline - Date.now()),
+      message
+    );
     if (!next) {
       core.warning(
         "Retrieval loop: no agent reply after returning results; stopping."
@@ -263,7 +268,11 @@ async function runRetrievalLoop(input: {
       session,
       formatRetrievalResults(retrieval.nonce, [], 0)
     );
-    const finalMessage = await pollForReview(session, timeoutMs, message);
+    const finalMessage = await pollForReview(
+      session,
+      Math.max(0, deadline - Date.now()),
+      message
+    );
     if (finalMessage) return finalMessage;
   }
   return message;
@@ -440,7 +449,7 @@ function parseJulesResponse(message: string): ReviewResult {
     // Fall back to the legacy Jules response shape while callers migrate.
   }
 
-  const jsonMatch = message.match(/```json\n([\s\S]*?)\n```/);
+  const jsonMatch = message.match(/```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/i);
   if (jsonMatch) {
     try {
       return JSON.parse(jsonMatch[1]) as ReviewResult;

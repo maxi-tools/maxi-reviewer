@@ -306,7 +306,7 @@ export async function runReviewPr(
     const nonce = makeNonce();
     const prompt = deps.buildReviewPrompt({
       nonce,
-      retrievalMode: retrievalMode === 'auto',
+      retrievalMode: retrievalMode === "auto",
       repoFullName: `${owner}/${repo}`,
       prNumber,
       prTitle: pr.title || "",
@@ -336,7 +336,7 @@ export async function runReviewPr(
       prNumber
     );
     const julesOptions = buildJulesReviewOptions(context);
-    if (retrievalMode === 'auto') {
+    if (retrievalMode === "auto") {
       julesOptions.retrieval = {
         provider: createGithubRetrievalProvider({
           octokit,

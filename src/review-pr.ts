@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import {
   AnalyzerFinding,
   FailOn,
+  LinkedIssue,
   OpenThread,
   ReviewArtifact,
   ReviewComment,
@@ -31,6 +32,7 @@ import {
 } from "./jules.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { createGithubRetrievalProvider } from "./retrieval.js";
+import { fetchLinkedIssues, parseClosingIssueRefs } from "./linked-issues.js";
 import { makeNonce } from "./untrusted.js";
 import { buildChangedFileContext } from "./context-window.js";
 import {
@@ -69,6 +71,7 @@ export interface PullRequestContext {
   changedLines?: Map<string, Set<number>>;
   rulesFromFile?: string;
   openThreads: OpenThread[];
+  linkedIssues: LinkedIssue[];
 }
 
 export interface RunAnalyzerInput {
@@ -101,7 +104,7 @@ export interface ReviewPrDeps {
     octokit: Octokit;
     owner: string;
     repo: string;
-    pr: { number: number };
+    pr: { number: number; body?: string | null };
     baseSha: string;
     baseShaForDiff: string;
     headSha: string;
@@ -318,6 +321,7 @@ export async function runReviewPr(
       analyzerFindings,
       rules: selectedRules || undefined,
       openThreads: context.openThreads,
+      linkedIssues: context.linkedIssues,
       excludedGeneratedPaths:
         excludedPaths.length > 0 ? excludedPaths : undefined,
       changedFileContext: buildChangedFileContext(
@@ -467,7 +471,7 @@ export async function fetchPullRequestContext(input: {
   octokit: Octokit;
   owner: string;
   repo: string;
-  pr: { number: number };
+  pr: { number: number; body?: string | null };
   baseSha: string;
   baseShaForDiff: string;
   headSha: string;
@@ -501,9 +505,19 @@ export async function fetchPullRequestContext(input: {
   );
   const changedFiles = extractChangedFiles(diff);
 
+  const linkedIssueRefs = parseClosingIssueRefs(input.pr.body, {
+    owner: input.owner,
+    repo: input.repo,
+  });
+  const linkedIssues =
+    linkedIssueRefs.length > 0
+      ? await fetchLinkedIssues(input.octokit, linkedIssueRefs)
+      : [];
+
   return {
     diff,
     changedFiles,
+    linkedIssues,
     files: await loadHeadFiles(
       input.octokit,
       input.owner,

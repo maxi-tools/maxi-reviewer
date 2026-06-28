@@ -269,4 +269,62 @@ describe("buildReviewPrompt", () => {
 
     expect(prompt).not.toContain("Generated files excluded from the diff");
   });
+
+  it("renders the linked-issue acceptance-criteria section when issues are provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "Closes #13",
+      diff: "+ x",
+      openThreads: [],
+      linkedIssues: [
+        {
+          number: 13,
+          title: "Ground the review",
+          body: "Acceptance: check criteria",
+          state: "open",
+          truncated: false,
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      "# Linked issue acceptance criteria (UNTRUSTED data)"
+    );
+    expect(prompt).toContain("<<<BEGIN LINKED_ISSUES ");
+    expect(prompt).toContain("## Issue #13 (open)");
+    expect(prompt).toContain("Acceptance: check criteria");
+    // The security framing must enumerate linked-issue text as untrusted.
+    expect(prompt).toContain("linked-issue text");
+  });
+
+  it("flags a truncated linked-issue body", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "Closes #1",
+      diff: "+ x",
+      openThreads: [],
+      linkedIssues: [
+        { number: 1, title: "T", body: "b", state: "closed", truncated: true },
+      ],
+    });
+
+    expect(prompt).toContain("## Issue #1 (closed) [body truncated]");
+  });
+
+  it("omits the linked-issue section when none are provided", () => {
+    const prompt = buildReviewPrompt({
+      repoFullName: "owner/repo",
+      prNumber: 1,
+      prTitle: "t",
+      prBody: "b",
+      diff: "+ x",
+      openThreads: [],
+    });
+
+    expect(prompt).not.toContain("# Linked issue acceptance criteria");
+  });
 });

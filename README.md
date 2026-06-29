@@ -164,6 +164,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `ci_signal` | `off` | `auto` fetches PR head check-runs (needs checks:read) as review evidence; `off` skips them. Supplied report files are ingested regardless. |
 | `test_report` | | Path to a test report file (e.g. a JUnit or text summary) to ingest as CI evidence. |
 | `coverage_summary` | | Path to a coverage summary file (e.g. a coverage delta) to ingest as CI evidence. |
+| `dedupe_reviewers` | `off` | `auto` fetches other reviewers active inline comments and tells the model not to restate them. |
 | `command`            |                                 | `/maxi ...` command for `workflow_dispatch`.                  |
 | `pr_number`          |                                 | Pull request number for `workflow_dispatch` commands.         |
 

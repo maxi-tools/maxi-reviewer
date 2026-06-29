@@ -1,6 +1,6 @@
 import * as github from "@actions/github";
 import * as core from "@actions/core";
-import { OpenThread, ReviewComment } from "./types.js";
+import { ExistingFinding, OpenThread, ReviewComment } from "./types.js";
 
 export async function fetchDiff(
   octokit: ReturnType<typeof github.getOctokit>,
@@ -138,6 +138,73 @@ export async function fetchOpenThreads(
     }
   }
   return result;
+}
+
+export interface FetchExistingFindingsOptions {
+  /** Maximum number of other-reviewer findings to include. */
+  max?: number;
+  /** Per-finding body character cap. */
+  maxBodyChars?: number;
+}
+
+/**
+ * Fetch active inline findings posted by OTHER reviewers (not this action) on
+ * the PR, so the prompt can ask the model not to restate them. Reuses the
+ * reviewThreads query shape from fetchOpenThreads but keeps the non-self,
+ * unresolved first comments. Bodies are capped; the caller nonce-fences them as
+ * UNTRUSTED. Failures are logged and yield an empty list (best-effort context).
+ */
+export async function fetchExistingFindings(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  options: FetchExistingFindingsOptions = {}
+): Promise<ExistingFinding[]> {
+  const max = options.max ?? 40;
+  const maxBodyChars = options.maxBodyChars ?? 600;
+  const query =
+    "query($owner: String!, $repo: String!, $pr: Int!) {\n" +
+    "  repository(owner: $owner, name: $repo) {\n" +
+    "    pullRequest(number: $pr) {\n" +
+    "      reviewThreads(first: 100) {\n" +
+    "        nodes {\n" +
+    "          isResolved\n" +
+    "          comments(first: 1) {\n" +
+    "            nodes { body path line author { login } viewerDidAuthor }\n" +
+    "          }\n" +
+    "        }\n" +
+    "      }\n" +
+    "    }\n" +
+    "  }\n" +
+    "}";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let response: any;
+  try {
+    response = await octokit.graphql(query, { owner, repo, pr: prNumber });
+  } catch (err) {
+    core.warning(
+      "dedupe: failed to fetch existing review threads: " + String(err)
+    );
+    return [];
+  }
+  const threads = response.repository?.pullRequest?.reviewThreads?.nodes || [];
+  const out: ExistingFinding[] = [];
+  for (const thread of threads) {
+    if (thread.isResolved) continue;
+    const c = thread.comments?.nodes?.[0];
+    if (!c || c.viewerDidAuthor) continue;
+    const body = (c.body || "").trim();
+    if (!body) continue;
+    out.push({
+      author: c.author?.login || "unknown",
+      path: c.path || "",
+      line: c.line || 0,
+      body: body.length > maxBodyChars ? body.slice(0, maxBodyChars) : body,
+    });
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 export async function resolveThreads(

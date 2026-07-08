@@ -1,0 +1,107 @@
+# maxi-config-owned Maxi fix workflow.
+#
+# Drop this into a repo's .github/workflows. It listens for `/maxi fix`
+# comments on pull requests and starts a Jules hands-on session for unstructured
+# Jules review feedback that could not be applied as a simple suggestion block.
+name: Maxi Fix Unstructured Feedback
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  fix:
+    if: >
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/maxi fix')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh api "${{ github.event.issue.pull_request.url }}")
+          echo "head_repo=$(printf '%s' "$pr" | jq -r '.head.repo.full_name')" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$(printf '%s' "$pr" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(printf '%s' "$pr" | jq -r '.head.sha')" >> "$GITHUB_OUTPUT"
+          echo "title=$(printf '%s' "$pr" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+          {
+            echo "body<<JULES_PR_BODY_EOF"
+            printf '%s\n' "$pr" | jq -r '.body // ""'
+            echo "JULES_PR_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Stop on fork PRs
+        if: steps.pr.outputs.head_repo != github.repository
+        run: |
+          echo "Jules fix sessions are limited to same-repository PR branches."
+          exit 1
+
+      - name: Checkout maxi-config fix scripts
+        uses: actions/checkout@v4
+        with:
+          repository: maxi-tools/maxi-config
+          ref: main
+          path: .maxi-config
+          sparse-checkout: maxi-review
+          persist-credentials: false
+
+      - name: Collect Jules review comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments" \
+            --jq '.[]' | jq -s '.' > "$RUNNER_TEMP/maxi-review-comments.json"
+
+      - name: Build Jules fix prompt
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          JULES_PR_NUMBER: ${{ github.event.issue.number }}
+          JULES_PR_TITLE: ${{ steps.pr.outputs.title }}
+          JULES_PR_BODY: ${{ steps.pr.outputs.body }}
+          JULES_PR_HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          JULES_PR_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          JULES_REVIEW_COMMENTS_PATH: ${{ runner.temp }}/maxi-review-comments.json
+          JULES_FIX_PROMPT_PATH: ${{ runner.temp }}/maxi-fix-prompt.md
+        run: |
+          node .maxi-config/maxi-review/build-fix-prompt.mjs
+
+      - name: Install Jules SDK
+        run: npm install --no-save @google/jules-sdk
+
+      - name: Start Jules fix session
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          JULES_PR_NUMBER: ${{ github.event.issue.number }}
+          JULES_PR_HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          JULES_FIX_PROMPT_PATH: ${{ runner.temp }}/maxi-fix-prompt.md
+          JULES_FIX_SESSION_RESULT_PATH: ${{ runner.temp }}/maxi-fix-session.json
+        run: |
+          node .maxi-config/maxi-review/run-fix-session.mjs
+
+      - name: Report Jules fix session
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f "$RUNNER_TEMP/maxi-fix-session.json" ]; then
+            body=$(mktemp)
+            {
+              echo "Started Jules fix session:"
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/maxi-fix-session.json"
+              echo '```'
+            } > "$body"
+          else
+            body=$(mktemp)
+            echo "Jules fix session did not start. Check the workflow logs." > "$body"
+          fi
+          gh issue comment "${{ github.event.issue.number }}" --body-file "$body"

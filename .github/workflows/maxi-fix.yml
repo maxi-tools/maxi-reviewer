@@ -20,20 +20,41 @@ jobs:
       startsWith(github.event.comment.body, '/maxi fix')
     runs-on: ubuntu-latest
     steps:
+      - name: Authorize requester
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/$REQUESTER/permission" --jq '.permission')"
+          case "$permission" in
+            admin|maintain|write)
+              ;;
+            *)
+              echo "::error::/maxi fix requires write permission"
+              exit 1
+              ;;
+          esac
+
       - name: Read PR metadata
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pr=$(gh api "${{ github.event.issue.pull_request.url }}")
-          echo "head_repo=$(printf '%s' "$pr" | jq -r '.head.repo.full_name')" >> "$GITHUB_OUTPUT"
-          echo "head_ref=$(printf '%s' "$pr" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$(printf '%s' "$pr" | jq -r '.head.sha')" >> "$GITHUB_OUTPUT"
-          echo "title=$(printf '%s' "$pr" | jq -r '.title')" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          pr_path="$RUNNER_TEMP/maxi-fix-pr.json"
+          gh api "${{ github.event.issue.pull_request.url }}" > "$pr_path"
+          head_repo="$(jq -r '.head.repo.full_name' "$pr_path")"
+          head_ref="$(jq -r '.head.ref' "$pr_path")"
+          head_sha="$(jq -r '.head.sha' "$pr_path")"
+          [[ "$head_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+          git check-ref-format --branch "$head_ref" >/dev/null
           {
-            echo "body<<JULES_PR_BODY_EOF"
-            printf '%s\n' "$pr" | jq -r '.body // ""'
-            echo "JULES_PR_BODY_EOF"
+            printf 'head_repo=%s\n' "$head_repo"
+            printf 'head_ref=%s\n' "$head_ref"
+            printf 'head_sha=%s\n' "$head_sha"
           } >> "$GITHUB_OUTPUT"
 
       - name: Stop on fork PRs
@@ -42,66 +63,158 @@ jobs:
           echo "Jules fix sessions are limited to same-repository PR branches."
           exit 1
 
-      - name: Checkout maxi-config fix scripts
-        uses: actions/checkout@v4
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          repository: maxi-tools/maxi-config
-          ref: main
-          path: .maxi-config
-          sparse-checkout: maxi-review
+          app-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          owner: maxi-tools
+          repositories: |
+            maxi-config
+          permission-contents: read
+
+      - name: Checkout target PR head
+        id: target-checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_sha }}
+          path: pr-code
+          token: ${{ github.token }}
           persist-credentials: false
 
+      - name: Checkout immutable Maxi Fix implementation
+        id: helper-checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: maxi-tools/maxi-config
+          ref: 7ea7cca37eb69cf1c955c91f5d4237b87ab5a8cc
+          path: .maxi-config
+          sparse-checkout: maxi-review
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Verify immutable checkout provenance
+        id: provenance
+        env:
+          EXPECTED_IMPLEMENTATION_REPO: maxi-tools/maxi-config
+          EXPECTED_IMPLEMENTATION_OID: 7ea7cca37eb69cf1c955c91f5d4237b87ab5a8cc
+          EXPECTED_TARGET_REPO: ${{ steps.pr.outputs.head_repo }}
+          EXPECTED_TARGET_OID: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          repo_slug() {
+            local remote="$1"
+            remote="${remote%.git}"
+            remote="${remote#https://github.com/}"
+            remote="${remote#git@github.com:}"
+            printf '%s\n' "$remote"
+          }
+          implementation_repo="$(repo_slug "$(git -C .maxi-config remote get-url origin)")"
+          implementation_oid="$(git -C .maxi-config rev-parse --verify HEAD)"
+          target_repo="$(repo_slug "$(git -C pr-code remote get-url origin)")"
+          target_oid="$(git -C pr-code rev-parse --verify HEAD)"
+          [ "$implementation_repo" = "$EXPECTED_IMPLEMENTATION_REPO" ]
+          [ "$implementation_oid" = "$EXPECTED_IMPLEMENTATION_OID" ]
+          [ "$target_repo" = "$EXPECTED_TARGET_REPO" ]
+          [ "$target_oid" = "$EXPECTED_TARGET_OID" ]
+          {
+            printf 'implementation_repo=%s\n' "$implementation_repo"
+            printf 'implementation_oid=%s\n' "$implementation_oid"
+            printf 'target_repo=%s\n' "$target_repo"
+            printf 'target_oid=%s\n' "$target_oid"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Collect Jules review comments
+        id: comments
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh api --paginate \
             "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments" \
             --jq '.[]' | jq -s '.' > "$RUNNER_TEMP/maxi-review-comments.json"
 
       - name: Build Jules fix prompt
+        id: prompt
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           JULES_PR_NUMBER: ${{ github.event.issue.number }}
-          JULES_PR_TITLE: ${{ steps.pr.outputs.title }}
-          JULES_PR_BODY: ${{ steps.pr.outputs.body }}
+          JULES_PR_JSON_PATH: ${{ runner.temp }}/maxi-fix-pr.json
           JULES_PR_HEAD_REF: ${{ steps.pr.outputs.head_ref }}
           JULES_PR_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           JULES_REVIEW_COMMENTS_PATH: ${{ runner.temp }}/maxi-review-comments.json
           JULES_FIX_PROMPT_PATH: ${{ runner.temp }}/maxi-fix-prompt.md
         run: |
+          set -euo pipefail
+          export JULES_PR_TITLE="$(jq -r '.title' "$JULES_PR_JSON_PATH")"
+          export JULES_PR_BODY="$(jq -r '.body // ""' "$JULES_PR_JSON_PATH")"
           node .maxi-config/maxi-review/build-fix-prompt.mjs
 
       - name: Install Jules SDK
-        run: npm install --no-save @google/jules-sdk
+        id: sdk
+        run: |
+          set -euo pipefail
+          npm install --no-save @google/jules-sdk@0.2.0
+          installed="$(node -p "require('./node_modules/@google/jules-sdk/package.json').version")"
+          [ "$installed" = "0.2.0" ]
 
       - name: Start Jules fix session
+        id: session
         env:
           JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
           JULES_PR_NUMBER: ${{ github.event.issue.number }}
           JULES_PR_HEAD_REF: ${{ steps.pr.outputs.head_ref }}
           JULES_FIX_PROMPT_PATH: ${{ runner.temp }}/maxi-fix-prompt.md
+          MAXI_FIX_IMPLEMENTATION_REPO: ${{ steps.provenance.outputs.implementation_repo }}
+          MAXI_FIX_IMPLEMENTATION_OID: ${{ steps.provenance.outputs.implementation_oid }}
+          MAXI_FIX_TARGET_REPO: ${{ steps.provenance.outputs.target_repo }}
+          MAXI_FIX_TARGET_HEAD_SHA: ${{ steps.provenance.outputs.target_oid }}
+          MAXI_FIX_JULES_SDK_VERSION: 0.2.0
           JULES_FIX_SESSION_RESULT_PATH: ${{ runner.temp }}/maxi-fix-session.json
         run: |
           node .maxi-config/maxi-review/run-fix-session.mjs
 
       - name: Report Jules fix session
         if: always()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AUTHORIZATION_OUTCOME: ${{ steps.authorize.outcome }}
+          METADATA_OUTCOME: ${{ steps.pr.outcome }}
+          APP_TOKEN_OUTCOME: ${{ steps.app-token.outcome }}
+          TARGET_CHECKOUT_OUTCOME: ${{ steps.target-checkout.outcome }}
+          HELPER_CHECKOUT_OUTCOME: ${{ steps.helper-checkout.outcome }}
+          PROVENANCE_OUTCOME: ${{ steps.provenance.outcome }}
+          COMMENTS_OUTCOME: ${{ steps.comments.outcome }}
+          PROMPT_OUTCOME: ${{ steps.prompt.outcome }}
+          SDK_OUTCOME: ${{ steps.sdk.outcome }}
+          SESSION_OUTCOME: ${{ steps.session.outcome }}
         run: |
-          if [ -f "$RUNNER_TEMP/maxi-fix-session.json" ]; then
-            body=$(mktemp)
-            {
+          body=$(mktemp)
+          {
+            if [ -f "$RUNNER_TEMP/maxi-fix-session.json" ]; then
               echo "Started Jules fix session:"
               echo
               echo '```json'
               cat "$RUNNER_TEMP/maxi-fix-session.json"
               echo '```'
-            } > "$body"
-          else
-            body=$(mktemp)
-            echo "Jules fix session did not start. Check the workflow logs." > "$body"
-          fi
-          gh issue comment "${{ github.event.issue.number }}" --body-file "$body"
+            else
+              echo "Jules fix session did not start. The primary failure remains in the workflow step above."
+            fi
+            echo
+            echo "Phase outcomes:"
+            echo "- authorization: $AUTHORIZATION_OUTCOME"
+            echo "- metadata: $METADATA_OUTCOME"
+            echo "- app token: $APP_TOKEN_OUTCOME"
+            echo "- target checkout: $TARGET_CHECKOUT_OUTCOME"
+            echo "- helper checkout: $HELPER_CHECKOUT_OUTCOME"
+            echo "- checkout provenance: $PROVENANCE_OUTCOME"
+            echo "- comment collection: $COMMENTS_OUTCOME"
+            echo "- prompt construction: $PROMPT_OUTCOME"
+            echo "- SDK installation: $SDK_OUTCOME"
+            echo "- session startup: $SESSION_OUTCOME"
+          } > "$body"
+          gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body-file "$body"

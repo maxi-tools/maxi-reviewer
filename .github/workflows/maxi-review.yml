@@ -77,16 +77,21 @@ jobs:
               cargo install --git https://github.com/maxi-tools/maxi-lint.git maxi-lint --quiet
           fi
           if ! command -v maxi-lint >/dev/null 2>&1; then
-            echo "maxi-lint unavailable; no deterministic findings collected" > maxi-lint-findings.md
-            printf '[]\n' > maxi-lint-findings.json
-            exit 0
+            echo "::error::maxi-lint unavailable; failing lint gate rather than passing without a scan (maxi-config#163)"
+            exit 1
           fi
 
           to=""
           if command -v timeout >/dev/null 2>&1; then to="timeout 120"
           elif command -v gtimeout >/dev/null 2>&1; then to="gtimeout 120"; fi
-          if ! findings=$($to maxi-lint --format json pr-code 2>/dev/null) || [ -z "$findings" ]; then
-            findings='[]'
+          # A crashed/timed-out/empty scan must fail the gate, not fold to [].
+          # A non-zero exit with valid JSON output still counts as a completed
+          # scan (the deny-level fold below decides pass/fail).
+          lint_status=0
+          findings=$($to maxi-lint --format json pr-code) || lint_status=$?
+          if [ -z "$findings" ] || ! printf '%s\n' "$findings" | jq -e 'type == "array"' >/dev/null; then
+            echo "::error::maxi-lint produced no valid JSON findings (exit=$lint_status); failing lint gate (maxi-config#163)"
+            exit 1
           fi
           printf '%s\n' "$findings" > all-findings.json
           gh api --paginate \
@@ -263,8 +268,11 @@ jobs:
           rm -rf rules
           mkdir -p rules
           cp -R .maxi-reviewer-rules/rules/. rules/
+          # Fail closed: never source review policy from the PR branch — a PR
+          # must not be able to influence its own review (maxi-config#163).
           if [ ! -f rules/rust.md ]; then
-            cp pr-code/.github/jules-review-rules.md rules/rust.md
+            echo "::error::pinned maxi-reviewer ref is missing rules/rust.md; refusing to fall back to PR-branch rules"
+            exit 1
           fi
 
       - uses: maxi-tools/maxi-reviewer@0203710714a9d3f0f5d5d5757400712201116bf3

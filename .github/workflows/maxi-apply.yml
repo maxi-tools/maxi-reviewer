@@ -26,9 +26,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pr=$(gh api "${{ github.event.issue.pull_request.url }}")
-          echo "head_repo=$(printf '%s' "$pr" | jq -r '.head.repo.full_name')" >> "$GITHUB_OUTPUT"
-          echo "head_ref=$(printf '%s' "$pr" | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$(printf '%s' "$pr" | jq -r '.head.sha')" >> "$GITHUB_OUTPUT"
+          {
+            echo "head_repo=$(printf '%s' "$pr" | jq -r '.head.repo.full_name')"
+            echo "head_ref=$(printf '%s' "$pr" | jq -r '.head.ref')"
+            echo "head_sha=$(printf '%s' "$pr" | jq -r '.head.sha')"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Stop on unsafe fork PRs
         if: steps.pr.outputs.head_repo != github.repository
@@ -63,7 +65,8 @@ jobs:
 
       - name: Apply structured Jules suggestions
         run: |
-          export JULES_REVIEW_COMMENTS_JSON="$(cat "$RUNNER_TEMP/maxi-review-comments.json")"
+          JULES_REVIEW_COMMENTS_JSON="$(cat "$RUNNER_TEMP/maxi-review-comments.json")"
+          export JULES_REVIEW_COMMENTS_JSON
           node .maxi-config/maxi-review/apply-suggestions.mjs | tee "$RUNNER_TEMP/maxi-apply-result.json"
 
       - name: Commit applied suggestions

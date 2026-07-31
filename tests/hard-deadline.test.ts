@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   armHardDeadline,
-  MAX_HARD_TIMEOUT_MINUTES,
-  MAX_NODE_TIMEOUT_MS,
+  NODE_MAX_TIMEOUT_MINUTES,
+  NODE_MAX_TIMEOUT_MS,
   resolveHardTimeoutMinutes,
 } from "../src/hard-deadline.js";
 
@@ -35,16 +35,6 @@ describe("resolveHardTimeoutMinutes", () => {
     );
   });
 
-  it("rejects hard_timeout_minutes above Node setTimeout limit", () => {
-    // 35792 min * 60_000 ms > 2^31-1 → Node clamps setTimeout to 1ms.
-    expect(() =>
-      resolveHardTimeoutMinutes(30, String(MAX_HARD_TIMEOUT_MINUTES + 1))
-    ).toThrow(/Invalid hard_timeout_minutes/);
-    expect(resolveHardTimeoutMinutes(30, String(MAX_HARD_TIMEOUT_MINUTES))).toBe(
-      MAX_HARD_TIMEOUT_MINUTES
-    );
-  });
-
   it("rejects digit-only values outside Number.isSafeInteger range", () => {
     // Beyond MAX_SAFE_INTEGER as a pure digit string (regex-ok, non-safe Number).
     expect(() =>
@@ -54,6 +44,24 @@ describe("resolveHardTimeoutMinutes", () => {
     expect(() =>
       resolveHardTimeoutMinutes(30, "9".repeat(400))
     ).toThrow(/Invalid hard_timeout_minutes/);
+  });
+
+  it("rejects hard_timeout_minutes above Node setTimeout limit", () => {
+    // 35792 min * 60000 ms > 2^31-1 → Node would clamp setTimeout to 1ms.
+    expect(NODE_MAX_TIMEOUT_MINUTES).toBe(35791);
+    expect(NODE_MAX_TIMEOUT_MINUTES * 60_000).toBeLessThanOrEqual(
+      NODE_MAX_TIMEOUT_MS
+    );
+    expect((NODE_MAX_TIMEOUT_MINUTES + 1) * 60_000).toBeGreaterThan(
+      NODE_MAX_TIMEOUT_MS
+    );
+    expect(() =>
+      resolveHardTimeoutMinutes(30, String(NODE_MAX_TIMEOUT_MINUTES + 1))
+    ).toThrow(/Node setTimeout limit/);
+    // Boundary: max minutes still accepted.
+    expect(
+      resolveHardTimeoutMinutes(30, String(NODE_MAX_TIMEOUT_MINUTES))
+    ).toBe(NODE_MAX_TIMEOUT_MINUTES);
   });
 });
 
@@ -126,9 +134,9 @@ describe("armHardDeadline", () => {
   it("rejects timeoutMs above Node setTimeout limit", () => {
     expect(() =>
       armHardDeadline({
-        timeoutMs: MAX_NODE_TIMEOUT_MS + 1,
+        timeoutMs: NODE_MAX_TIMEOUT_MS + 1,
         onFire: () => undefined,
       })
-    ).toThrow(/positive finite number/);
+    ).toThrow(/Node setTimeout limit/);
   });
 });

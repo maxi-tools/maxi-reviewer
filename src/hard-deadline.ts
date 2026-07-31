@@ -20,23 +20,26 @@ export type HardDeadlineOptions = {
   now?: () => number;
 };
 
-/** Node's setTimeout delay is a signed 32-bit int; larger values clamp to 1ms. */
-export const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
-/** Largest whole-minute budget that still fits in MAX_NODE_TIMEOUT_MS. */
-export const MAX_HARD_TIMEOUT_MINUTES = Math.floor(MAX_NODE_TIMEOUT_MS / 60_000);
-
 export type HardDeadlineHandle = {
   clear: () => void;
 };
 
+/** Node.js setTimeout clamps delays above this to 1ms (TimeoutOverflowWarning). */
+export const NODE_MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/** Largest whole-minute hard timeout that still fits in NODE_MAX_TIMEOUT_MS. */
+export const NODE_MAX_TIMEOUT_MINUTES = Math.floor(NODE_MAX_TIMEOUT_MS / 60_000);
+
 export function armHardDeadline(opts: HardDeadlineOptions): HardDeadlineHandle {
-  if (
-    !Number.isFinite(opts.timeoutMs) ||
-    opts.timeoutMs <= 0 ||
-    opts.timeoutMs > MAX_NODE_TIMEOUT_MS
-  ) {
+  if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) {
     throw new Error(
-      `hard deadline timeoutMs must be a positive finite number <= ${MAX_NODE_TIMEOUT_MS}, got ${opts.timeoutMs}`
+      `hard deadline timeoutMs must be a positive finite number, got ${opts.timeoutMs}`
+    );
+  }
+  // Node 24+ setTimeout converts delays > 2^31-1 ms to 1ms (#59 residual U10).
+  if (opts.timeoutMs > NODE_MAX_TIMEOUT_MS) {
+    throw new Error(
+      `hard deadline timeoutMs must be <= ${NODE_MAX_TIMEOUT_MS} (Node setTimeout limit), got ${opts.timeoutMs}`
     );
   }
   const setTimer =
@@ -107,10 +110,11 @@ export function resolveHardTimeoutMinutes(
         `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`
       );
     }
-    // Node setTimeout clamps delays > 2^31-1 ms to 1ms (TimeoutOverflowWarning).
-    if (parsed > MAX_HARD_TIMEOUT_MINUTES) {
+    // Reject values whose minute→ms conversion exceeds Node's setTimeout limit
+    // (2^31-1 ms ≈ 35791 minutes). Larger values fire almost immediately (#59 U10).
+    if (parsed > NODE_MAX_TIMEOUT_MINUTES) {
       throw new Error(
-        `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be <= ${MAX_HARD_TIMEOUT_MINUTES} (Node timer limit).`
+        `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be <= ${NODE_MAX_TIMEOUT_MINUTES} (Node setTimeout limit).`
       );
     }
     return parsed;

@@ -11,7 +11,8 @@ import { ReviewArtifact } from "../src/types.js";
 
 function artifact(
   validatedReview: unknown,
-  analyzerFindings: unknown[] = []
+  analyzerFindings: unknown[] = [],
+  legacy = false
 ): ReviewArtifact {
   return {
     schema: "maxi.review.v1.review-artifact",
@@ -29,6 +30,18 @@ function artifact(
     rawJulesResponses: [],
     validatedReview,
     validationErrors: [],
+    ...(legacy
+      ? {}
+      : {
+          outcomeSchema: "maxi.review.v1.review-outcome",
+          outcome: "REVIEWED_WITH_FINDINGS",
+          reviewOutputChars: 1,
+          runIdentity: {
+            workflowRunId: 101,
+            workflowRunAttempt: 1,
+            job: "review",
+          },
+        }),
   } as unknown as ReviewArtifact;
 }
 
@@ -231,5 +244,39 @@ describe("buildCalibrationReport", () => {
     const rule = report.byRule.find((g) => g.key === "code-review")!;
     expect(rule.accepted).toBe(1);
     expect(rule.acceptRate).toBe(1);
+  });
+
+  it("excludes legacy artifacts instead of inferring acceptance", () => {
+    const legacy = artifact(
+      {
+        schema: "maxi.review.v1.jules-review",
+        summary: "s",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        comments: [
+          {
+            id: "c1",
+            path: "src/a.ts",
+            line: 4,
+            severity: "Warning",
+            confidence: "High",
+            message: "m",
+          },
+        ],
+      },
+      [],
+      true
+    );
+
+    const report = buildCalibrationReport([
+      {
+        artifact: legacy,
+        threads: [{ path: "src/a.ts", line: 4, resolved: true }],
+      },
+    ]);
+
+    expect(report.byRule).toEqual([]);
+    expect(report.bySeverity).toEqual([]);
+    expect(report.byPath).toEqual([]);
   });
 });

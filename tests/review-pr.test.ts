@@ -74,6 +74,9 @@ describe("runReviewPr orchestration", () => {
 
     (github as any).getOctokit = vi.fn().mockReturnValue({ rest: {} });
     (github as any).context = {
+      runId: 101,
+      runAttempt: 1,
+      job: "review",
       eventName: "pull_request",
       repo: { owner: "maxi", repo: "example" },
       payload: {
@@ -134,7 +137,16 @@ describe("runReviewPr orchestration", () => {
           verdict: "comment",
           summary: "Looks okay.",
           resolvedCommentIds: [],
-          newComments: [],
+          newComments: [
+            {
+              file: "src/a.ts",
+              line: 1,
+              severity: "Warning",
+              confidence: "High",
+              message: "Finding.",
+              promptForAgents: "Fix the finding.",
+            },
+          ],
         },
         sessionId: "session-1",
         rawResponses: ["raw response"],
@@ -213,8 +225,37 @@ describe("runReviewPr orchestration", () => {
       rawJulesResponses: ["raw response"],
       validationErrors: ["non-applying suggestion"],
       sessionId: "session-1",
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome: "REVIEWED_WITH_FINDINGS",
+      reviewOutputChars: 12,
+      runIdentity: {
+        workflowRunId: 101,
+        workflowRunAttempt: 1,
+        job: "review",
+      },
     });
     expect(commentArtifact.rawJulesResponses).toEqual([]);
+
+    (github as any).context.runId = 102;
+    (github as any).context.runAttempt = 2;
+    (github as any).context.payload.pull_request.number = 8;
+    (github as any).context.payload.pull_request.head.sha = "retry-head-sha";
+
+    await runReviewPr(deps);
+
+    const retryArtifact = JSON.parse(deps.uploadArtifact.mock.calls[1][1]);
+    expect(retryArtifact).toMatchObject({
+      repoFullName: "maxi/example",
+      prNumber: 8,
+      headSha: "retry-head-sha",
+      sessionId: "session-1",
+      runIdentity: {
+        workflowRunId: 102,
+        workflowRunAttempt: 2,
+        job: "review",
+      },
+    });
+    expect(retryArtifact.runIdentity).not.toEqual(artifact.runIdentity);
   });
 
   it("continues when recording the artifact comment fails", async () => {
@@ -251,6 +292,12 @@ describe("runReviewPr orchestration", () => {
 
     await runReviewPr(deps);
 
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact).toMatchObject({
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome: "REVIEWED_NO_FINDINGS",
+      reviewOutputChars: 0,
+    });
     expect(deps.submitReview).toHaveBeenCalled();
     expect(deps.setStatus).toHaveBeenCalledWith(
       expect.anything(),
@@ -366,6 +413,14 @@ describe("runReviewPr orchestration", () => {
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
     expect(artifact).toMatchObject({
       validatedReview: null,
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome: "TIMED_OUT_NO_CONTENT",
+      reviewOutputChars: 0,
+      runIdentity: {
+        workflowRunId: 101,
+        workflowRunAttempt: 1,
+        job: "review",
+      },
       retention: {
         harvestableAfterMerge: true,
       },
@@ -395,7 +450,9 @@ describe("runReviewPr orchestration", () => {
     expect(core.warning).toHaveBeenCalledWith(
       "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
     );
-    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Jules returned no review message within 30 minutes."
+    );
   });
 });
 

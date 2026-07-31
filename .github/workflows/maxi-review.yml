@@ -282,7 +282,7 @@ jobs:
       # mid-cleanup (#59 residual P1). Job timeout is 45 for the same reason.
       - name: Run maxi-reviewer
         timeout-minutes: 42
-        uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
+        uses: maxi-tools/maxi-reviewer@1af919890e43bdf100a1650a08f621fb4c394868
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

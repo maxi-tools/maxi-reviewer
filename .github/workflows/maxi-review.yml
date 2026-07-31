@@ -171,7 +171,7 @@ jobs:
       )
     continue-on-error: true
     runs-on: warp-macos-15-arm64-6x
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       pull-requests: write
       issues: write
@@ -275,13 +275,12 @@ jobs:
             exit 1
           fi
 
-      # Step-level timeout so a hung action releases the runner before the
-      # 40-minute job timeout (maxi-reviewer#53). Keep above Jules timeout_minutes.
-      # Step timeout must exceed hard_timeout_minutes (default timeout_minutes+5)
-      # plus status-cleanup headroom so the runner does not kill the process
-      # mid-cleanup (#59 residual P1). Job timeout is 45 for the same reason.
+      # Step-level timeout so a hung action releases the runner before the job
+      # timeout (maxi-reviewer#53). Must exceed hard_timeout_minutes.
+      # Default hard deadline is timeout_minutes+20 (50 with Jules budget 30);
+      # step timeout 55 leaves cleanup headroom; job timeout is 60 (#59 U15/U16).
       - name: Run maxi-reviewer
-        timeout-minutes: 42
+        timeout-minutes: 55
         uses: maxi-tools/maxi-reviewer@1af919890e43bdf100a1650a08f621fb4c394868
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}

@@ -156,7 +156,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `extra_instructions` |                                 | Markdown appended to the review prompt.                       |
 | `rules_file`         | `.github/maxi-review-rules.md`  | Repo file loaded from the base SHA. Set empty to disable.     |
 | `timeout_minutes`    | `30`                            | How long to wait for Jules review output.                     |
-| `hard_timeout_minutes` | `timeout_minutes + 5`         | Wall-clock process deadline (minutes). On expiry the action fails the commit status and exits so a silent hang cannot hold a self-hosted runner until the job timeout. Empty uses `timeout_minutes + 5`. |
+| `hard_timeout_minutes` | `timeout_minutes + 20`        | Wall-clock process deadline (minutes). On expiry the action fails the commit status and exits so a silent hang cannot hold a self-hosted runner until the job timeout. Empty uses `timeout_minutes + 20` (setup/analyzer headroom). |
 | `analyzer_mode`      | `auto`                          | `auto` or `off`.                                              |
 | `opengrep_json`      |                                 | Path to Opengrep/Semgrep-compatible JSON output.              |
 | `opengrep_sarif`     |                                 | Path to Opengrep/Semgrep-compatible SARIF output.             |
@@ -173,8 +173,10 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 > **Hang release guarantee:** `hard_timeout_minutes` is enforced inside the action
 > process (timers + status cleanup). A blocked Node event loop can prevent those
 > timers from firing. Always set the GitHub Actions **step** `timeout-minutes`
-> above `hard_timeout_minutes` (default `timeout_minutes + 5`) plus a few minutes
+> above `hard_timeout_minutes` (default `timeout_minutes + 20`) plus a few minutes
 > of cleanup headroom — that outer timeout is the real runner-release watchdog.
+> With the default Jules budget of 30 minutes the process deadline is 50 minutes;
+> use a step `timeout-minutes` of at least 55 and a job timeout above that.
 
 ## Outputs
 

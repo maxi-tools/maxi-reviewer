@@ -46,7 +46,7 @@ inputs:
     required: false
     default: "30"
   hard_timeout_minutes:
-    description: "Hard wall-clock deadline for the entire action process (minutes). On expiry the process exits so a silent hang cannot hold a self-hosted runner until the job timeout. Default is timeout_minutes+5. Set equal to timeout_minutes to fail as soon as the Jules budget ends."
+    description: "Hard wall-clock deadline for the entire action process (minutes). On expiry the process exits so a silent hang cannot hold a self-hosted runner until the job timeout. Default is timeout_minutes+20 (setup/analyzer headroom). Set equal to timeout_minutes to fail as soon as the Jules budget ends. Keep the GitHub Actions step timeout-minutes above this value so status cleanup can run."
     required: false
     default: ""
   analyzer_mode:

@@ -23,19 +23,28 @@ describe("resolveHardTimeoutMinutes", () => {
       /Invalid hard_timeout_minutes/
     );
   });
+
+  it("rejects partially parsed numeric prefixes", () => {
+    expect(() => resolveHardTimeoutMinutes(30, "1e2")).toThrow(
+      /Invalid hard_timeout_minutes/
+    );
+    expect(() => resolveHardTimeoutMinutes(30, "12oops")).toThrow(
+      /Invalid hard_timeout_minutes/
+    );
+  });
 });
 
 describe("armHardDeadline", () => {
   it("fires onFire once the wall-clock deadline elapses", () => {
     const timers: Array<{ fn: () => void; ms: number; id: number }> = [];
     let nextId = 1;
-    const setTimer = (fn: () => void, ms: number) => {
+    const setTimer = (fn: () => void, ms: number): unknown => {
       const id = nextId++;
       timers.push({ fn, ms, id });
-      return id as unknown as ReturnType<typeof setTimeout>;
+      return id;
     };
-    const clearTimer = (handle: ReturnType<typeof setTimeout>) => {
-      const id = handle as unknown as number;
+    const clearTimer = (handle: unknown) => {
+      const id = typeof handle === "number" ? handle : NaN;
       const idx = timers.findIndex((t) => t.id === id);
       if (idx >= 0) timers.splice(idx, 1);
     };
@@ -62,13 +71,13 @@ describe("armHardDeadline", () => {
   it("does not fire after clear()", () => {
     const timers: Array<{ fn: () => void; ms: number; id: number }> = [];
     let nextId = 1;
-    const setTimer = (fn: () => void, ms: number) => {
+    const setTimer = (fn: () => void, ms: number): unknown => {
       const id = nextId++;
       timers.push({ fn, ms, id });
-      return id as unknown as ReturnType<typeof setTimeout>;
+      return id;
     };
-    const clearTimer = (handle: ReturnType<typeof setTimeout>) => {
-      const id = handle as unknown as number;
+    const clearTimer = (handle: unknown) => {
+      const id = typeof handle === "number" ? handle : NaN;
       const idx = timers.findIndex((t) => t.id === id);
       if (idx >= 0) timers.splice(idx, 1);
     };

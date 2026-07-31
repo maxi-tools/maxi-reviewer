@@ -30,9 +30,13 @@ export function armHardDeadline(opts: HardDeadlineOptions): HardDeadlineHandle {
       `hard deadline timeoutMs must be a positive finite number, got ${opts.timeoutMs}`
     );
   }
-  const setTimer = opts.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+  const setTimer =
+    opts.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   const clearTimer =
-    opts.clearTimer ?? ((handle: unknown) => clearTimeout(handle as NodeJS.Timeout));
+    opts.clearTimer ??
+    ((handle: unknown) => {
+      clearTimeout(handle as NodeJS.Timeout);
+    });
   const now = opts.now ?? Date.now;
   const started = now();
   const deadline = started + opts.timeoutMs;
@@ -79,13 +83,14 @@ export function resolveHardTimeoutMinutes(
     hardTimeoutMinutesRaw !== undefined &&
     hardTimeoutMinutesRaw.trim() !== ""
   ) {
-    const parsed = parseInt(hardTimeoutMinutesRaw, 10);
-    if (!Number.isFinite(parsed) || parsed < 1) {
+    const trimmed = hardTimeoutMinutesRaw.trim();
+    // Require the entire string to be a positive integer (reject "1e2", "12oops").
+    if (!/^[1-9]\d*$/.test(trimmed)) {
       throw new Error(
         `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`
       );
     }
-    return parsed;
+    return Number(trimmed);
   }
   // Default: Jules budget + 5 minutes for setup/post + silent pre-Jules hang cover.
   return base + 5;

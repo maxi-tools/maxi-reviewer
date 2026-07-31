@@ -1,0 +1,22 @@
+name: Issue 58 regression
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        run: npm install
+      - name: Run empty-review regression tests
+        run: npm test -- tests/review-pr.test.ts tests/index.test.ts

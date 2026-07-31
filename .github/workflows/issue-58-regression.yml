@@ -1,4 +1,4 @@
-name: Issue 58 regression
+name: Issue 58 verification
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  targeted-tests:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,5 +18,22 @@ jobs:
           node-version: "24"
       - name: Install dependencies
         run: npm install
-      - name: Run empty-review regression tests
-        run: npm test -- tests/review-pr.test.ts tests/index.test.ts
+      - name: Prettier check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Build action bundle
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+      - name: Coverage
+        run: npm run coverage
+      - name: Verify checked-in dist
+        run: git diff --exit-code -- dist
+      - name: Upload generated dist
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: issue-58-generated-dist
+          path: dist
+          retention-days: 1

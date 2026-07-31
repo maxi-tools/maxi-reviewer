@@ -171,10 +171,9 @@ const defaultDeps: ReviewPrDeps = {
   listReviewArtifactComments,
   wrapPermissionError,
   writeJobSummary: async (collectedCharacters: number) => {
-    await core.summary
-      .addHeading("Maxi Review")
-      .addRaw(`Collected characters: ${collectedCharacters}`)
-      .write();
+    core.summary.addHeading("Maxi Review");
+    core.summary.addRaw(`Collected characters: ${collectedCharacters}`);
+    await core.summary.write();
   },
 };
 

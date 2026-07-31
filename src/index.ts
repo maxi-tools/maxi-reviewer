@@ -2,16 +2,48 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { runReviewPr } from "./review-pr.js";
 import { runReviewCommand } from "./review-command.js";
-import {
-  armHardDeadline,
-  resolveHardTimeoutMinutes,
-} from "./hard-deadline.js";
+import { armHardDeadline, resolveHardTimeoutMinutes } from "./hard-deadline.js";
+import { setStatus } from "./github.js";
 
 const run =
   github.context.eventName === "issue_comment" ||
   github.context.eventName === "workflow_dispatch"
     ? runReviewCommand
     : runReviewPr;
+
+async function publishHardDeadlineStatus(message: string): Promise<void> {
+  // Best-effort: flip pending maxi/review to error so a required status check
+  // cannot stay pending forever after process.exit (#59 residual P1).
+  try {
+    if (github.context.eventName !== "pull_request") {
+      return;
+    }
+    const pr = github.context.payload.pull_request;
+    if (!pr?.head?.sha) {
+      return;
+    }
+    const token = core.getInput("github_token", { required: true });
+    const statusContext = core.getInput("status_context") || "maxi/review";
+    const octokit = github.getOctokit(token);
+    const description =
+      message.length > 140 ? `${message.slice(0, 137)}...` : message;
+    await setStatus(
+      octokit,
+      github.context.repo.owner,
+      github.context.repo.repo,
+      pr.head.sha,
+      statusContext,
+      "error",
+      description
+    );
+  } catch (err) {
+    core.warning(
+      `hard-deadline status cleanup failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+}
 
 async function main(): Promise<void> {
   const timeoutMinutesRaw = core.getInput("timeout_minutes") || "30";
@@ -28,11 +60,17 @@ async function main(): Promise<void> {
   const deadline = armHardDeadline({
     timeoutMs: hardMinutes * 60 * 1000,
     onFire: () => {
-      core.setFailed(
-        `maxi-reviewer hard deadline exceeded after ${hardMinutes} minutes (silent hang or overrun). Releasing runner.`
-      );
-      // Force-exit so a stuck await cannot keep the job process alive past the wall.
-      process.exit(1);
+      const message = `maxi-reviewer hard deadline exceeded after ${hardMinutes} minutes (silent hang or overrun). Releasing runner.`;
+      core.setFailed(message);
+      // Status update then force-exit so a stuck await cannot keep the process.
+      // Cap wait so a hung GitHub API cannot re-block the runner indefinitely.
+      const cleanup = publishHardDeadlineStatus(message);
+      const cap = new Promise<void>((resolve) => {
+        setTimeout(resolve, 5_000);
+      });
+      void Promise.race([cleanup, cap]).finally(() => {
+        process.exit(1);
+      });
     },
     onHeartbeat: (remainingMs) => {
       const remainingMin = Math.ceil(remainingMs / 60_000);

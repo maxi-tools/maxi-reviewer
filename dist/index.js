@@ -45754,7 +45754,10 @@ function armHardDeadline(opts) {
         throw new Error(`hard deadline timeoutMs must be a positive finite number, got ${opts.timeoutMs}`);
     }
     const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
-    const clearTimer = opts.clearTimer ?? ((handle) => clearTimeout(handle));
+    const clearTimer = opts.clearTimer ??
+        ((handle) => {
+            clearTimeout(handle);
+        });
     const now = opts.now ?? Date.now;
     const started = now();
     const deadline = started + opts.timeoutMs;
@@ -45792,11 +45795,12 @@ function resolveHardTimeoutMinutes(timeoutMinutes, hardTimeoutMinutesRaw) {
     const base = Math.max(1, timeoutMinutes | 0);
     if (hardTimeoutMinutesRaw !== undefined &&
         hardTimeoutMinutesRaw.trim() !== "") {
-        const parsed = parseInt(hardTimeoutMinutesRaw, 10);
-        if (!Number.isFinite(parsed) || parsed < 1) {
+        const trimmed = hardTimeoutMinutesRaw.trim();
+        // Require the entire string to be a positive integer (reject "1e2", "12oops").
+        if (!/^[1-9]\d*$/.test(trimmed)) {
             throw new Error(`Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`);
         }
-        return parsed;
+        return Number(trimmed);
     }
     // Default: Jules budget + 5 minutes for setup/post + silent pre-Jules hang cover.
     return base + 5;
@@ -45808,10 +45812,32 @@ function resolveHardTimeoutMinutes(timeoutMinutes, hardTimeoutMinutesRaw) {
 
 
 
+
 const run = github/* context */._.eventName === "issue_comment" ||
     github/* context */._.eventName === "workflow_dispatch"
     ? runReviewCommand
     : runReviewPr;
+async function publishHardDeadlineStatus(message) {
+    // Best-effort: flip pending maxi/review to error so a required status check
+    // cannot stay pending forever after process.exit (#59 residual P1).
+    try {
+        if (github/* context */._.eventName !== "pull_request") {
+            return;
+        }
+        const pr = github/* context */._.payload.pull_request;
+        if (!pr?.head?.sha) {
+            return;
+        }
+        const token = core/* getInput */.V4("github_token", { required: true });
+        const statusContext = core/* getInput */.V4("status_context") || "maxi/review";
+        const octokit = github/* getOctokit */.Q(token);
+        const description = message.length > 140 ? `${message.slice(0, 137)}...` : message;
+        await setStatus(octokit, github/* context */._.repo.owner, github/* context */._.repo.repo, pr.head.sha, statusContext, "error", description);
+    }
+    catch (err) {
+        core/* warning */.$e(`hard-deadline status cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
 async function main() {
     const timeoutMinutesRaw = core/* getInput */.V4("timeout_minutes") || "30";
     const timeoutMinutes = Math.max(1, parseInt(timeoutMinutesRaw, 10) || 30);
@@ -45820,9 +45846,17 @@ async function main() {
     const deadline = armHardDeadline({
         timeoutMs: hardMinutes * 60 * 1000,
         onFire: () => {
-            core/* setFailed */.C1(`maxi-reviewer hard deadline exceeded after ${hardMinutes} minutes (silent hang or overrun). Releasing runner.`);
-            // Force-exit so a stuck await cannot keep the job process alive past the wall.
-            process.exit(1);
+            const message = `maxi-reviewer hard deadline exceeded after ${hardMinutes} minutes (silent hang or overrun). Releasing runner.`;
+            core/* setFailed */.C1(message);
+            // Status update then force-exit so a stuck await cannot keep the process.
+            // Cap wait so a hung GitHub API cannot re-block the runner indefinitely.
+            const cleanup = publishHardDeadlineStatus(message);
+            const cap = new Promise((resolve) => {
+                setTimeout(resolve, 5_000);
+            });
+            void Promise.race([cleanup, cap]).finally(() => {
+                process.exit(1);
+            });
         },
         onHeartbeat: (remainingMs) => {
             const remainingMin = Math.ceil(remainingMs / 60_000);

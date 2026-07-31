@@ -90,7 +90,15 @@ export function resolveHardTimeoutMinutes(
         `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`
       );
     }
-    return Number(trimmed);
+    const parsed = Number(trimmed);
+    // Digit-only strings past Number.MAX_SAFE_INTEGER lose precision or become
+    // Infinity; reject them before armHardDeadline sees a non-safe timeoutMs.
+    if (!Number.isSafeInteger(parsed)) {
+      throw new Error(
+        `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`
+      );
+    }
+    return parsed;
   }
   // Default: Jules budget + 5 minutes for setup/post + silent pre-Jules hang cover.
   return base + 5;

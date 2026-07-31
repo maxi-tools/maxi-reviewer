@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   armHardDeadline,
+  MAX_HARD_TIMEOUT_MINUTES,
+  MAX_NODE_TIMEOUT_MS,
   resolveHardTimeoutMinutes,
 } from "../src/hard-deadline.js";
 
@@ -30,6 +32,16 @@ describe("resolveHardTimeoutMinutes", () => {
     );
     expect(() => resolveHardTimeoutMinutes(30, "12oops")).toThrow(
       /Invalid hard_timeout_minutes/
+    );
+  });
+
+  it("rejects hard_timeout_minutes above Node setTimeout limit", () => {
+    // 35792 min * 60_000 ms > 2^31-1 → Node clamps setTimeout to 1ms.
+    expect(() =>
+      resolveHardTimeoutMinutes(30, String(MAX_HARD_TIMEOUT_MINUTES + 1))
+    ).toThrow(/Invalid hard_timeout_minutes/);
+    expect(resolveHardTimeoutMinutes(30, String(MAX_HARD_TIMEOUT_MINUTES))).toBe(
+      MAX_HARD_TIMEOUT_MINUTES
     );
   });
 
@@ -108,6 +120,15 @@ describe("armHardDeadline", () => {
   it("rejects non-positive timeoutMs", () => {
     expect(() =>
       armHardDeadline({ timeoutMs: 0, onFire: () => undefined })
+    ).toThrow(/positive finite number/);
+  });
+
+  it("rejects timeoutMs above Node setTimeout limit", () => {
+    expect(() =>
+      armHardDeadline({
+        timeoutMs: MAX_NODE_TIMEOUT_MS + 1,
+        onFire: () => undefined,
+      })
     ).toThrow(/positive finite number/);
   });
 });

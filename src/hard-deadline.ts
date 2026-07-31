@@ -20,14 +20,23 @@ export type HardDeadlineOptions = {
   now?: () => number;
 };
 
+/** Node's setTimeout delay is a signed 32-bit int; larger values clamp to 1ms. */
+export const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
+/** Largest whole-minute budget that still fits in MAX_NODE_TIMEOUT_MS. */
+export const MAX_HARD_TIMEOUT_MINUTES = Math.floor(MAX_NODE_TIMEOUT_MS / 60_000);
+
 export type HardDeadlineHandle = {
   clear: () => void;
 };
 
 export function armHardDeadline(opts: HardDeadlineOptions): HardDeadlineHandle {
-  if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) {
+  if (
+    !Number.isFinite(opts.timeoutMs) ||
+    opts.timeoutMs <= 0 ||
+    opts.timeoutMs > MAX_NODE_TIMEOUT_MS
+  ) {
     throw new Error(
-      `hard deadline timeoutMs must be a positive finite number, got ${opts.timeoutMs}`
+      `hard deadline timeoutMs must be a positive finite number <= ${MAX_NODE_TIMEOUT_MS}, got ${opts.timeoutMs}`
     );
   }
   const setTimer =
@@ -96,6 +105,12 @@ export function resolveHardTimeoutMinutes(
     if (!Number.isSafeInteger(parsed)) {
       throw new Error(
         `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`
+      );
+    }
+    // Node setTimeout clamps delays > 2^31-1 ms to 1ms (TimeoutOverflowWarning).
+    if (parsed > MAX_HARD_TIMEOUT_MINUTES) {
+      throw new Error(
+        `Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be <= ${MAX_HARD_TIMEOUT_MINUTES} (Node timer limit).`
       );
     }
     return parsed;

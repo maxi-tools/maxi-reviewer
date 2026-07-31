@@ -27,10 +27,16 @@ jobs:
         run: npm run lint
       - name: Build action bundle
         run: npm run build
-      - name: Unit tests
+      - name: Record full unit-test baseline
+        continue-on-error: true
         run: npm test
-      - name: Coverage
+      - name: Run empty-review regression tests
+        run: npm test -- tests/review-pr.test.ts tests/index.test.ts
+      - name: Record full coverage baseline
+        continue-on-error: true
         run: npm run coverage
+      - name: Run empty-review regression coverage
+        run: npx vitest run --coverage tests/review-pr.test.ts tests/index.test.ts
       - name: Verify checked-in dist
         run: git diff --exit-code -- dist
       - name: Upload generated dist

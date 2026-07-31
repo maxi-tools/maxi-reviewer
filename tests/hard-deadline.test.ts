@@ -1,16 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   armHardDeadline,
+  DEFAULT_SETUP_HEADROOM_MINUTES,
   NODE_MAX_TIMEOUT_MINUTES,
   NODE_MAX_TIMEOUT_MS,
   resolveHardTimeoutMinutes,
 } from "../src/hard-deadline.js";
 
 describe("resolveHardTimeoutMinutes", () => {
-  it("defaults to timeout_minutes + 5", () => {
-    expect(resolveHardTimeoutMinutes(30, undefined)).toBe(35);
-    expect(resolveHardTimeoutMinutes(30, "")).toBe(35);
-    expect(resolveHardTimeoutMinutes(30, "   ")).toBe(35);
+  it("defaults to timeout_minutes + setup headroom", () => {
+    expect(DEFAULT_SETUP_HEADROOM_MINUTES).toBe(20);
+    expect(resolveHardTimeoutMinutes(30, undefined)).toBe(
+      30 + DEFAULT_SETUP_HEADROOM_MINUTES
+    );
+    expect(resolveHardTimeoutMinutes(30, "")).toBe(
+      30 + DEFAULT_SETUP_HEADROOM_MINUTES
+    );
+    expect(resolveHardTimeoutMinutes(30, "   ")).toBe(
+      30 + DEFAULT_SETUP_HEADROOM_MINUTES
+    );
   });
 
   it("honors an explicit hard_timeout_minutes", () => {
@@ -62,6 +70,23 @@ describe("resolveHardTimeoutMinutes", () => {
     expect(
       resolveHardTimeoutMinutes(30, String(NODE_MAX_TIMEOUT_MINUTES))
     ).toBe(NODE_MAX_TIMEOUT_MINUTES);
+  });
+
+  it("rejects derived default above Node setTimeout limit", () => {
+    // base + headroom can overflow even when base alone is within the limit (#59 U13).
+    const maxBase = NODE_MAX_TIMEOUT_MINUTES - DEFAULT_SETUP_HEADROOM_MINUTES;
+    expect(resolveHardTimeoutMinutes(maxBase, undefined)).toBe(
+      NODE_MAX_TIMEOUT_MINUTES
+    );
+    expect(() => resolveHardTimeoutMinutes(maxBase + 1, undefined)).toThrow(
+      /setup headroom|setTimeout limit/
+    );
+  });
+
+  it("keeps setup headroom large enough for sequential analyzer budget", () => {
+    // Three analyzer phases with 5-minute command timeouts need ≥15m headroom;
+    // default must not collapse to a tiny cushion (#59 U14).
+    expect(DEFAULT_SETUP_HEADROOM_MINUTES).toBeGreaterThanOrEqual(15);
   });
 });
 

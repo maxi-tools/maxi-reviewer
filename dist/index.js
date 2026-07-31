@@ -73133,6 +73133,12 @@ function defaultReviewCommandDeps() {
 const NODE_MAX_TIMEOUT_MS = 2 ** 31 - 1;
 /** Largest whole-minute hard timeout that still fits in NODE_MAX_TIMEOUT_MS. */
 const NODE_MAX_TIMEOUT_MINUTES = Math.floor(NODE_MAX_TIMEOUT_MS / 60_000);
+/**
+ * Minutes added to `timeout_minutes` when `hard_timeout_minutes` is omitted.
+ * Covers checkout/setup, sequential analyzer phases (Opengrep/PMD/CPD), and a
+ * small silent-hang cushion before Jules polling begins (#59 residual U14).
+ */
+const DEFAULT_SETUP_HEADROOM_MINUTES = 20;
 function armHardDeadline(opts) {
     if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) {
         throw new Error(`hard deadline timeoutMs must be a positive finite number, got ${opts.timeoutMs}`);
@@ -73201,8 +73207,16 @@ function resolveHardTimeoutMinutes(timeoutMinutes, hardTimeoutMinutesRaw) {
         }
         return parsed;
     }
-    // Default: Jules budget + 5 minutes for setup/post + silent pre-Jules hang cover.
-    return base + 5;
+    // Default: Jules poll budget + setup/analyzer headroom. Opengrep/PMD/CPD can
+    // each run for several minutes before Jules starts (#59 residual U14); keep
+    // the process deadline above timeout_minutes so analysis does not steal the
+    // entire Jules wait.
+    const derived = base + DEFAULT_SETUP_HEADROOM_MINUTES;
+    // Validate the *derived* total, not only explicit hard_timeout_minutes (#59 U13).
+    if (derived > NODE_MAX_TIMEOUT_MINUTES) {
+        throw new Error(`timeout_minutes (${base}) + setup headroom (${DEFAULT_SETUP_HEADROOM_MINUTES}) exceeds Node setTimeout limit (${NODE_MAX_TIMEOUT_MINUTES}). Reduce timeout_minutes or set hard_timeout_minutes explicitly within the limit.`);
+    }
+    return derived;
 }
 
 ;// CONCATENATED MODULE: ./src/index.ts

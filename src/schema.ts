@@ -182,11 +182,7 @@ function validateReviewOutcomeMetadata(
   requireEnum(
     record,
     "outcome",
-    [
-      "TIMED_OUT_NO_CONTENT",
-      "REVIEWED_NO_FINDINGS",
-      "REVIEWED_WITH_FINDINGS",
-    ],
+    ["TIMED_OUT_NO_CONTENT", "REVIEWED_NO_FINDINGS", "REVIEWED_WITH_FINDINGS"],
     errors
   );
   if (
@@ -199,12 +195,7 @@ function validateReviewOutcomeMetadata(
   const identity = asRecord(record.runIdentity, errors, "runIdentity");
   if (identity) {
     requirePositiveInt(identity, "workflowRunId", errors, "runIdentity.");
-    requirePositiveInt(
-      identity,
-      "workflowRunAttempt",
-      errors,
-      "runIdentity."
-    );
+    requirePositiveInt(identity, "workflowRunAttempt", errors, "runIdentity.");
     requireString(identity, "job", undefined, errors, "runIdentity.");
   }
 

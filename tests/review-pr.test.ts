@@ -234,7 +234,7 @@ describe("runReviewPr orchestration", () => {
         job: "review",
       },
     });
-        expect(commentArtifact.rawJulesResponses).toEqual([]);
+    expect(commentArtifact.rawJulesResponses).toEqual([]);
   });
 
   it("distinguishes reused sessions by immutable run identity", async () => {

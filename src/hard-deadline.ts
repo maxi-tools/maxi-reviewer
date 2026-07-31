@@ -28,7 +28,9 @@ export type HardDeadlineHandle = {
 export const NODE_MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
 /** Largest whole-minute hard timeout that still fits in NODE_MAX_TIMEOUT_MS. */
-export const NODE_MAX_TIMEOUT_MINUTES = Math.floor(NODE_MAX_TIMEOUT_MS / 60_000);
+export const NODE_MAX_TIMEOUT_MINUTES = Math.floor(
+  NODE_MAX_TIMEOUT_MS / 60_000
+);
 
 export function armHardDeadline(opts: HardDeadlineOptions): HardDeadlineHandle {
   if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) {

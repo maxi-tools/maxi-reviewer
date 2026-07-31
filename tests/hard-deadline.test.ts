@@ -37,13 +37,13 @@ describe("resolveHardTimeoutMinutes", () => {
 
   it("rejects digit-only values outside Number.isSafeInteger range", () => {
     // Beyond MAX_SAFE_INTEGER as a pure digit string (regex-ok, non-safe Number).
-    expect(() =>
-      resolveHardTimeoutMinutes(30, "9007199254740993")
-    ).toThrow(/Invalid hard_timeout_minutes/);
+    expect(() => resolveHardTimeoutMinutes(30, "9007199254740993")).toThrow(
+      /Invalid hard_timeout_minutes/
+    );
     // Far past finite Number range → Infinity.
-    expect(() =>
-      resolveHardTimeoutMinutes(30, "9".repeat(400))
-    ).toThrow(/Invalid hard_timeout_minutes/);
+    expect(() => resolveHardTimeoutMinutes(30, "9".repeat(400))).toThrow(
+      /Invalid hard_timeout_minutes/
+    );
   });
 
   it("rejects hard_timeout_minutes above Node setTimeout limit", () => {

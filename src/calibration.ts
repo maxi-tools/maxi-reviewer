@@ -213,6 +213,7 @@ export function buildCalibrationReport(
 ): CalibrationReport {
   const records: OutcomeRecord[] = [];
   for (const item of items) {
+    if (item.artifact.outcome !== "REVIEWED_WITH_FINDINGS") continue;
     records.push(
       ...correlateOutcomes(extractEmittedFindings(item.artifact), item.threads)
     );

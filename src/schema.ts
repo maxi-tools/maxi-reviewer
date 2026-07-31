@@ -152,8 +152,93 @@ export function validateReviewArtifact(
   }
   requireStringArray(record, "validationErrors", errors);
   optionalString(record, "sessionId", errors);
+  validateReviewOutcomeMetadata(record, errors);
 
   return { ok: errors.length === 0, value: value as ReviewArtifact, errors };
+}
+
+function validateReviewOutcomeMetadata(
+  record: Record<string, unknown>,
+  errors: string[]
+): void {
+  const fields = [
+    "outcomeSchema",
+    "outcome",
+    "reviewOutputChars",
+    "runIdentity",
+  ];
+  const present = fields.filter((field) => record[field] !== undefined);
+  if (present.length === 0) return;
+  if (present.length !== fields.length) {
+    errors.push("review outcome metadata must be present as a complete set");
+  }
+
+  requireString(
+    record,
+    "outcomeSchema",
+    "maxi.review.v1.review-outcome",
+    errors
+  );
+  requireEnum(
+    record,
+    "outcome",
+    [
+      "TIMED_OUT_NO_CONTENT",
+      "REVIEWED_NO_FINDINGS",
+      "REVIEWED_WITH_FINDINGS",
+    ],
+    errors
+  );
+  if (
+    !Number.isInteger(record.reviewOutputChars) ||
+    (record.reviewOutputChars as number) < 0
+  ) {
+    errors.push("reviewOutputChars must be a non-negative integer");
+  }
+
+  const identity = asRecord(record.runIdentity, errors, "runIdentity");
+  if (identity) {
+    requirePositiveInt(identity, "workflowRunId", errors, "runIdentity.");
+    requirePositiveInt(
+      identity,
+      "workflowRunAttempt",
+      errors,
+      "runIdentity."
+    );
+    requireString(identity, "job", undefined, errors, "runIdentity.");
+  }
+
+  if (
+    record.outcome === "TIMED_OUT_NO_CONTENT" &&
+    record.validatedReview !== null
+  ) {
+    errors.push("TIMED_OUT_NO_CONTENT requires validatedReview to be null");
+  }
+  if (
+    (record.outcome === "REVIEWED_NO_FINDINGS" ||
+      record.outcome === "REVIEWED_WITH_FINDINGS") &&
+    (record.validatedReview === null || record.validatedReview === undefined)
+  ) {
+    errors.push(`${String(record.outcome)} requires a validatedReview`);
+  }
+
+  const findingCount = artifactReviewFindingCount(record.validatedReview);
+  if (record.outcome === "REVIEWED_NO_FINDINGS" && findingCount !== 0) {
+    errors.push("REVIEWED_NO_FINDINGS requires zero findings");
+  }
+  if (record.outcome === "REVIEWED_WITH_FINDINGS" && findingCount < 1) {
+    errors.push("REVIEWED_WITH_FINDINGS requires at least one finding");
+  }
+}
+
+function artifactReviewFindingCount(value: unknown): number {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return 0;
+  }
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record.comments)) return record.comments.length;
+  if (Array.isArray(record.newComments)) return record.newComments.length;
+  return 0;
 }
 
 function validateArtifactReview(value: unknown): string[] {

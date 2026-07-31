@@ -1,5 +1,16 @@
 export type FailOn = "never" | "blocking" | "any";
 export type Verdict = "approve" | "comment" | "block";
+export type ReviewOutcome =
+  | "TIMED_OUT_NO_CONTENT"
+  | "REVIEWED_NO_FINDINGS"
+  | "REVIEWED_WITH_FINDINGS";
+
+export interface ReviewRunIdentity {
+  workflowRunId: number;
+  workflowRunAttempt: number;
+  job: string;
+}
+
 export type AnalyzerSeverity = "info" | "warning" | "error";
 export type AnalyzerConfidence = "low" | "medium" | "high" | "unknown";
 
@@ -267,6 +278,12 @@ export interface ReviewArtifactRetention {
 
 export interface ReviewArtifact {
   schema: "maxi.review.v1.review-artifact";
+  /** Absent only on permanently ambiguous legacy artifacts. */
+  outcomeSchema?: "maxi.review.v1.review-outcome";
+  /** Producer-written result; consumers must never infer this from payload shape. */
+  outcome?: ReviewOutcome;
+  reviewOutputChars?: number;
+  runIdentity?: ReviewRunIdentity;
   createdAt: string;
   retention: ReviewArtifactRetention;
   repoFullName: string;

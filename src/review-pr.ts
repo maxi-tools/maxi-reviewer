@@ -151,6 +151,7 @@ export interface ReviewPrDeps {
   recordReviewArtifact: typeof recordReviewArtifactComment;
   listReviewArtifactComments: typeof listReviewArtifactComments;
   wrapPermissionError: typeof wrapPermissionError;
+  writeJobSummary: (collectedCharacters: number) => Promise<void>;
 }
 
 const defaultDeps: ReviewPrDeps = {
@@ -169,6 +170,12 @@ const defaultDeps: ReviewPrDeps = {
   recordReviewArtifact: recordReviewArtifactComment,
   listReviewArtifactComments,
   wrapPermissionError,
+  writeJobSummary: async (collectedCharacters: number) => {
+    await core.summary
+      .addHeading("Maxi Review")
+      .addRaw(`Collected characters: ${collectedCharacters}`)
+      .write();
+  },
 };
 
 export async function runReviewPr(
@@ -475,6 +482,10 @@ export async function runReviewPr(
         "Review timed out; see harvested artifact"
       );
       core.warning(
+        `Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`
+      );
+      await deps.writeJobSummary(0);
+      core.setFailed(
         `Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`
       );
       return;

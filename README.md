@@ -169,6 +169,13 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | `command`            |                                 | `/maxi ...` command for `workflow_dispatch`.                  |
 | `pr_number`          |                                 | Pull request number for `workflow_dispatch` commands.         |
 
+
+> **Hang release guarantee:** `hard_timeout_minutes` is enforced inside the action
+> process (timers + status cleanup). A blocked Node event loop can prevent those
+> timers from firing. Always set the GitHub Actions **step** `timeout-minutes`
+> above `hard_timeout_minutes` (default `timeout_minutes + 5`) plus a few minutes
+> of cleanup headroom — that outer timeout is the real runner-release watchdog.
+
 ## Outputs
 
 | Output             | Description                                                   |

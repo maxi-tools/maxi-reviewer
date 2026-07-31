@@ -21,7 +21,7 @@ jobs:
         continue-on-error: true
 
       - name: Run maxi-reviewer
-        timeout-minutes: 35
+        timeout-minutes: 42
         uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
@@ -48,7 +48,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Run maxi-reviewer
-        timeout-minutes: 35
+        timeout-minutes: 42
         uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}

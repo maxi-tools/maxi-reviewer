@@ -104,10 +104,9 @@ describe("action metadata", () => {
       new URL("../.github/workflows/maxi-review.yml", import.meta.url),
       "utf8"
     );
-    expect(workflow).toContain("timeout-minutes: 35");
+    expect(workflow).toContain("timeout-minutes: 42");
     expect(workflow).toMatch(
-      /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 35[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
+      /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 42[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
     );
   });
-
 });

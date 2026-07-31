@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run maxi-reviewer
-        timeout-minutes: 35
+        timeout-minutes: 42
         uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}

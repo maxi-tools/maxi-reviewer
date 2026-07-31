@@ -1,0 +1,43 @@
+name: Issue 17 verification
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        run: npm install
+      - name: Run review-outcome regression tests
+        run: npm test -- tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts
+      - name: Prettier check changed files
+        run: npx prettier --check src/types.ts src/late-feedback-harvest.ts src/review-pr.ts src/schema.ts src/calibration.ts tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts docs/plans/2026-07-30-review-outcome-contract.md .github/workflows/issue-17-regression.yml
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build action bundle
+        run: npm run build
+      - name: Run full unit suite
+        run: npm test
+      - name: Run coverage
+        run: npm run coverage
+      - name: Verify checked-in dist
+        run: git diff --exit-code -- dist
+      - name: Upload generated dist
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: issue-17-generated-dist
+          path: dist
+          retention-days: 1

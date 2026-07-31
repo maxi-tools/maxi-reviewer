@@ -234,7 +234,44 @@ describe("runReviewPr orchestration", () => {
         job: "review",
       },
     });
-    expect(commentArtifact.rawJulesResponses).toEqual([]);
+        expect(commentArtifact.rawJulesResponses).toEqual([]);
+  });
+
+  it("distinguishes reused sessions by immutable run identity", async () => {
+    const deps = {
+      fetchPullRequestContext: vi.fn().mockResolvedValue({
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+        changedFiles: ["src/a.ts"],
+        files: new Map([["src/a.ts", "new\n"]]),
+        changedLines: new Map([["src/a.ts", new Set([1])]]),
+        rulesFromFile: undefined,
+        openThreads: [],
+        linkedIssues: [],
+      }),
+      selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+      loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+      runAnalyzers: vi.fn().mockResolvedValue([]),
+      fetchCiSignal: vi.fn().mockResolvedValue(undefined),
+      buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "approve",
+          summary: "Looks okay.",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "reused-session",
+      }),
+      submitReview: vi.fn().mockResolvedValue(undefined),
+      resolveThreads: vi.fn().mockResolvedValue(undefined),
+      setStatus: vi.fn().mockResolvedValue(undefined),
+      uploadArtifact: vi.fn().mockResolvedValue(undefined),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+      wrapPermissionError: vi.fn((err: unknown) => err),
+    };
+
+    await runReviewPr(deps);
+    const firstArtifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
 
     (github as any).context.runId = 102;
     (github as any).context.runAttempt = 2;
@@ -242,20 +279,31 @@ describe("runReviewPr orchestration", () => {
     (github as any).context.payload.pull_request.head.sha = "retry-head-sha";
 
     await runReviewPr(deps);
-
     const retryArtifact = JSON.parse(deps.uploadArtifact.mock.calls[1][1]);
+
+    expect(firstArtifact).toMatchObject({
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      sessionId: "reused-session",
+      runIdentity: {
+        workflowRunId: 101,
+        workflowRunAttempt: 1,
+        job: "review",
+      },
+    });
     expect(retryArtifact).toMatchObject({
       repoFullName: "maxi/example",
       prNumber: 8,
       headSha: "retry-head-sha",
-      sessionId: "session-1",
+      sessionId: "reused-session",
       runIdentity: {
         workflowRunId: 102,
         workflowRunAttempt: 2,
         job: "review",
       },
     });
-    expect(retryArtifact.runIdentity).not.toEqual(artifact.runIdentity);
+    expect(retryArtifact.runIdentity).not.toEqual(firstArtifact.runIdentity);
   });
 
   it("continues when recording the artifact comment fails", async () => {

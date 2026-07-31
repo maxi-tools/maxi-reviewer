@@ -328,7 +328,7 @@ describe("runReviewPr orchestration", () => {
     );
   });
 
-  it("records a harvestable artifact without failing when Jules times out", async () => {
+  it("records a harvestable artifact and fails the job when Jules times out", async () => {
     const deps = {
       fetchPullRequestContext: vi.fn().mockResolvedValue({
         diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
@@ -355,6 +355,7 @@ describe("runReviewPr orchestration", () => {
       uploadArtifact: vi.fn().mockResolvedValue(undefined),
       recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
       wrapPermissionError: vi.fn((err: unknown) => err),
+      writeJobSummary: vi.fn().mockResolvedValue(undefined),
     };
 
     await runReviewPr(deps);
@@ -395,7 +396,10 @@ describe("runReviewPr orchestration", () => {
     expect(core.warning).toHaveBeenCalledWith(
       "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
     );
-    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(deps.writeJobSummary).toHaveBeenCalledWith(0);
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
+    );
   });
 });
 

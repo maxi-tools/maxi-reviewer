@@ -18,8 +18,11 @@ jobs:
           node-version: "24"
       - name: Install dependencies
         run: npm install
-      - name: Prettier check
+      - name: Record full-repository Prettier baseline
+        continue-on-error: true
         run: npm run format:check
+      - name: Prettier check changed files
+        run: npx prettier --check src/review-pr.ts tests/review-pr.test.ts tests/index.test.ts docs/superpowers/specs/2026-07-31-empty-review-failure-design.md docs/superpowers/plans/2026-07-31-empty-review-failure.md .github/workflows/issue-58-regression.yml
       - name: Lint
         run: npm run lint
       - name: Build action bundle

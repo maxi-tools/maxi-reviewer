@@ -20,8 +20,8 @@ jobs:
         run: npm install
       - name: Run review-outcome regression tests
         run: npm test -- tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts
-      - name: Prettier check changed files
-        run: npx prettier --check src/types.ts src/late-feedback-harvest.ts src/review-pr.ts src/schema.ts src/calibration.ts tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts docs/plans/2026-07-30-review-outcome-contract.md .github/workflows/issue-17-regression.yml
+      - name: Format changed files for artifact handoff
+        run: npx prettier --write src/types.ts src/late-feedback-harvest.ts src/review-pr.ts src/schema.ts src/calibration.ts tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts docs/plans/2026-07-30-review-outcome-contract.md .github/workflows/issue-17-regression.yml
       - name: Lint
         run: npm run lint
       - name: Typecheck
@@ -38,6 +38,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: issue-17-generated-dist
-          path: dist
+          name: issue-17-generated-output
+          path: |
+            dist
+            src/types.ts
+            src/schema.ts
+            tests/review-pr.test.ts
           retention-days: 1

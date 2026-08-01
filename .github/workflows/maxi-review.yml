@@ -28,7 +28,7 @@ jobs:
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
-    runs-on: warp-macos-15-arm64-6x
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 10
     permissions:
       contents: read
@@ -170,7 +170,7 @@ jobs:
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
     continue-on-error: true
-    runs-on: warp-macos-15-arm64-6x
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 40
     permissions:
       pull-requests: write

@@ -148,8 +148,13 @@ jobs:
           JULES_FIX_PROMPT_PATH: ${{ runner.temp }}/maxi-fix-prompt.md
         run: |
           set -euo pipefail
-          export JULES_PR_TITLE="$(jq -r '.title' "$JULES_PR_JSON_PATH")"
-          export JULES_PR_BODY="$(jq -r '.body // ""' "$JULES_PR_JSON_PATH")"
+          # Assign then export separately (SC2155). `export VAR="$(cmd)"` returns
+          # export's status, not the command's, so under `set -euo pipefail` a
+          # failing jq would NOT fail the step — the fix prompt would be built
+          # from an empty title/body and the failure would be silent.
+          JULES_PR_TITLE="$(jq -r '.title' "$JULES_PR_JSON_PATH")"
+          JULES_PR_BODY="$(jq -r '.body // ""' "$JULES_PR_JSON_PATH")"
+          export JULES_PR_TITLE JULES_PR_BODY
           node .maxi-config/maxi-review/build-fix-prompt.mjs
 
       - name: Install Jules SDK

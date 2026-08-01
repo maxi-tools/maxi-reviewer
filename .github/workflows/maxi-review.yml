@@ -28,7 +28,7 @@ jobs:
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
@@ -71,13 +71,47 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-          if ! command -v maxi-lint >/dev/null 2>&1 && command -v cargo >/dev/null 2>&1; then
-            CARGO_NET_GIT_FETCH_WITH_CLI=true \
-              cargo install --git https://github.com/maxi-tools/maxi-lint.git maxi-lint --quiet
-          fi
-          if ! command -v maxi-lint >/dev/null 2>&1; then
-            echo "::error::maxi-lint unavailable; failing lint gate rather than passing without a scan (maxi-config#163)"
+          # Step-scoped git config instead of `git config --global`, so the
+          # token never lands in a runner's persistent ~/.gitconfig where it
+          # would outlive the run and break later anonymous fetches
+          # (maxi-config#221). Scoped to maxi-tools so public deps still
+          # resolve without a token; the trap removes it even on early exit.
+          gitcfg="${RUNNER_TEMP:-$HOME}/gitconfig-maxi-review-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          # Caller-owned install root: the installer sweeps only its own source
+          # checkout, so the executable must live somewhere that survives that
+          # trap. Cleaned here on EXIT — the one and only deletion of this path.
+          lint_install_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/maxi-lint-install.XXXXXX")"
+          trap 'rm -f "$gitcfg"; rm -rf "$lint_install_root"' EXIT
+          umask 077
+          cat > "$gitcfg" <<GITEOF
+          [url "https://x-access-token:${GH_TOKEN}@github.com/maxi-tools/"]
+            insteadOf = https://github.com/maxi-tools/
+          GITEOF
+          export GIT_CONFIG_GLOBAL="$gitcfg"
+          # Pinned, unconditional install from the .maxi-config checkout —
+          # NEVER from pr-code. A pull request must not supply the script that
+          # installs the linter grading it; that is the same rule the review
+          # job states below ("a PR must not be able to influence its own
+          # review"), applied to the judge rather than the policy.
+          #
+          # Unconditional on purpose: an "only if absent" guard lets a runner
+          # inherit maxi-lint from an earlier job, which is how verdicts stopped
+          # being reproducible in the first place (maxi-core#3165).
+          #
+          # RULES is an explicit allowlist. The installer fails closed, naming
+          # names, if the pinned maxi-lint does not carry every rule listed —
+          # a stale binary otherwise drops unknown rules and still exits 0.
+          RULES="serialization,ansi,yaml,queue,async,jsonl,reqwest-ssrf,audit,injection,backup-files,database,mcp-envelope,unwrap,timeout-fence,print-hygiene,hidden-spawn"
+          sh .maxi-config/maxi-review/test_install_maxi_lint.sh
+          CARGO_NET_GIT_FETCH_WITH_CLI=true \
+            sh .maxi-config/maxi-review/install_maxi_lint.sh 61205f17cdf0fbd95b75d641ca38a24df9548102 "$RULES" "$lint_install_root"
+          # Bind the executable explicitly. Resolving `maxi-lint` through PATH
+          # would let a pre-existing binary shadow the pinned one — the workflow
+          # prepends /opt/homebrew/bin ahead of Cargo's install dir, so the pin
+          # would verify and scan with a binary we never installed.
+          lint_bin="$lint_install_root/bin/maxi-lint"
+          if [ ! -x "$lint_bin" ]; then
+            echo "::error::installed maxi-lint unavailable; failing lint gate rather than passing without a scan (maxi-config#163)"
             exit 1
           fi
 
@@ -88,7 +122,7 @@ jobs:
           # A non-zero exit with valid JSON output still counts as a completed
           # scan (the deny-level fold below decides pass/fail).
           lint_status=0
-          findings=$($to maxi-lint --format json pr-code) || lint_status=$?
+          findings=$($to "$lint_bin" --format json pr-code) || lint_status=$?
           if [ -z "$findings" ] || ! printf '%s\n' "$findings" | jq -e 'type == "array"' >/dev/null; then
             echo "::error::maxi-lint produced no valid JSON findings (exit=$lint_status); failing lint gate (maxi-config#163)"
             exit 1
@@ -170,7 +204,7 @@ jobs:
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
     continue-on-error: true
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       pull-requests: write
@@ -258,7 +292,12 @@ jobs:
         with:
           repository: maxi-tools/maxi-reviewer
           token: ${{ steps.reviewer-token.outputs.token }}
-          ref: 0203710714a9d3f0f5d5d5757400712201116bf3
+          # MUST match the `maxi-tools/maxi-reviewer@<sha>` pin below. These two
+          # fetch the same repo: this one supplies the built-in rules, that one
+          # runs the action that consumes them. Split them and the reviewer
+          # grades with one revision's code against another revision's rules —
+          # a mismatch nothing else in this workflow would surface.
+          ref: 6fe937df0ae988a7a858caec193a085e54d01315
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -275,6 +314,12 @@ jobs:
             exit 1
           fi
 
+      # Pinned to what the maxi-reviewer repo itself runs (verified ancestor of
+      # its main, 2026-07-22), not to its head — the fleet should be graded by a
+      # build with dogfood evidence behind it. The previous pin was 2026-06-27,
+      # so every repo was reviewed by a build 36 commits older than the reviewer
+      # repo's own. Evaluating a newer head is a deliberate follow-up, not a
+      # drive-by bump inside the PR whose job is to stop unreviewed drift.
       - uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}

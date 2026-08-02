@@ -41,10 +41,11 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
         run: |
           set -euo pipefail
           pr_path="$RUNNER_TEMP/maxi-fix-pr.json"
-          gh api "${{ github.event.issue.pull_request.url }}" > "$pr_path"
+          gh api "$PR_URL" > "$pr_path"
           head_repo="$(jq -r '.head.repo.full_name' "$pr_path")"
           head_ref="$(jq -r '.head.ref' "$pr_path")"
           head_sha="$(jq -r '.head.sha' "$pr_path")"
@@ -130,10 +131,11 @@ jobs:
         id: comments
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
           gh api --paginate \
-            "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments" \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
             --jq '.[]' | jq -s '.' > "$RUNNER_TEMP/maxi-review-comments.json"
 
       - name: Build Jules fix prompt
@@ -187,6 +189,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
           AUTHORIZATION_OUTCOME: ${{ steps.authorize.outcome }}
           METADATA_OUTCOME: ${{ steps.pr.outcome }}
           APP_TOKEN_OUTCOME: ${{ steps.app-token.outcome }}
@@ -222,4 +225,4 @@ jobs:
             echo "- SDK installation: $SDK_OUTCOME"
             echo "- session startup: $SESSION_OUTCOME"
           } > "$body"
-          gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          gh issue comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$body"

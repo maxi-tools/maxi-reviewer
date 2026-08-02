@@ -68,6 +68,7 @@ jobs:
         id: maxilint
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           export PATH="/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
@@ -129,12 +130,12 @@ jobs:
           fi
           printf '%s\n' "$findings" > all-findings.json
           gh api --paginate \
-            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" > pull-files-pages.json
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" > pull-files-pages.json
           jq -s 'add | map(select(.status != "removed"))' pull-files-pages.json > pull-files.json
           python3 .maxi-config/maxi-review/filter-maxi-lint-findings.py \
             all-findings.json pull-files.json > filtered-findings.md
           gh api --paginate \
-            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
             --jq '.[] | select(.status != "removed") | .filename' > changed-files.txt
           python3 - all-findings.json changed-files.txt filtered-findings.md maxi-lint-findings.json maxi-lint-findings.md <<'PY'
           import json, sys
@@ -246,10 +247,11 @@ jobs:
         id: rules
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           export PATH="/opt/homebrew/bin:$PATH"
           files=$(gh api --paginate \
-            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
             --jq '.[] | select(.status != "removed") | .filename')
           rules=$(printf '%s\n' "$files" | \
             bash .maxi-config/maxi-review/select-rules.sh .maxi-config/maxi-review/jules-rules)
@@ -320,7 +322,7 @@ jobs:
       # so every repo was reviewed by a build 36 commits older than the reviewer
       # repo's own. Evaluating a newer head is a deliberate follow-up, not a
       # drive-by bump inside the PR whose job is to stop unreviewed drift.
-      - uses: maxi-tools/maxi-reviewer@aa441bf43bbbf2177d94b67f644823ea711f7753
+      - uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

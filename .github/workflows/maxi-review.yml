@@ -320,7 +320,7 @@ jobs:
       # so every repo was reviewed by a build 36 commits older than the reviewer
       # repo's own. Evaluating a newer head is a deliberate follow-up, not a
       # drive-by bump inside the PR whose job is to stop unreviewed drift.
-      - uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
+      - uses: maxi-tools/maxi-reviewer@aa441bf43bbbf2177d94b67f644823ea711f7753
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

@@ -24,8 +24,9 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
         run: |
-          pr=$(gh api "${{ github.event.issue.pull_request.url }}")
+          pr=$(gh api "$PR_URL")
           {
             echo "head_repo=$(printf '%s' "$pr" | jq -r '.head.repo.full_name')"
             echo "head_ref=$(printf '%s' "$pr" | jq -r '.head.ref')"
@@ -58,9 +59,10 @@ jobs:
       - name: Collect Jules review comments
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           gh api --paginate \
-            "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/comments" \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
             --jq '.[]' | jq -s '.' > "$RUNNER_TEMP/maxi-review-comments.json"
 
       - name: Apply structured Jules suggestions
@@ -85,6 +87,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           if [ -f "$RUNNER_TEMP/maxi-apply-result.json" ]; then
             body=$(mktemp)
@@ -99,4 +102,4 @@ jobs:
             body=$(mktemp)
             echo "Jules apply did not produce a result file." > "$body"
           fi
-          gh issue comment "${{ github.event.issue.number }}" --body-file "$body"
+          gh issue comment "$PR_NUMBER" --body-file "$body"

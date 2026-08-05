@@ -25,7 +25,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         text = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository", text)
-        self.assertIn("env.SONAR_TOKEN != ''", text)
+        self.assertIn("secrets.SONAR_TOKEN != ''", text)
         self.assertIn("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", text)
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:

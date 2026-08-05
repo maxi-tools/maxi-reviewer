@@ -20,7 +20,9 @@ jobs:
         run: opengrep scan --json --output opengrep.json .
         continue-on-error: true
 
-      - uses: maxi-tools/maxi-reviewer@v1
+      - name: Run maxi-reviewer
+        timeout-minutes: 55
+        uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,7 +47,9 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: maxi-tools/maxi-reviewer@v1
+      - name: Run maxi-reviewer
+        timeout-minutes: 55
+        uses: maxi-tools/maxi-reviewer@v1
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}

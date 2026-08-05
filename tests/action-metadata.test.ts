@@ -16,6 +16,7 @@ describe("action metadata", () => {
     expect(pkg.name).toBe("maxi-review");
     expect(action).toContain('name: "Maxi Review"');
     expect(action).toContain('using: "node24"');
+    expect(action).toContain("hard_timeout_minutes:");
     expect(action).toContain("analyzer_mode:");
     expect(action).toContain("command:");
     expect(action).toContain("pr_number:");

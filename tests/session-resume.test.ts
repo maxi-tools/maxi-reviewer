@@ -15,8 +15,19 @@ function comment(sessionId: string, validatedReview: unknown): string {
       prNumber: 1,
       headSha: "h",
       baseSha: "b",
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome:
+        validatedReview === null
+          ? "TIMED_OUT_NO_CONTENT"
+          : "REVIEWED_NO_FINDINGS",
+      reviewOutputChars: validatedReview === null ? 0 : 12,
+      runIdentity: {
+        workflowRunId: 101,
+        workflowRunAttempt: 1,
+        job: "review",
+      },
       analyzerFindings: [],
-      rawJulesResponses: ["raw response"],
+      rawJulesResponses: validatedReview === null ? [] : ["raw response"],
       validatedReview,
       validationErrors: [],
       sessionId,

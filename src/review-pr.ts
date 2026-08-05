@@ -15,6 +15,8 @@ import {
   OpenThread,
   ReviewArtifact,
   ReviewComment,
+  ReviewOutcome,
+  ReviewRunIdentity,
   Verdict,
 } from "./types.js";
 import {
@@ -151,6 +153,7 @@ export interface ReviewPrDeps {
   recordReviewArtifact: typeof recordReviewArtifactComment;
   listReviewArtifactComments: typeof listReviewArtifactComments;
   wrapPermissionError: typeof wrapPermissionError;
+  writeJobSummary: (collectedCharacters: number) => Promise<void>;
 }
 
 const defaultDeps: ReviewPrDeps = {
@@ -169,6 +172,11 @@ const defaultDeps: ReviewPrDeps = {
   recordReviewArtifact: recordReviewArtifactComment,
   listReviewArtifactComments,
   wrapPermissionError,
+  writeJobSummary: async (collectedCharacters: number) => {
+    core.summary.addHeading("Maxi Review");
+    core.summary.addRaw(`Collected characters: ${collectedCharacters}`);
+    await core.summary.write();
+  },
 };
 
 export async function runReviewPr(
@@ -427,6 +435,20 @@ export async function runReviewPr(
         timeoutMinutes,
         julesOptions
       );
+    const outcome: ReviewOutcome = !reviewResult
+      ? "TIMED_OUT_NO_CONTENT"
+      : (reviewResult.newComments?.length ?? 0) > 0
+        ? "REVIEWED_WITH_FINDINGS"
+        : "REVIEWED_NO_FINDINGS";
+    const reviewOutputChars = (rawResponses ?? []).reduce(
+      (total, response) => total + response.length,
+      0
+    );
+    const runIdentity: ReviewRunIdentity = {
+      workflowRunId: ctx.runId,
+      workflowRunAttempt: ctx.runAttempt,
+      job: ctx.job,
+    };
 
     // Attach drift-tolerant anchors so consumers can re-locate findings after a
     // rebase or force-push moves the line (issue #16). Additive: a no-op for
@@ -444,6 +466,10 @@ export async function runReviewPr(
       prNumber,
       headSha,
       baseSha,
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome,
+      reviewOutputChars,
+      runIdentity,
       analyzerFindings,
       rawJulesResponses: rawResponses || [],
       validatedReview: reviewResult,
@@ -476,6 +502,10 @@ export async function runReviewPr(
       );
       core.warning(
         `Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`
+      );
+      await deps.writeJobSummary(0);
+      core.setFailed(
+        `Jules returned no review message within ${timeoutMinutes} minutes.`
       );
       return;
     }

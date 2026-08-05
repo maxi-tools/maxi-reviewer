@@ -16,8 +16,8 @@ describe("action metadata", () => {
     expect(pkg.name).toBe("maxi-review");
     expect(action).toContain('name: "Maxi Review"');
     expect(action).toContain('using: "node24"');
-    expect(action).toContain("hard_timeout_minutes:");
     expect(action).toContain("analyzer_mode:");
+    expect(action).toContain("hard_timeout_minutes:");
     expect(action).toContain("command:");
     expect(action).toContain("pr_number:");
     expect(action).toContain("review_artifacts:");
@@ -48,7 +48,7 @@ describe("action metadata", () => {
       "utf8"
     );
 
-    const setupIndex = workflow.indexOf("actions/setup-node@v5");
+    const setupIndex = workflow.indexOf("actions/setup-node@v7");
     const installIndex = workflow.indexOf("npm install");
     const buildIndex = workflow.indexOf("npm run build");
     const dogfoodIndex = workflow.indexOf("uses: ./");
@@ -72,7 +72,7 @@ describe("action metadata", () => {
     );
 
     for (const workflow of [ci, selfTest]) {
-      expect(workflow).toContain("actions/setup-node@v5");
+      expect(workflow).toContain("actions/setup-node@v7");
       expect(workflow).toContain('node-version: "24"');
       expect(workflow).not.toContain('cache: "npm"');
     }
@@ -94,8 +94,19 @@ describe("action metadata", () => {
       "utf8"
     );
 
-    expect(ci).toMatch(/if:\s*\$\{\{\s*secrets\.SONAR_TOKEN\s*!=\s*''/);
+    expect(ci).toContain("if: ${{ secrets.SONAR_TOKEN != '' }}");
     expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
     expect(ci).not.toContain("SONAR_TOKEN: ${{ env.SONAR_TOKEN }}");
+  });
+
+  it("sets a step-level timeout on the maxi-reviewer action invocation", () => {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/maxi-review.yml", import.meta.url),
+      "utf8"
+    );
+    expect(workflow).toContain("timeout-minutes: 55");
+    expect(workflow).toMatch(
+      /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 55[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
+    );
   });
 });

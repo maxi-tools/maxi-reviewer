@@ -1,8 +1,14 @@
+import { ReviewOutcome, ReviewRunIdentity } from "./types.js";
+
 export interface ReviewArtifactInput {
   repoFullName: string;
   prNumber: number;
   headSha: string;
   baseSha: string;
+  outcomeSchema: "maxi.review.v1.review-outcome";
+  outcome: ReviewOutcome;
+  reviewOutputChars: number;
+  runIdentity: ReviewRunIdentity;
   analyzerFindings: unknown[];
   rawJulesResponses: string[];
   validatedReview: unknown;

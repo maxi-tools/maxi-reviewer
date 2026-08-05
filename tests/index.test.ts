@@ -291,7 +291,9 @@ describe("index.ts", () => {
     expect(mockWarning).toHaveBeenCalledWith(
       "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
     );
-    expect(mockSetFailed).not.toHaveBeenCalled();
+    expect(mockSetFailed).toHaveBeenCalledWith(
+      "Jules returned no review message within 30 minutes."
+    );
   });
 
   it("resolves open threads if resolvedCommentIds provided", async () => {

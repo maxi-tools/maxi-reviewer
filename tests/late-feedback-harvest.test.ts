@@ -9,6 +9,14 @@ describe("late feedback harvest artifacts", () => {
         prNumber: 7,
         headSha: "head-sha",
         baseSha: "base-sha",
+        outcomeSchema: "maxi.review.v1.review-outcome",
+        outcome: "REVIEWED_NO_FINDINGS",
+        reviewOutputChars: 0,
+        runIdentity: {
+          workflowRunId: 101,
+          workflowRunAttempt: 1,
+          job: "review",
+        },
         analyzerFindings: [],
         rawJulesResponses: [],
         validatedReview: {

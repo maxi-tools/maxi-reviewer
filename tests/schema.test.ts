@@ -210,4 +210,35 @@ describe("maxi.review.v1 schemas", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.join("\n")).toContain("retention");
   });
+
+  it("rejects mismatched review outcome metadata", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: null,
+      validationErrors: [],
+      outcomeSchema: "maxi.review.v0.guessed-outcome",
+      outcome: "TIMED_OUT_NO_CONTENT",
+      reviewOutputChars: 0,
+      runIdentity: {
+        workflowRunId: 101,
+        workflowRunAttempt: 1,
+        job: "review",
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain("outcomeSchema");
+  });
 });

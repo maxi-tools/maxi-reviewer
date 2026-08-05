@@ -45,6 +45,10 @@ inputs:
     description: "How long to wait for Jules to return a review before giving up. Default 30. Real reviews on non-trivial PRs often take 15-25 minutes; do not set below 20 or you will miss legitimate reviews."
     required: false
     default: "30"
+  hard_timeout_minutes:
+    description: "Hard wall-clock deadline for the entire action process (minutes). On expiry the process exits so a silent hang cannot hold a self-hosted runner until the job timeout. Default is timeout_minutes+20 (setup/analyzer headroom). Set equal to timeout_minutes to fail as soon as the Jules budget ends. Keep the GitHub Actions step timeout-minutes above this value so status cleanup can run."
+    required: false
+    default: ""
   analyzer_mode:
     description: "Analyzer mode: auto runs Opengrep and PMD/CPD from PATH when no output files are configured; off skips analyzer execution and ingestion."
     required: false

@@ -43026,7 +43026,7 @@ source, timeoutMinutes, options = {}) {
     if (!afterMessage) {
         await waitUntilSessionReady(session);
     }
-    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage);
+    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress);
     core/* info */.pq(`Collected review (${reviewMessage.length} chars)`);
     if (!reviewMessage) {
         return { reviewResult: null, sessionId: session.id };
@@ -43037,6 +43037,7 @@ source, timeoutMinutes, options = {}) {
             firstMessage: reviewMessage,
             retrieval: options.retrieval,
             timeoutMs: timeoutMinutes * 60 * 1000,
+            onProgress: options.onProgress,
         });
     }
     let latestReviewMessage = reviewMessage;
@@ -43050,7 +43051,7 @@ source, timeoutMinutes, options = {}) {
         validationErrors.push(`Failed to parse Jules response: ${errorMessage(err)}`);
         core/* warning */.$e(`Failed to parse Jules response; requesting same-session JSON repair: ${err}`);
         await sendSessionMessage(session, buildJsonRepairPrompt(reviewMessage, err));
-        const repairedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, reviewMessage);
+        const repairedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, reviewMessage, options.onProgress);
         rawResponses.push(repairedMessage);
         try {
             reviewResult = parseJulesResponse(repairedMessage);
@@ -43077,7 +43078,7 @@ source, timeoutMinutes, options = {}) {
         validationErrors.push(...formatIssues);
         core/* warning */.$e(`Jules response has ${formatIssues.length} suggested-change formatting issue(s); requesting a same-session revision.`);
         await sendSessionMessage(session, buildFormatRepairPrompt(reviewResult, formatIssues));
-        const revisedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, latestReviewMessage);
+        const revisedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, latestReviewMessage, options.onProgress);
         if (revisedMessage) {
             rawResponses.push(revisedMessage);
             try {
@@ -43104,6 +43105,7 @@ source, timeoutMinutes, options = {}) {
             latestReviewMessage,
             timeoutMinutes,
             verificationContext: options.verificationContext,
+            onProgress: options.onProgress,
         });
         if (verified) {
             reviewResult = verified.reviewResult;
@@ -43126,7 +43128,7 @@ source, timeoutMinutes, options = {}) {
  * the last reply if the budget or session is exhausted.
  */
 async function runRetrievalLoop(input) {
-    const { session, retrieval, timeoutMs } = input;
+    const { session, retrieval, timeoutMs, onProgress } = input;
     const deadline = Date.now() + timeoutMs;
     let message = input.firstMessage;
     for (let step = 0; step < retrieval.maxSteps; step++) {
@@ -43139,7 +43141,7 @@ async function runRetrievalLoop(input) {
                 (step + 1) +
                 ": invalid retrieval-request; returning schema errors for repair.");
             await sendSessionMessage(session, formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft));
-            const repaired = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
+            const repaired = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
             if (!repaired) {
                 core/* warning */.$e("Retrieval loop: no agent reply after invalid-request feedback; stopping.");
                 return message;
@@ -43159,7 +43161,7 @@ async function runRetrievalLoop(input) {
             }
         }
         await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft));
-        const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
+        const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (!next) {
             core/* warning */.$e("Retrieval loop: no agent reply after returning results; stopping.");
             return message;
@@ -43171,7 +43173,7 @@ async function runRetrievalLoop(input) {
     if (parseRetrievalRequest(message).kind !== "none") {
         core/* info */.pq("Retrieval budget exhausted; requesting the final review.");
         await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0));
-        const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
+        const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (finalMessage)
             return finalMessage;
     }
@@ -43257,7 +43259,7 @@ async function requestStructuredValidationRepair(input) {
     const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
     core/* warning */.$e(`Jules structured review has ${issues.length} validation issue(s); requesting a same-session revision.`);
     await sendSessionMessage(input.session, buildReviewRepairPrompt(structuredReview, issues));
-    const revisedMessage = await pollForReview(input.session, input.timeoutMinutes * 60 * 1000, input.latestReviewMessage);
+    const revisedMessage = await pollForReview(input.session, input.timeoutMinutes * 60 * 1000, input.latestReviewMessage, input.onProgress);
     try {
         const revisedStructuredReview = parseJulesReview(revisedMessage);
         const remainingIssues = verifyJulesReview(revisedStructuredReview, input.verificationContext);
@@ -43360,9 +43362,16 @@ async function waitUntilSessionReady(session) {
     }
     throw new Error("Session did not become ready within timeout.");
 }
-async function pollForReview(session, timeoutMs, afterMessage) {
-    const deadline = Date.now() + timeoutMs;
+async function pollForReview(session, timeoutMs, afterMessage, onProgress) {
+    const startedAt = Date.now();
+    const deadline = startedAt + timeoutMs;
     let attempt = 0;
+    // Sticky across iterations on purpose. Declared inside the loop it reset to
+    // false on every tick, so a single transient hydrate/history error would make
+    // the heartbeat retract "agent replied" and claim no output had arrived — the
+    // status would appear to go backwards. Having seen agent output is a fact
+    // about the session, not about the current poll.
+    let sawAgentOutput = false;
     while (Date.now() < deadline) {
         attempt++;
         try {
@@ -43373,6 +43382,7 @@ async function pollForReview(session, timeoutMs, afterMessage) {
                     last = a.message;
             }
             if (last) {
+                sawAgentOutput = true;
                 if (afterMessage !== undefined && last === afterMessage) {
                     core/* info */.pq(`Latest agentMessaged is unchanged (attempt ${attempt})…`);
                 }
@@ -43389,6 +43399,15 @@ async function pollForReview(session, timeoutMs, afterMessage) {
                 throw new Error(`Jules API rejected request (${msg}). Check JULES_API_KEY is valid.`, { cause: err });
             }
             core/* info */.pq(`hydrate/history error (attempt ${attempt}): ${msg}`);
+        }
+        // Purely diagnostic: a progress sink must never interrupt or fail polling.
+        if (onProgress) {
+            try {
+                await onProgress({ sawAgentOutput });
+            }
+            catch (err) {
+                core/* info */.pq(`Review progress callback failed: ${errorMessage(err)}`);
+            }
         }
         await new Promise((r) => setTimeout(r, 20_000));
     }
@@ -44030,6 +44049,95 @@ function enrichCommentsWithAnchors(comments, files) {
     }
 }
 
+;// CONCATENATED MODULE: ./src/review-heartbeat.ts
+/**
+ * Keeps the pending `jules/review` commit status current while a review runs.
+ *
+ * The status used to be written once when the review started and then left
+ * untouched until a terminal verdict. From outside the job "started twenty
+ * seconds ago" and "hung for twenty-five minutes" therefore looked identical,
+ * and readers repeatedly diagnosed a healthy in-flight review as a stalled one
+ * — including merging PRs a minute or two before Jules posted its approval.
+ *
+ * Refreshing the description with elapsed time makes the difference legible
+ * without opening the run log, and surfaces the genuine failure mode (a session
+ * that is accepted but whose agent never runs) minutes in rather than at the
+ * timeout.
+ */
+const MINUTE_MS = 60_000;
+/** GitHub truncates commit status descriptions; stay well inside the limit. */
+const MAX_DESCRIPTION_LENGTH = 140;
+/** Default gap between status writes. */
+const DEFAULT_INTERVAL_MS = 2 * MINUTE_MS;
+/**
+ * Cap a description at the length GitHub accepts for a commit status.
+ *
+ * Exported so it can be tested against an over-long input directly. The live
+ * format never approaches the limit, so a test that only fed it real values
+ * would assert the cap vacuously without ever entering this branch.
+ */
+function capDescription(description) {
+    return description.length > MAX_DESCRIPTION_LENGTH
+        ? `${description.slice(0, MAX_DESCRIPTION_LENGTH - 1)}…`
+        : description;
+}
+function formatHeartbeat(progress) {
+    const elapsed = Math.floor(progress.elapsedMs / MINUTE_MS);
+    const state = progress.sawAgentOutput
+        ? "agent replied, finishing up"
+        : "no agent output yet";
+    // Elapsed only, with no "of Nm" limit. Elapsed is cumulative across the whole
+    // review while each polling phase carries its OWN deadline, so pairing them
+    // produced impossible readings like "31m of 30m" while a repair phase was
+    // still legitimately inside its own budget. There is no single review-wide
+    // deadline to quote, so quoting one was a lie; elapsed alone is what
+    // distinguishes "just started" from "stalled", which is the whole point.
+    return capDescription(`Jules is reviewing this PR… (${elapsed}m elapsed, ${state})`);
+}
+/**
+ * Builds a throttled progress sink for {@link ReviewProgress} updates.
+ *
+ * The returned function is safe to call on every poll tick: it publishes at
+ * most once per interval, skips writes that would repeat the previous
+ * description, and never rejects — a heartbeat is diagnostic, so failing to
+ * refresh it must not fail the review it is describing.
+ */
+function createHeartbeat(options) {
+    const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    const now = options.now ?? Date.now;
+    // Elapsed is measured from here rather than from the current poll, because a
+    // review is polled in several phases (initial wait, JSON/format repair, and
+    // every round of the retrieval loop). Reporting per-phase elapsed would reset
+    // the clock mid-review and hide exactly the long waits this exists to show.
+    const startedAt = now();
+    // Seed with creation time so the first beat lands one interval in: the caller
+    // has already posted the opening "Jules is reviewing this PR…" status, and
+    // immediately restating it at 0m would just be noise.
+    let lastPublishedAt = startedAt;
+    let lastDescription;
+    return async (progress) => {
+        const at = now();
+        if (at - lastPublishedAt < intervalMs)
+            return;
+        const description = formatHeartbeat({
+            ...progress,
+            elapsedMs: at - startedAt,
+        });
+        if (description === lastDescription)
+            return;
+        // Advance the window before awaiting so a slow or failing write cannot let
+        // concurrent ticks pile up behind it.
+        lastPublishedAt = at;
+        lastDescription = description;
+        try {
+            await options.publish(description);
+        }
+        catch (err) {
+            options.onError?.(err);
+        }
+    };
+}
+
 ;// CONCATENATED MODULE: ./src/linked-issues.ts
 
 /**
@@ -44615,6 +44723,7 @@ function decodeXml(value) {
 
 
 
+
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON = ["never", "blocking", "any"];
 const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
@@ -44825,6 +44934,14 @@ async function runReviewPr(overrides = {}) {
         if (previousSessionId) {
             julesOptions.previousSessionId = previousSessionId;
         }
+        // Keep the pending status current while Jules works. Without this the
+        // status is written once and never touched again, so a review that started
+        // seconds ago and one that has hung for half an hour look identical from
+        // the PR page — a misread that has cost several early merges.
+        julesOptions.onProgress = createHeartbeat({
+            publish: (description) => deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", description),
+            onError: (err) => core/* info */.pq(`Could not refresh review status: ${err instanceof Error ? err.message : String(err)}`),
+        });
         const { reviewResult, sessionId, rawResponses, validationErrors } = await deps.runJulesReview(apiKey, prompt, { github: `${owner}/${repo}`, baseBranch: pr.base.ref }, timeoutMinutes, julesOptions);
         const outcome = !reviewResult
             ? "TIMED_OUT_NO_CONTENT"

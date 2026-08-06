@@ -196,6 +196,8 @@ describe("runReviewPr orchestration", () => {
           files: new Map([["src/a.ts", "new\n"]]),
           changedLines: new Map([["src/a.ts", new Set([1])]]),
         },
+        // Heartbeat that keeps the pending status current while Jules works.
+        onProgress: expect.any(Function),
       }
     );
     expect(deps.submitReview).toHaveBeenCalled();
@@ -419,6 +421,7 @@ describe("runReviewPr orchestration", () => {
           changedLines: new Map([["src/a.ts", new Set([1])]]),
         },
         previousSessionId: "prev-session",
+        onProgress: expect.any(Function),
       }
     );
   });

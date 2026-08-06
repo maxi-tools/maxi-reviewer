@@ -39,6 +39,7 @@ import { buildReviewPrompt } from "./prompt.js";
 import { fetchCiSignal } from "./ci-signal.js";
 import { enrichCommentsWithAnchors } from "./anchor.js";
 import { createGithubRetrievalProvider } from "./retrieval.js";
+import { createHeartbeat } from "./review-heartbeat.js";
 import { fetchLinkedIssues, parseClosingIssueRefs } from "./linked-issues.js";
 import { makeNonce } from "./untrusted.js";
 import { buildChangedFileContext } from "./context-window.js";
@@ -426,6 +427,27 @@ export async function runReviewPr(
     if (previousSessionId) {
       julesOptions.previousSessionId = previousSessionId;
     }
+
+    // Keep the pending status current while Jules works. Without this the
+    // status is written once and never touched again, so a review that started
+    // seconds ago and one that has hung for half an hour look identical from
+    // the PR page — a misread that has cost several early merges.
+    julesOptions.onProgress = createHeartbeat({
+      publish: (description) =>
+        deps.setStatus(
+          octokit,
+          owner,
+          repo,
+          headSha,
+          statusContext,
+          "pending",
+          description
+        ),
+      onError: (err) =>
+        core.info(
+          `Could not refresh review status: ${err instanceof Error ? err.message : String(err)}`
+        ),
+    });
 
     const { reviewResult, sessionId, rawResponses, validationErrors } =
       await deps.runJulesReview(

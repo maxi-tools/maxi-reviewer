@@ -13,11 +13,18 @@ on:
   pull_request_review:
     types: [submitted, dismissed]
   # Resolving a conversation emits NO pull_request or pull_request_review
-  # event. Without this trigger the check would stay red after the threads were
-  # cleared, until something unrelated happened to re-run it, and people would
-  # learn to ignore it. This is the trigger that closes the loop.
-  pull_request_review_thread:
-    types: [resolved, unresolved]
+  # event, and there is no Actions trigger that covers it. This previously
+  # listed `pull_request_review_thread`, which is a webhook delivered to GitHub
+  # Apps and NOT a valid workflow trigger: GitHub rejected the whole file with
+  # "(Line: 19, Col: 3): Unexpected value 'pull_request_review_thread'", a
+  # startup failure that created zero jobs. So from the day this gate was added
+  # it never ran in ANY repo — nothing was enforcing unresolved threads or
+  # non-author review anywhere in the org.
+  #
+  # The gap is real and is accepted deliberately: a gate that occasionally
+  # needs a re-run beats one that never runs. After resolving the last thread,
+  # re-run this check from the PR's checks tab, or push to the branch. Do not
+  # re-add the trigger to close it — it invalidates the file.
   # A diff comment created straight through the review-comment API is not
   # submitted as a review, so it emits neither of the events above while
   # still opening a NEW unresolved thread -- a green check would stay

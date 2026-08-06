@@ -25,7 +25,14 @@ class WorkflowPolicyTests(unittest.TestCase):
         text = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository", text)
-        self.assertIn("secrets.SONAR_TOKEN != ''", text)
+        # The guard reads `env`, not `secrets`: the `secrets` context is not
+        # available in an `if:`, and referencing it there makes GitHub reject
+        # the whole file at parse time — zero jobs, no check run, invisible.
+        # This assertion used to require the broken form, which is part of why
+        # it survived: the only test that would have caught it was in a
+        # workflow that could never run.
+        self.assertIn("env.SONAR_TOKEN != ''", text)
+        self.assertNotIn("if: ${{ secrets.", text)
         self.assertIn("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", text)
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:

@@ -48,7 +48,10 @@ describe("action metadata", () => {
       "utf8"
     );
 
-    const setupIndex = workflow.indexOf("actions/setup-node@v7");
+    // SHA-pinned rather than the @v7 tag; see the note above.
+    const setupIndex = workflow.indexOf(
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+    );
     const installIndex = workflow.indexOf("npm install");
     const buildIndex = workflow.indexOf("npm run build");
     const dogfoodIndex = workflow.indexOf("uses: ./");
@@ -71,8 +74,16 @@ describe("action metadata", () => {
       "utf8"
     );
 
+    // Pinned to the v7 SHA rather than the floating @v7 tag:
+    // tests/test_workflow_policy.py requires every `uses:` in ci.yml to be
+    // SHA-pinned, and a bare tag fails it. The two suites previously demanded
+    // contradictory things — nothing surfaced that, because ci.yml never ran.
+    // What this test is actually for is the two workflows agreeing on the
+    // major version and the Node line, so assert that, not the tag syntax.
+    const setupNodeV7 =
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7";
     for (const workflow of [ci, selfTest]) {
-      expect(workflow).toContain("actions/setup-node@v7");
+      expect(workflow).toContain(setupNodeV7);
       expect(workflow).toContain('node-version: "24"');
       expect(workflow).not.toContain('cache: "npm"');
     }

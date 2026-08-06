@@ -113,11 +113,21 @@ describe("action metadata", () => {
     // it: the presence check that feeds the guard, and the scanner itself.
     expect(ci).toContain("steps.sonar.outputs.present == 'true'");
     expect(ci).not.toContain("if: ${{ secrets.SONAR_TOKEN");
-    expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
-    // Never job-wide. A step's env key is indented deeper than any job-level
-    // one, so anything shallower than a step key is out of scope by
+    // Every binding, enumerated — not "the string appears somewhere". A
+    // containment check still passes if one of the two steps has its value
+    // swapped for a non-secret, or if a third step is handed the token.
+    const tokenBindings = ci
+      .split("\n")
+      .filter((line) => /^\s*SONAR_TOKEN:/.test(line))
+      .map((line) => line.trim());
+    expect(tokenBindings).toEqual([
+      "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+      "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+    ]);
+    // And never job-wide. A step's env key is indented deeper than any
+    // job-level one, so anything shallower than a step key is out of scope by
     // construction. tests/test_workflow_policy.py carries the structural
-    // version of this, which also names the two steps that may own it.
+    // version, pairing each value with the step that owns it.
     const shallowTokenLines = ci
       .split("\n")
       .filter((line) => /^ {0,7}SONAR_TOKEN:/.test(line));
@@ -147,6 +157,12 @@ describe("action metadata", () => {
     // bound lets slow setup cancel the job before the step timeout can fire,
     // and a cancellation skips the graceful status cleanup the bound exists
     // to preserve.
-    expect(workflow).toMatch(/^ {4}timeout-minutes: 70$/m);
+    // Scoped to the reviewer job, like the step assertion above: a bare
+    // `timeout-minutes: 70` match would be satisfied by any other job in the
+    // file (lint-gate is at 10), so the reviewer's cap could be dropped and
+    // this would still pass.
+    expect(workflow).toMatch(
+      /^ {2}review:\n(?: {4}.*\n| *\n)*? {4}timeout-minutes: 70$/m
+    );
   });
 });

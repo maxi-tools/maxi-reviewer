@@ -210,11 +210,14 @@ jobs:
     # — the actual runner-release watchdog — can never take effect. README:
     # "use a step timeout-minutes of at least 55 and a job timeout above that."
     #
-    # 70, not 65, because this cap covers the WHOLE job: checkout, the app-token
-    # mint, the pinned maxi-lint install (a cargo build), the rules fetch. At 60
-    # only five minutes of that fits before the cap starts eating the reviewer's
-    # own budget — a slow cargo install would cancel the job outright, and the
-    # cancellation kills the action mid-run, which is exactly the graceful
+    # 70, not 65, because this cap covers the WHOLE job, and everything ahead of
+    # the reviewer step here is network-bound: two app-token mints, the
+    # maxi-lint findings artifact download, the rules fetch, the per-language
+    # rule selection, the PR-head checkout, and the built-in rules fetch and
+    # staging. (The pinned maxi-lint cargo install is NOT in this job — it runs
+    # in lint-gate, under its own 10-minute cap.) At 60 only five minutes covers
+    # all of that before the cap starts eating the reviewer's own budget, and a
+    # job cancellation kills the action mid-run, skipping exactly the graceful
     # status cleanup the 55 exists to preserve. 70 leaves 15 minutes of setup
     # headroom above the step bound and still releases the runner.
     timeout-minutes: 70

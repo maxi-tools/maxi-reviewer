@@ -25,29 +25,36 @@ def enclosing_line(lines: list, index: int, indent: int):
     return None
 
 
-def sonar_token_owners(text: str) -> list:
-    """Name the step owning each `SONAR_TOKEN:` entry, in file order.
+def sonar_token_bindings(text: str) -> list:
+    """Pair each `SONAR_TOKEN:` entry with the step that owns it, in file order.
 
-    Returns a marker string instead of a step name for any entry that is not
-    a step-scoped `env:` key, so a job-level (or otherwise misplaced) token
-    fails the assertion loudly with the offending line rather than silently
-    passing an absence check.
+    Both halves matter and only assert anything together: the owner alone would
+    still pass if a correctly-named step had its value swapped for a non-secret,
+    and the value alone would still pass if it were hoisted to job level.
+
+    Yields a marker string in place of the owner for any entry that is not a
+    step-scoped `env:` key, so a job-level (or otherwise misplaced) token fails
+    loudly with the offending line rather than silently passing an absence check.
     """
     lines = text.splitlines()
-    owners = []
+    bindings = []
     for index, line in enumerate(lines):
-        if not line.lstrip().startswith("SONAR_TOKEN:"):
+        stripped = line.lstrip()
+        if not stripped.startswith("SONAR_TOKEN:"):
             continue
+        value = stripped.removeprefix("SONAR_TOKEN:").strip()
         env = enclosing_line(lines, index, indent_of(line))
         if env is None or env[1].strip() != "env:":
-            owners.append("NOT UNDER env: -> " + line.strip())
+            bindings.append(("NOT UNDER env: -> " + stripped, value))
             continue
         step = enclosing_line(lines, env[0], indent_of(env[1]))
         if step is None or not step[1].lstrip().startswith("- "):
-            owners.append("NOT STEP-SCOPED -> " + line.strip())
+            bindings.append(("NOT STEP-SCOPED -> " + stripped, value))
             continue
-        owners.append(step[1].lstrip()[2:].removeprefix("name:").strip())
-    return owners
+        bindings.append(
+            (step[1].lstrip()[2:].removeprefix("name:").strip(), value)
+        )
+    return bindings
 
 
 class WorkflowPolicyTests(unittest.TestCase):
@@ -81,12 +88,16 @@ class WorkflowPolicyTests(unittest.TestCase):
         #
         # Asserted by walking enclosing scopes rather than by matching a literal
         # six-space prefix: re-indenting this file, or a YAML formatter pass,
-        # would silently disable a prefix match while leaving it green. Naming
-        # the owning steps also asserts the positive case — the token IS present
-        # and IS scoped to these two — which "no job-level env" never proved.
+        # would silently disable a prefix match while leaving it green. Pairing
+        # each owning step with its value also asserts the positive case — the
+        # token IS present, IS the secret, and IS scoped to exactly these two
+        # steps — none of which "no job-level env" ever proved.
         self.assertEqual(
-            ["Check for a SonarCloud token", "SonarCloud Scan"],
-            sonar_token_owners(text),
+            [
+                ("Check for a SonarCloud token", "${{ secrets.SONAR_TOKEN }}"),
+                ("SonarCloud Scan", "${{ secrets.SONAR_TOKEN }}"),
+            ],
+            sonar_token_bindings(text),
         )
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:

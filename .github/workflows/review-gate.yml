@@ -42,6 +42,11 @@ concurrency:
 jobs:
   gate:
     uses: maxi-tools/maxi-config/.github/workflows/review-gate-reusable.yml@main
+    # `pull-requests: read` is what the gate actually spends: its two paginated
+    # GraphQL queries read this PR's reviews and its review threads to decide
+    # whether any thread is still unresolved. It only reads them — the verdict
+    # is the job's own outcome, not a comment or a label — so write scope would
+    # be strictly more than the gate can use.
     permissions:
       contents: read
       pull-requests: read

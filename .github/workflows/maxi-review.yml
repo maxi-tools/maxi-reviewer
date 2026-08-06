@@ -206,7 +206,21 @@ jobs:
       )
     continue-on-error: true
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Must exceed the step's 55, or the job cap fires first and the step bound
+    # — the actual runner-release watchdog — can never take effect. README:
+    # "use a step timeout-minutes of at least 55 and a job timeout above that."
+    #
+    # 70, not 65, because this cap covers the WHOLE job, and everything ahead of
+    # the reviewer step here is network-bound: two app-token mints, the
+    # maxi-lint findings artifact download, the rules fetch, the per-language
+    # rule selection, the PR-head checkout, and the built-in rules fetch and
+    # staging. (The pinned maxi-lint cargo install is NOT in this job — it runs
+    # in lint-gate, under its own 10-minute cap.) At 60 only five minutes covers
+    # all of that before the cap starts eating the reviewer's own budget, and a
+    # job cancellation kills the action mid-run, skipping exactly the graceful
+    # status cleanup the 55 exists to preserve. 70 leaves 15 minutes of setup
+    # headroom above the step bound and still releases the runner.
+    timeout-minutes: 70
     permissions:
       pull-requests: write
       issues: write
@@ -322,7 +336,21 @@ jobs:
       # so every repo was reviewed by a build 36 commits older than the reviewer
       # repo's own. Evaluating a newer head is a deliberate follow-up, not a
       # drive-by bump inside the PR whose job is to stop unreviewed drift.
-      - uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
+      - name: Run maxi-reviewer
+        # ~37% of invocations used to hang with no step output and hold a scarce
+        # self-hosted runner until the job timeout (maxi-reviewer#53).
+        #
+        # 55, not 35. The action enforces its own hard deadline in-process at
+        # `hard_timeout_minutes`, which defaults to `timeout_minutes + 20` — so
+        # 50 with the 30-minute Jules budget set below. maxi-reviewer's README
+        # requires the step bound to sit ABOVE that, at 55 or more, plus cleanup
+        # headroom: a blocked Node event loop can stop the in-process timers
+        # firing, which is exactly why this outer bound is the real
+        # runner-release watchdog. A 35-minute bound fires FIRST and kills a
+        # review still legitimately inside its own deadline, defeating the
+        # graceful status cleanup this is meant to preserve.
+        timeout-minutes: 55
+        uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

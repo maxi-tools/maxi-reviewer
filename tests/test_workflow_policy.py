@@ -10,6 +10,53 @@ PINNED_ACTION = re.compile(r"uses:\s*[^\s@]+/[^\s@]+@[0-9a-f]{40}(?:\s|$)")
 USES_ACTION = re.compile(r"uses:\s*[^\s@]+/[^\s@]+@[^\s]+")
 
 
+def indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def enclosing_line(lines: list, index: int, indent: int):
+    """The nearest preceding line that opens the scope containing `index`."""
+    for candidate in range(index - 1, -1, -1):
+        line = lines[candidate]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if indent_of(line) < indent:
+            return candidate, line
+    return None
+
+
+def sonar_token_bindings(text: str) -> list:
+    """Pair each `SONAR_TOKEN:` entry with the step that owns it, in file order.
+
+    Both halves matter and only assert anything together: the owner alone would
+    still pass if a correctly-named step had its value swapped for a non-secret,
+    and the value alone would still pass if it were hoisted to job level.
+
+    Yields a marker string in place of the owner for any entry that is not a
+    step-scoped `env:` key, so a job-level (or otherwise misplaced) token fails
+    loudly with the offending line rather than silently passing an absence check.
+    """
+    lines = text.splitlines()
+    bindings = []
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped.startswith("SONAR_TOKEN:"):
+            continue
+        value = stripped.removeprefix("SONAR_TOKEN:").strip()
+        env = enclosing_line(lines, index, indent_of(line))
+        if env is None or env[1].strip() != "env:":
+            bindings.append(("NOT UNDER env: -> " + stripped, value))
+            continue
+        step = enclosing_line(lines, env[0], indent_of(env[1]))
+        if step is None or not step[1].lstrip().startswith("- "):
+            bindings.append(("NOT STEP-SCOPED -> " + stripped, value))
+            continue
+        bindings.append(
+            (step[1].lstrip()[2:].removeprefix("name:").strip(), value)
+        )
+    return bindings
+
+
 class WorkflowPolicyTests(unittest.TestCase):
     def test_trusted_ci_uses_self_hosted_and_forks_use_isolation(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -25,8 +72,33 @@ class WorkflowPolicyTests(unittest.TestCase):
         text = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository", text)
-        self.assertIn("secrets.SONAR_TOKEN != ''", text)
+        # The guard reads a step output, not `secrets`: the `secrets` context is
+        # not available in an `if:`, and referencing it there makes GitHub
+        # reject the whole file at parse time — zero jobs, no check run,
+        # invisible. This assertion used to require that broken form, which is
+        # part of why it survived: the only test that would have caught it lived
+        # in a workflow that could never run.
+        self.assertIn("steps.sonar.outputs.present == 'true'", text)
+        self.assertNotIn("if: ${{ secrets.", text)
         self.assertIn("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", text)
+
+        # And the credential stays scoped to the two steps that need it. A
+        # job-level env block would expose it to `npm install` lifecycle scripts
+        # and every build/test command in the job.
+        #
+        # Asserted by walking enclosing scopes rather than by matching a literal
+        # six-space prefix: re-indenting this file, or a YAML formatter pass,
+        # would silently disable a prefix match while leaving it green. Pairing
+        # each owning step with its value also asserts the positive case — the
+        # token IS present, IS the secret, and IS scoped to exactly these two
+        # steps — none of which "no job-level env" ever proved.
+        self.assertEqual(
+            [
+                ("Check for a SonarCloud token", "${{ secrets.SONAR_TOKEN }}"),
+                ("SonarCloud Scan", "${{ secrets.SONAR_TOKEN }}"),
+            ],
+            sonar_token_bindings(text),
+        )
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")

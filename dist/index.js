@@ -43037,6 +43037,7 @@ source, timeoutMinutes, options = {}) {
             firstMessage: reviewMessage,
             retrieval: options.retrieval,
             timeoutMs: timeoutMinutes * 60 * 1000,
+            onProgress: options.onProgress,
         });
     }
     let latestReviewMessage = reviewMessage;
@@ -43050,7 +43051,7 @@ source, timeoutMinutes, options = {}) {
         validationErrors.push(`Failed to parse Jules response: ${errorMessage(err)}`);
         core/* warning */.$e(`Failed to parse Jules response; requesting same-session JSON repair: ${err}`);
         await sendSessionMessage(session, buildJsonRepairPrompt(reviewMessage, err));
-        const repairedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, reviewMessage);
+        const repairedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, reviewMessage, options.onProgress);
         rawResponses.push(repairedMessage);
         try {
             reviewResult = parseJulesResponse(repairedMessage);
@@ -43077,7 +43078,7 @@ source, timeoutMinutes, options = {}) {
         validationErrors.push(...formatIssues);
         core/* warning */.$e(`Jules response has ${formatIssues.length} suggested-change formatting issue(s); requesting a same-session revision.`);
         await sendSessionMessage(session, buildFormatRepairPrompt(reviewResult, formatIssues));
-        const revisedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, latestReviewMessage);
+        const revisedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, latestReviewMessage, options.onProgress);
         if (revisedMessage) {
             rawResponses.push(revisedMessage);
             try {
@@ -43104,6 +43105,7 @@ source, timeoutMinutes, options = {}) {
             latestReviewMessage,
             timeoutMinutes,
             verificationContext: options.verificationContext,
+            onProgress: options.onProgress,
         });
         if (verified) {
             reviewResult = verified.reviewResult;
@@ -43126,7 +43128,7 @@ source, timeoutMinutes, options = {}) {
  * the last reply if the budget or session is exhausted.
  */
 async function runRetrievalLoop(input) {
-    const { session, retrieval, timeoutMs } = input;
+    const { session, retrieval, timeoutMs, onProgress } = input;
     const deadline = Date.now() + timeoutMs;
     let message = input.firstMessage;
     for (let step = 0; step < retrieval.maxSteps; step++) {
@@ -43139,7 +43141,7 @@ async function runRetrievalLoop(input) {
                 (step + 1) +
                 ": invalid retrieval-request; returning schema errors for repair.");
             await sendSessionMessage(session, formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft));
-            const repaired = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
+            const repaired = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
             if (!repaired) {
                 core/* warning */.$e("Retrieval loop: no agent reply after invalid-request feedback; stopping.");
                 return message;
@@ -43159,7 +43161,7 @@ async function runRetrievalLoop(input) {
             }
         }
         await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft));
-        const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
+        const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (!next) {
             core/* warning */.$e("Retrieval loop: no agent reply after returning results; stopping.");
             return message;
@@ -43171,7 +43173,7 @@ async function runRetrievalLoop(input) {
     if (parseRetrievalRequest(message).kind !== "none") {
         core/* info */.pq("Retrieval budget exhausted; requesting the final review.");
         await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0));
-        const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message);
+        const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (finalMessage)
             return finalMessage;
     }
@@ -43257,7 +43259,7 @@ async function requestStructuredValidationRepair(input) {
     const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
     core/* warning */.$e(`Jules structured review has ${issues.length} validation issue(s); requesting a same-session revision.`);
     await sendSessionMessage(input.session, buildReviewRepairPrompt(structuredReview, issues));
-    const revisedMessage = await pollForReview(input.session, input.timeoutMinutes * 60 * 1000, input.latestReviewMessage);
+    const revisedMessage = await pollForReview(input.session, input.timeoutMinutes * 60 * 1000, input.latestReviewMessage, input.onProgress);
     try {
         const revisedStructuredReview = parseJulesReview(revisedMessage);
         const remainingIssues = verifyJulesReview(revisedStructuredReview, input.verificationContext);
@@ -43396,11 +43398,7 @@ async function pollForReview(session, timeoutMs, afterMessage, onProgress) {
         // Purely diagnostic: a progress sink must never interrupt or fail polling.
         if (onProgress) {
             try {
-                await onProgress({
-                    elapsedMs: Date.now() - startedAt,
-                    timeoutMs,
-                    sawAgentOutput,
-                });
+                await onProgress({ timeoutMs, sawAgentOutput });
             }
             catch (err) {
                 core/* info */.pq(`Review progress callback failed: ${errorMessage(err)}`);
@@ -44088,16 +44086,24 @@ function formatHeartbeat(progress) {
 function createHeartbeat(options) {
     const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
     const now = options.now ?? Date.now;
+    // Elapsed is measured from here rather than from the current poll, because a
+    // review is polled in several phases (initial wait, JSON/format repair, and
+    // every round of the retrieval loop). Reporting per-phase elapsed would reset
+    // the clock mid-review and hide exactly the long waits this exists to show.
+    const startedAt = now();
     // Seed with creation time so the first beat lands one interval in: the caller
     // has already posted the opening "Jules is reviewing this PR…" status, and
     // immediately restating it at 0m would just be noise.
-    let lastPublishedAt = now();
+    let lastPublishedAt = startedAt;
     let lastDescription;
     return async (progress) => {
         const at = now();
         if (at - lastPublishedAt < intervalMs)
             return;
-        const description = formatHeartbeat(progress);
+        const description = formatHeartbeat({
+            ...progress,
+            elapsedMs: at - startedAt,
+        });
         if (description === lastDescription)
             return;
         // Advance the window before awaiting so a slow or failing write cannot let

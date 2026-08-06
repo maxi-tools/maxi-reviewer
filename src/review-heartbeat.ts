@@ -22,12 +22,16 @@ export const MAX_DESCRIPTION_LENGTH = 140;
 const DEFAULT_INTERVAL_MS = 2 * MINUTE_MS;
 
 export interface ReviewProgress {
-  /** Milliseconds since polling for the review began. */
-  elapsedMs: number;
   /** Total budget before the review is abandoned. */
   timeoutMs: number;
   /** Whether Jules has produced any agent message so far. */
   sawAgentOutput: boolean;
+}
+
+/** What {@link formatHeartbeat} renders. */
+export interface HeartbeatState extends ReviewProgress {
+  /** Milliseconds since the review began, across every polling phase. */
+  elapsedMs: number;
 }
 
 export interface HeartbeatOptions {
@@ -43,7 +47,7 @@ export interface HeartbeatOptions {
   onError?: (err: unknown) => void;
 }
 
-export function formatHeartbeat(progress: ReviewProgress): string {
+export function formatHeartbeat(progress: HeartbeatState): string {
   const elapsed = Math.floor(progress.elapsedMs / MINUTE_MS);
   const limit = Math.round(progress.timeoutMs / MINUTE_MS);
   const state = progress.sawAgentOutput
@@ -68,17 +72,25 @@ export function createHeartbeat(
 ): (progress: ReviewProgress) => Promise<void> {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
   const now = options.now ?? Date.now;
+  // Elapsed is measured from here rather than from the current poll, because a
+  // review is polled in several phases (initial wait, JSON/format repair, and
+  // every round of the retrieval loop). Reporting per-phase elapsed would reset
+  // the clock mid-review and hide exactly the long waits this exists to show.
+  const startedAt = now();
   // Seed with creation time so the first beat lands one interval in: the caller
   // has already posted the opening "Jules is reviewing this PR…" status, and
   // immediately restating it at 0m would just be noise.
-  let lastPublishedAt = now();
+  let lastPublishedAt = startedAt;
   let lastDescription: string | undefined;
 
   return async (progress: ReviewProgress): Promise<void> => {
     const at = now();
     if (at - lastPublishedAt < intervalMs) return;
 
-    const description = formatHeartbeat(progress);
+    const description = formatHeartbeat({
+      ...progress,
+      elapsedMs: at - startedAt,
+    });
     if (description === lastDescription) return;
 
     // Advance the window before awaiting so a slow or failing write cannot let

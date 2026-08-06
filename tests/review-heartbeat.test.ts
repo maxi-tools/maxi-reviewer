@@ -49,8 +49,10 @@ describe("formatHeartbeat", () => {
 });
 
 describe("createHeartbeat", () => {
-  const progress = (elapsedMinutes: number, sawAgentOutput = false) => ({
-    elapsedMs: elapsedMinutes * 60_000,
+  // Callers no longer report elapsed: a review is polled in several phases
+  // (initial wait, JSON/format repair, each retrieval round) and per-phase
+  // elapsed would reset the clock mid-review. The heartbeat owns the clock.
+  const progress = (sawAgentOutput = false) => ({
     timeoutMs: 30 * 60_000,
     sawAgentOutput,
   });
@@ -60,7 +62,7 @@ describe("createHeartbeat", () => {
     const clock = 1_000;
     const beat = createHeartbeat({ publish, now: () => clock });
 
-    await beat(progress(0));
+    await beat(progress());
 
     expect(publish).not.toHaveBeenCalled();
   });
@@ -75,7 +77,7 @@ describe("createHeartbeat", () => {
     });
 
     clock = 120_000;
-    await beat(progress(2));
+    await beat(progress());
 
     expect(publish).toHaveBeenCalledTimes(1);
   });
@@ -90,11 +92,11 @@ describe("createHeartbeat", () => {
     });
 
     clock = 119_000;
-    await beat(progress(1));
+    await beat(progress());
     expect(publish).not.toHaveBeenCalled();
 
     clock = 121_000;
-    await beat(progress(2));
+    await beat(progress());
     expect(publish).toHaveBeenCalledTimes(1);
     expect(publish).toHaveBeenCalledWith(
       "Jules is reviewing this PR… (2m of 30m, no agent output yet)"
@@ -114,31 +116,58 @@ describe("createHeartbeat", () => {
     // interval (the sixth would land exactly on the boundary and should fire).
     for (let tick = 1; tick <= 5; tick++) {
       clock = tick * 20_000;
-      await beat(progress(tick / 3));
+      await beat(progress());
     }
 
     expect(publish).not.toHaveBeenCalled();
 
     clock = 121_000;
-    await beat(progress(2));
+    await beat(progress());
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
   it("skips a write when the description has not changed since the last one", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     let clock = 0;
+    // Sub-minute interval, so two beats land inside the same rendered minute
+    // and produce an identical description.
     const beat = createHeartbeat({
       publish,
       now: () => clock,
-      intervalMs: 60_000,
+      intervalMs: 20_000,
     });
 
-    clock = 61_000;
-    await beat(progress(5));
-    clock = 122_000;
-    await beat(progress(5));
+    clock = 21_000;
+    await beat(progress());
+    clock = 42_000;
+    await beat(progress());
 
     expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith(
+      "Jules is reviewing this PR… (0m of 30m, no agent output yet)"
+    );
+  });
+
+  it("measures elapsed from review start, not from the current poll phase", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    let clock = 0;
+    const beat = createHeartbeat({
+      publish,
+      now: () => clock,
+      intervalMs: 120_000,
+    });
+
+    // A later retrieval round starts a fresh poll with its own clock, but the
+    // reported elapsed must keep climbing across the whole review.
+    clock = 121_000;
+    await beat(progress());
+    clock = 601_000;
+    await beat(progress(true));
+
+    expect(publish).toHaveBeenNthCalledWith(
+      2,
+      "Jules is reviewing this PR… (10m of 30m, agent replied, finishing up)"
+    );
   });
 
   it("never lets a failed status write break the review", async () => {
@@ -155,7 +184,7 @@ describe("createHeartbeat", () => {
     });
 
     clock = 61_000;
-    await expect(beat(progress(1))).resolves.toBeUndefined();
+    await expect(beat(progress())).resolves.toBeUndefined();
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
@@ -172,9 +201,9 @@ describe("createHeartbeat", () => {
     });
 
     clock = 61_000;
-    await beat(progress(1));
+    await beat(progress());
     clock = 122_000;
-    await beat(progress(2));
+    await beat(progress());
 
     expect(publish).toHaveBeenCalledTimes(2);
   });

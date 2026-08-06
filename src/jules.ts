@@ -110,6 +110,7 @@ export async function runJulesReview(
       firstMessage: reviewMessage,
       retrieval: options.retrieval,
       timeoutMs: timeoutMinutes * 60 * 1000,
+      onProgress: options.onProgress,
     });
   }
 
@@ -133,7 +134,8 @@ export async function runJulesReview(
     const repairedMessage = await pollForReview(
       session,
       timeoutMinutes * 60 * 1000,
-      reviewMessage
+      reviewMessage,
+      options.onProgress
     );
     rawResponses.push(repairedMessage);
     try {
@@ -172,7 +174,8 @@ export async function runJulesReview(
     const revisedMessage = await pollForReview(
       session,
       timeoutMinutes * 60 * 1000,
-      latestReviewMessage
+      latestReviewMessage,
+      options.onProgress
     );
     if (revisedMessage) {
       rawResponses.push(revisedMessage);
@@ -205,6 +208,7 @@ export async function runJulesReview(
       latestReviewMessage,
       timeoutMinutes,
       verificationContext: options.verificationContext,
+      onProgress: options.onProgress,
     });
     if (verified) {
       reviewResult = verified.reviewResult;
@@ -233,8 +237,9 @@ async function runRetrievalLoop(input: {
   firstMessage: string;
   retrieval: { provider: RetrievalProvider; maxSteps: number; nonce: string };
   timeoutMs: number;
+  onProgress?: (progress: ReviewProgress) => void | Promise<void>;
 }): Promise<string> {
-  const { session, retrieval, timeoutMs } = input;
+  const { session, retrieval, timeoutMs, onProgress } = input;
   const deadline = Date.now() + timeoutMs;
   let message = input.firstMessage;
   for (let step = 0; step < retrieval.maxSteps; step++) {
@@ -258,7 +263,8 @@ async function runRetrievalLoop(input: {
       const repaired = await pollForReview(
         session,
         Math.max(0, deadline - Date.now()),
-        message
+        message,
+        onProgress
       );
       if (!repaired) {
         core.warning(
@@ -288,7 +294,8 @@ async function runRetrievalLoop(input: {
     const next = await pollForReview(
       session,
       Math.max(0, deadline - Date.now()),
-      message
+      message,
+      onProgress
     );
     if (!next) {
       core.warning(
@@ -309,7 +316,8 @@ async function runRetrievalLoop(input: {
     const finalMessage = await pollForReview(
       session,
       Math.max(0, deadline - Date.now()),
-      message
+      message,
+      onProgress
     );
     if (finalMessage) return finalMessage;
   }
@@ -402,6 +410,7 @@ async function requestStructuredValidationRepair(input: {
   latestReviewMessage: string;
   timeoutMinutes: number;
   verificationContext: VerificationContext;
+  onProgress?: (progress: ReviewProgress) => void | Promise<void>;
 }): Promise<{
   reviewResult: ReviewResult;
   latestReviewMessage: string;
@@ -430,7 +439,8 @@ async function requestStructuredValidationRepair(input: {
   const revisedMessage = await pollForReview(
     input.session,
     input.timeoutMinutes * 60 * 1000,
-    input.latestReviewMessage
+    input.latestReviewMessage,
+    input.onProgress
   );
   try {
     const revisedStructuredReview = parseJulesReview(revisedMessage);
@@ -619,11 +629,7 @@ async function pollForReview(
     // Purely diagnostic: a progress sink must never interrupt or fail polling.
     if (onProgress) {
       try {
-        await onProgress({
-          elapsedMs: Date.now() - startedAt,
-          timeoutMs,
-          sawAgentOutput,
-        });
+        await onProgress({ timeoutMs, sawAgentOutput });
       } catch (err) {
         core.info(`Review progress callback failed: ${errorMessage(err)}`);
       }

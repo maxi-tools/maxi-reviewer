@@ -19,6 +19,7 @@ import {
   RetrievalProvider,
   RetrievalResult,
 } from "./retrieval.js";
+import { ReviewProgress } from "./review-heartbeat.js";
 
 interface JulesSession {
   id: string;
@@ -56,6 +57,12 @@ export interface RunJulesReviewOptions {
     maxSteps: number;
     nonce: string;
   };
+  /**
+   * Called on each poll tick while waiting for the review. Used to keep the
+   * pending commit status current so a stalled session is distinguishable from
+   * one that merely started recently. Errors are swallowed.
+   */
+  onProgress?: (progress: ReviewProgress) => void | Promise<void>;
 }
 
 export async function runJulesReview(
@@ -88,7 +95,8 @@ export async function runJulesReview(
   let reviewMessage = await pollForReview(
     session,
     timeoutMinutes * 60 * 1000,
-    afterMessage
+    afterMessage,
+    options.onProgress
   );
   core.info(`Collected review (${reviewMessage.length} chars)`);
 
@@ -573,12 +581,15 @@ async function waitUntilSessionReady(session: {
 async function pollForReview(
   session: JulesSession,
   timeoutMs: number,
-  afterMessage?: string
+  afterMessage?: string,
+  onProgress?: (progress: ReviewProgress) => void | Promise<void>
 ): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
   let attempt = 0;
   while (Date.now() < deadline) {
     attempt++;
+    let sawAgentOutput = false;
     try {
       await session.hydrate();
       let last = "";
@@ -586,6 +597,7 @@ async function pollForReview(
         if (a.type === "agentMessaged") last = a.message;
       }
       if (last) {
+        sawAgentOutput = true;
         if (afterMessage !== undefined && last === afterMessage) {
           core.info(`Latest agentMessaged is unchanged (attempt ${attempt})…`);
         } else {
@@ -603,6 +615,18 @@ async function pollForReview(
         );
       }
       core.info(`hydrate/history error (attempt ${attempt}): ${msg}`);
+    }
+    // Purely diagnostic: a progress sink must never interrupt or fail polling.
+    if (onProgress) {
+      try {
+        await onProgress({
+          elapsedMs: Date.now() - startedAt,
+          timeoutMs,
+          sawAgentOutput,
+        });
+      } catch (err) {
+        core.info(`Review progress callback failed: ${errorMessage(err)}`);
+      }
     }
     await new Promise((r) => setTimeout(r, 20_000));
   }

@@ -1,0 +1,94 @@
+/**
+ * Keeps the pending `jules/review` commit status current while a review runs.
+ *
+ * The status used to be written once when the review started and then left
+ * untouched until a terminal verdict. From outside the job "started twenty
+ * seconds ago" and "hung for twenty-five minutes" therefore looked identical,
+ * and readers repeatedly diagnosed a healthy in-flight review as a stalled one
+ * — including merging PRs a minute or two before Jules posted its approval.
+ *
+ * Refreshing the description with elapsed time makes the difference legible
+ * without opening the run log, and surfaces the genuine failure mode (a session
+ * that is accepted but whose agent never runs) minutes in rather than at the
+ * timeout.
+ */
+
+const MINUTE_MS = 60_000;
+
+/** GitHub truncates commit status descriptions; stay well inside the limit. */
+export const MAX_DESCRIPTION_LENGTH = 140;
+
+/** Default gap between status writes. */
+const DEFAULT_INTERVAL_MS = 2 * MINUTE_MS;
+
+export interface ReviewProgress {
+  /** Milliseconds since polling for the review began. */
+  elapsedMs: number;
+  /** Total budget before the review is abandoned. */
+  timeoutMs: number;
+  /** Whether Jules has produced any agent message so far. */
+  sawAgentOutput: boolean;
+}
+
+export interface HeartbeatOptions {
+  /** Publishes one refreshed description. */
+  publish: (description: string) => Promise<void>;
+  /**
+   * Minimum gap between writes. Commit statuses accumulate on the commit and
+   * count against the API budget, so this is deliberately coarse relative to
+   * the 20s poll tick.
+   */
+  intervalMs?: number;
+  now?: () => number;
+  onError?: (err: unknown) => void;
+}
+
+export function formatHeartbeat(progress: ReviewProgress): string {
+  const elapsed = Math.floor(progress.elapsedMs / MINUTE_MS);
+  const limit = Math.round(progress.timeoutMs / MINUTE_MS);
+  const state = progress.sawAgentOutput
+    ? "agent replied, finishing up"
+    : "no agent output yet";
+  const description = `Jules is reviewing this PR… (${elapsed}m of ${limit}m, ${state})`;
+  return description.length > MAX_DESCRIPTION_LENGTH
+    ? `${description.slice(0, MAX_DESCRIPTION_LENGTH - 1)}…`
+    : description;
+}
+
+/**
+ * Builds a throttled progress sink for {@link ReviewProgress} updates.
+ *
+ * The returned function is safe to call on every poll tick: it publishes at
+ * most once per interval, skips writes that would repeat the previous
+ * description, and never rejects — a heartbeat is diagnostic, so failing to
+ * refresh it must not fail the review it is describing.
+ */
+export function createHeartbeat(
+  options: HeartbeatOptions
+): (progress: ReviewProgress) => Promise<void> {
+  const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+  const now = options.now ?? Date.now;
+  // Seed with creation time so the first beat lands one interval in: the caller
+  // has already posted the opening "Jules is reviewing this PR…" status, and
+  // immediately restating it at 0m would just be noise.
+  let lastPublishedAt = now();
+  let lastDescription: string | undefined;
+
+  return async (progress: ReviewProgress): Promise<void> => {
+    const at = now();
+    if (at - lastPublishedAt < intervalMs) return;
+
+    const description = formatHeartbeat(progress);
+    if (description === lastDescription) return;
+
+    // Advance the window before awaiting so a slow or failing write cannot let
+    // concurrent ticks pile up behind it.
+    lastPublishedAt = at;
+    lastDescription = description;
+    try {
+      await options.publish(description);
+    } catch (err) {
+      options.onError?.(err);
+    }
+  };
+}

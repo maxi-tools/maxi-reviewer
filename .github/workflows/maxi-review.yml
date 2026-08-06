@@ -322,7 +322,14 @@ jobs:
       # so every repo was reviewed by a build 36 commits older than the reviewer
       # repo's own. Evaluating a newer head is a deliberate follow-up, not a
       # drive-by bump inside the PR whose job is to stop unreviewed drift.
-      - uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
+      - name: Run maxi-reviewer
+        # ~37% of invocations used to hang with no step output and hold a scarce
+        # self-hosted runner until the 40-minute job timeout (maxi-reviewer#53).
+        # This bound sits above the action's own Jules deadline
+        # (timeout_minutes: 30) and below the job's 40, so a wedged action
+        # releases the runner without masking a review that is merely slow.
+        timeout-minutes: 35
+        uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

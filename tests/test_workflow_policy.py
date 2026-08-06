@@ -25,6 +25,38 @@ def enclosing_line(lines: list, index: int, indent: int):
     return None
 
 
+def permission_blocks(text: str) -> list:
+    """Every `permissions:` block as (owner, [(scope, level), ...]), in order.
+
+    Owner is `<workflow>` for the top-level block, otherwise the job key the
+    block hangs under, so a test can assert that each job declares its own
+    rather than that the word appears somewhere in the file.
+    """
+    lines = text.splitlines()
+    blocks = []
+    for index, line in enumerate(lines):
+        if line.strip() != "permissions:":
+            continue
+        indent = indent_of(line)
+        if indent == 0:
+            owner = "<workflow>"
+        else:
+            parent = enclosing_line(lines, index, indent)
+            owner = parent[1].strip().rstrip(":") if parent else "<unknown>"
+        grants = []
+        for candidate in lines[index + 1:]:
+            if not candidate.strip():
+                continue
+            if indent_of(candidate) <= indent:
+                break
+            if candidate.lstrip().startswith("#"):
+                continue
+            scope, _, level = candidate.strip().partition(":")
+            grants.append((scope, level.strip()))
+        blocks.append((owner, grants))
+    return blocks
+
+
 def sonar_token_bindings(text: str) -> list:
     """Pair each `SONAR_TOKEN:` entry with the step that owns it, in file order.
 
@@ -98,6 +130,38 @@ class WorkflowPolicyTests(unittest.TestCase):
                 ("SonarCloud Scan", "${{ secrets.SONAR_TOKEN }}"),
             ],
             sonar_token_bindings(text),
+        )
+
+    def test_ci_token_is_read_only_and_declared_per_job(self) -> None:
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+
+        # This file declared no `permissions:` at all, so its token inherited
+        # the repository default — read/write on this org — and every
+        # dependency lifecycle script in both jobs ran beside a token that
+        # could push. zizmor flagged all three sites as excessive.
+        #
+        # Asserted per owner rather than "the word appears somewhere": a single
+        # workflow-level block would leave a later job free to widen itself,
+        # and that is exactly the drift this exists to catch.
+        # Asserted as an exact (owner, scope, level) list rather than "every
+        # level is read", because a levels-only check is also satisfied by an
+        # empty grant. Dropping `pull-requests: read` from `ci` would silently
+        # break SonarCloud's PR decoration — the analysis needs the base ref
+        # and PR number to attach itself — while leaving a levels-only
+        # assertion green. Widening a scope is a deliberate act and should
+        # have to be written down twice.
+        self.assertEqual(
+            [
+                ("<workflow>", "contents", "read"),
+                ("ci", "contents", "read"),
+                ("ci", "pull-requests", "read"),
+                ("ci-fork", "contents", "read"),
+            ],
+            [
+                (owner, scope, level)
+                for owner, grants in permission_blocks(text)
+                for scope, level in grants
+            ],
         )
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:

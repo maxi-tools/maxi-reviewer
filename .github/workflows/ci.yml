@@ -11,14 +11,6 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, ARM64]
 
-    # Hoisted so the SonarCloud step can gate on it. `secrets` is NOT available
-    # in an `if:` expression — referencing it there makes GitHub reject the
-    # whole workflow at parse time, which is why this file has produced a
-    # startup failure (zero jobs created) on every run. `env` IS available in
-    # a step `if`, so the guard has to read the value from here.
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -48,8 +40,28 @@ jobs:
       - name: Workflow policy tests
         run: python3 tests/test_workflow_policy.py
 
+      # Presence check only, so the credential is scoped to this step and the
+      # scan below rather than every step in the job. A job-level `env` would
+      # hand SONAR_TOKEN to `npm install` lifecycle scripts and every build and
+      # test command that follows.
+      #
+      # The guard cannot read `secrets` directly: that context is unavailable in
+      # an `if:` expression, and referencing it there makes GitHub reject the
+      # whole workflow at parse time — the startup failure that meant this file
+      # created zero jobs on all 100 of its previous runs.
+      - name: Check for a SonarCloud token
+        id: sonar
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "${SONAR_TOKEN:-}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: SonarCloud Scan
-        if: ${{ env.SONAR_TOKEN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        if: ${{ steps.sonar.outputs.present == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

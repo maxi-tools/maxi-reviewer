@@ -111,9 +111,12 @@ describe("action metadata", () => {
     // jobs, which is why this workflow had never once run. The value is still
     // sourced from `secrets`: at job level to feed the guard, and in the
     // step's own env for the scanner itself.
-    expect(ci).toContain("if: ${{ env.SONAR_TOKEN != ''");
+    expect(ci).toContain("steps.sonar.outputs.present == 'true'");
     expect(ci).not.toContain("if: ${{ secrets.SONAR_TOKEN");
     expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
+    // Scoped to the presence check and the scan, never job-wide: a job-level
+    // env key sits at 6 spaces, a step-level one at 10.
+    expect(ci).not.toMatch(/^ {6}SONAR_TOKEN:/m);
   });
 
   it("sets a step-level timeout on the maxi-reviewer action invocation", () => {
@@ -121,13 +124,17 @@ describe("action metadata", () => {
       new URL("../.github/workflows/maxi-review.yml", import.meta.url),
       "utf8"
     );
-    // 35, not 55: the bound must sit ABOVE the action's own Jules deadline
-    // (timeout_minutes: 30) and BELOW the job's timeout-minutes: 40, or the job
-    // cap fires first and the step bound is dead config. #59 specifies 35; the
-    // 55 this previously asserted was never applied to the workflow at all.
-    expect(workflow).toContain("timeout-minutes: 35");
+    // 55, and this assertion was right all along — an earlier revision of this
+    // PR lowered it to 35 by reasoning from #59's prose instead of the shipped
+    // behaviour, which was a regression. The action enforces its own deadline
+    // in-process at `hard_timeout_minutes` = `timeout_minutes + 20` = 50, and
+    // the README requires the step bound above that (>=55) plus cleanup
+    // headroom, because a blocked event loop can stop the in-process timers and
+    // this outer bound is the real runner-release watchdog. 35 would fire first
+    // and kill a review still inside its own deadline.
+    expect(workflow).toContain("timeout-minutes: 55");
     expect(workflow).toMatch(
-      /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 35[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
+      /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 55[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
     );
   });
 });

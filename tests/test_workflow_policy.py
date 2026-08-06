@@ -25,15 +25,25 @@ class WorkflowPolicyTests(unittest.TestCase):
         text = CI_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository", text)
-        # The guard reads `env`, not `secrets`: the `secrets` context is not
-        # available in an `if:`, and referencing it there makes GitHub reject
-        # the whole file at parse time — zero jobs, no check run, invisible.
-        # This assertion used to require the broken form, which is part of why
-        # it survived: the only test that would have caught it was in a
-        # workflow that could never run.
-        self.assertIn("env.SONAR_TOKEN != ''", text)
+        # The guard reads a step output, not `secrets`: the `secrets` context is
+        # not available in an `if:`, and referencing it there makes GitHub
+        # reject the whole file at parse time — zero jobs, no check run,
+        # invisible. This assertion used to require that broken form, which is
+        # part of why it survived: the only test that would have caught it lived
+        # in a workflow that could never run.
+        self.assertIn("steps.sonar.outputs.present == 'true'", text)
         self.assertNotIn("if: ${{ secrets.", text)
         self.assertIn("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", text)
+
+        # And the credential stays scoped to the two steps that need it. A
+        # job-level env block (4-space `env:` with a 6-space key) would expose it
+        # to `npm install` lifecycle scripts and every build/test command in the
+        # job; step-level env is indented deeper.
+        job_level_env_lines = [
+            line for line in text.splitlines()
+            if line.startswith("      SONAR_TOKEN:")
+        ]
+        self.assertEqual([], job_level_env_lines)
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")

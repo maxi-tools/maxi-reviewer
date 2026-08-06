@@ -143,18 +143,26 @@ class WorkflowPolicyTests(unittest.TestCase):
         # Asserted per owner rather than "the word appears somewhere": a single
         # workflow-level block would leave a later job free to widen itself,
         # and that is exactly the drift this exists to catch.
-        blocks = permission_blocks(text)
+        # Asserted as an exact (owner, scope, level) list rather than "every
+        # level is read", because a levels-only check is also satisfied by an
+        # empty grant. Dropping `pull-requests: read` from `ci` would silently
+        # break SonarCloud's PR decoration — the analysis needs the base ref
+        # and PR number to attach itself — while leaving a levels-only
+        # assertion green. Widening a scope is a deliberate act and should
+        # have to be written down twice.
         self.assertEqual(
-            ["<workflow>", "ci", "ci-fork"], [owner for owner, _ in blocks]
+            [
+                ("<workflow>", "contents", "read"),
+                ("ci", "contents", "read"),
+                ("ci", "pull-requests", "read"),
+                ("ci-fork", "contents", "read"),
+            ],
+            [
+                (owner, scope, level)
+                for owner, grants in permission_blocks(text)
+                for scope, level in grants
+            ],
         )
-
-        granted = [
-            (owner, scope, level)
-            for owner, grants in blocks
-            for scope, level in grants
-        ]
-        self.assertNotEqual([], granted)
-        self.assertEqual([], [g for g in granted if g[2] != "read"])
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")

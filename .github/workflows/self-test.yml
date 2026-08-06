@@ -17,7 +17,10 @@ jobs:
       statuses: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        # Same revision ci.yml pins, deliberately: the v6 tag has since moved
+        # to d23441a4, and matching ci.yml keeps one checkout revision to audit
+        # and bump rather than two that drift apart silently.
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -32,7 +35,7 @@ jobs:
 
       - name: Create Maxi Review app token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
           private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}

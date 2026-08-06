@@ -281,7 +281,9 @@ async function runApplyAllCommand(
   }
 
   const comments = artifactComments(artifact);
-  const paths = [...new Set(comments.flatMap((comment) => commentPaths(comment)))];
+  const paths = [
+    ...new Set(comments.flatMap((comment) => commentPaths(comment))),
+  ];
   const files = await deps.readFiles({
     owner: context.owner,
     repo: context.repo,

@@ -6,10 +6,24 @@ on:
       - main
   pull_request:
 
+# Nothing in this workflow writes to GitHub — it checks out, installs, lints,
+# builds, tests, and scans. Without a block the token inherits the repository
+# default, which on this org is read/write, so every `npm install` lifecycle
+# script in both jobs ran next to a token that could push. Declared here as the
+# floor and narrowed per job below.
+permissions:
+  contents: read
+
 jobs:
   ci:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, ARM64]
+    permissions:
+      contents: read
+      # SonarCloud reads the PR's base ref and number to attach analysis to the
+      # right pull request. Read is enough: the decoration comment is posted by
+      # the SonarCloud app under its own identity, not by this token.
+      pull-requests: read
 
     steps:
       - name: Checkout repository
@@ -70,6 +84,11 @@ jobs:
   ci-fork:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    # A fork PR's token is read-only regardless, but stating it keeps the two
+    # jobs auditable side by side and stops the fork lane quietly widening if
+    # the repository default ever changes.
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository

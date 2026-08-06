@@ -25,6 +25,38 @@ def enclosing_line(lines: list, index: int, indent: int):
     return None
 
 
+def permission_blocks(text: str) -> list:
+    """Every `permissions:` block as (owner, [(scope, level), ...]), in order.
+
+    Owner is `<workflow>` for the top-level block, otherwise the job key the
+    block hangs under, so a test can assert that each job declares its own
+    rather than that the word appears somewhere in the file.
+    """
+    lines = text.splitlines()
+    blocks = []
+    for index, line in enumerate(lines):
+        if line.strip() != "permissions:":
+            continue
+        indent = indent_of(line)
+        if indent == 0:
+            owner = "<workflow>"
+        else:
+            parent = enclosing_line(lines, index, indent)
+            owner = parent[1].strip().rstrip(":") if parent else "<unknown>"
+        grants = []
+        for candidate in lines[index + 1:]:
+            if not candidate.strip():
+                continue
+            if indent_of(candidate) <= indent:
+                break
+            if candidate.lstrip().startswith("#"):
+                continue
+            scope, _, level = candidate.strip().partition(":")
+            grants.append((scope, level.strip()))
+        blocks.append((owner, grants))
+    return blocks
+
+
 def sonar_token_bindings(text: str) -> list:
     """Pair each `SONAR_TOKEN:` entry with the step that owns it, in file order.
 
@@ -99,6 +131,30 @@ class WorkflowPolicyTests(unittest.TestCase):
             ],
             sonar_token_bindings(text),
         )
+
+    def test_ci_token_is_read_only_and_declared_per_job(self) -> None:
+        text = CI_WORKFLOW.read_text(encoding="utf-8")
+
+        # This file declared no `permissions:` at all, so its token inherited
+        # the repository default — read/write on this org — and every
+        # dependency lifecycle script in both jobs ran beside a token that
+        # could push. zizmor flagged all three sites as excessive.
+        #
+        # Asserted per owner rather than "the word appears somewhere": a single
+        # workflow-level block would leave a later job free to widen itself,
+        # and that is exactly the drift this exists to catch.
+        blocks = permission_blocks(text)
+        self.assertEqual(
+            ["<workflow>", "ci", "ci-fork"], [owner for owner, _ in blocks]
+        )
+
+        granted = [
+            (owner, scope, level)
+            for owner, grants in blocks
+            for scope, level in grants
+        ]
+        self.assertNotEqual([], granted)
+        self.assertEqual([], [g for g in granted if g[2] != "read"])
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")

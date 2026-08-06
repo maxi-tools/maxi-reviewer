@@ -1,50 +1,78 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  capDescription,
   createHeartbeat,
   formatHeartbeat,
   MAX_DESCRIPTION_LENGTH,
 } from "../src/review-heartbeat.js";
 
 describe("formatHeartbeat", () => {
-  it("reports elapsed minutes against the limit and that no agent output has arrived", () => {
+  it("reports elapsed minutes and that no agent output has arrived", () => {
     expect(
       formatHeartbeat({
         elapsedMs: 6 * 60_000,
-        timeoutMs: 30 * 60_000,
         sawAgentOutput: false,
       })
-    ).toBe("Jules is reviewing this PR… (6m of 30m, no agent output yet)");
+    ).toBe("Jules is reviewing this PR… (6m elapsed, no agent output yet)");
   });
 
   it("distinguishes a session that has replied from one that has not", () => {
     expect(
       formatHeartbeat({
         elapsedMs: 90_000,
-        timeoutMs: 30 * 60_000,
         sawAgentOutput: true,
       })
     ).toBe(
-      "Jules is reviewing this PR… (1m of 30m, agent replied, finishing up)"
+      "Jules is reviewing this PR… (1m elapsed, agent replied, finishing up)"
     );
   });
 
-  it("floors elapsed minutes so the first interval reads 0m rather than rounding up", () => {
+  it("quotes no total budget, because each polling phase carries its own", () => {
+    // Guards the regression this replaced: cumulative elapsed paired with a
+    // per-phase timeout could render "31m of 30m" while a repair phase was
+    // still inside its own deadline.
+    expect(
+      formatHeartbeat({ elapsedMs: 31 * 60_000, sawAgentOutput: true })
+    ).not.toContain(" of ");
+  });
+
+  it("floors elapsed minutes so 1m59s reads 1m rather than rounding up to 2m", () => {
     expect(
       formatHeartbeat({
         elapsedMs: 119_000,
-        timeoutMs: 30 * 60_000,
         sawAgentOutput: false,
       })
-    ).toContain("(1m of 30m");
+    ).toContain("(1m elapsed");
   });
 
   it("stays inside the GitHub status description limit", () => {
     const description = formatHeartbeat({
       elapsedMs: 999 * 60_000,
-      timeoutMs: 999 * 60_000,
       sawAgentOutput: true,
     });
     expect(description.length).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
+  });
+});
+
+describe("capDescription", () => {
+  it("leaves a description that already fits untouched", () => {
+    const short = "Jules is reviewing this PR…";
+    expect(capDescription(short)).toBe(short);
+  });
+
+  it("truncates an over-long description to the limit, ending in an ellipsis", () => {
+    // formatHeartbeat's own output can never reach the limit, so the
+    // truncation branch is only reachable — and therefore only testable —
+    // through capDescription directly.
+    const long = "x".repeat(MAX_DESCRIPTION_LENGTH + 50);
+    const capped = capDescription(long);
+    expect(capped).toHaveLength(MAX_DESCRIPTION_LENGTH);
+    expect(capped.endsWith("…")).toBe(true);
+  });
+
+  it("keeps a description of exactly the limit intact", () => {
+    const exact = "x".repeat(MAX_DESCRIPTION_LENGTH);
+    expect(capDescription(exact)).toBe(exact);
   });
 });
 
@@ -52,10 +80,7 @@ describe("createHeartbeat", () => {
   // Callers no longer report elapsed: a review is polled in several phases
   // (initial wait, JSON/format repair, each retrieval round) and per-phase
   // elapsed would reset the clock mid-review. The heartbeat owns the clock.
-  const progress = (sawAgentOutput = false) => ({
-    timeoutMs: 30 * 60_000,
-    sawAgentOutput,
-  });
+  const progress = (sawAgentOutput = false) => ({ sawAgentOutput });
 
   it("does not publish immediately: the caller has already posted the initial status", async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
@@ -99,7 +124,7 @@ describe("createHeartbeat", () => {
     await beat(progress());
     expect(publish).toHaveBeenCalledTimes(1);
     expect(publish).toHaveBeenCalledWith(
-      "Jules is reviewing this PR… (2m of 30m, no agent output yet)"
+      "Jules is reviewing this PR… (2m elapsed, no agent output yet)"
     );
   });
 
@@ -144,7 +169,7 @@ describe("createHeartbeat", () => {
 
     expect(publish).toHaveBeenCalledTimes(1);
     expect(publish).toHaveBeenCalledWith(
-      "Jules is reviewing this PR… (0m of 30m, no agent output yet)"
+      "Jules is reviewing this PR… (0m elapsed, no agent output yet)"
     );
   });
 
@@ -166,7 +191,7 @@ describe("createHeartbeat", () => {
 
     expect(publish).toHaveBeenNthCalledWith(
       2,
-      "Jules is reviewing this PR… (10m of 30m, agent replied, finishing up)"
+      "Jules is reviewing this PR… (10m elapsed, agent replied, finishing up)"
     );
   });
 

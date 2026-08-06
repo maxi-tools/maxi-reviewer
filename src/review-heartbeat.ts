@@ -22,8 +22,6 @@ export const MAX_DESCRIPTION_LENGTH = 140;
 const DEFAULT_INTERVAL_MS = 2 * MINUTE_MS;
 
 export interface ReviewProgress {
-  /** Total budget before the review is abandoned. */
-  timeoutMs: number;
   /** Whether Jules has produced any agent message so far. */
   sawAgentOutput: boolean;
 }
@@ -32,6 +30,19 @@ export interface ReviewProgress {
 export interface HeartbeatState extends ReviewProgress {
   /** Milliseconds since the review began, across every polling phase. */
   elapsedMs: number;
+}
+
+/**
+ * Cap a description at the length GitHub accepts for a commit status.
+ *
+ * Exported so it can be tested against an over-long input directly. The live
+ * format never approaches the limit, so a test that only fed it real values
+ * would assert the cap vacuously without ever entering this branch.
+ */
+export function capDescription(description: string): string {
+  return description.length > MAX_DESCRIPTION_LENGTH
+    ? `${description.slice(0, MAX_DESCRIPTION_LENGTH - 1)}…`
+    : description;
 }
 
 export interface HeartbeatOptions {
@@ -49,14 +60,18 @@ export interface HeartbeatOptions {
 
 export function formatHeartbeat(progress: HeartbeatState): string {
   const elapsed = Math.floor(progress.elapsedMs / MINUTE_MS);
-  const limit = Math.round(progress.timeoutMs / MINUTE_MS);
   const state = progress.sawAgentOutput
     ? "agent replied, finishing up"
     : "no agent output yet";
-  const description = `Jules is reviewing this PR… (${elapsed}m of ${limit}m, ${state})`;
-  return description.length > MAX_DESCRIPTION_LENGTH
-    ? `${description.slice(0, MAX_DESCRIPTION_LENGTH - 1)}…`
-    : description;
+  // Elapsed only, with no "of Nm" limit. Elapsed is cumulative across the whole
+  // review while each polling phase carries its OWN deadline, so pairing them
+  // produced impossible readings like "31m of 30m" while a repair phase was
+  // still legitimately inside its own budget. There is no single review-wide
+  // deadline to quote, so quoting one was a lie; elapsed alone is what
+  // distinguishes "just started" from "stalled", which is the whole point.
+  return capDescription(
+    `Jules is reviewing this PR… (${elapsed}m elapsed, ${state})`
+  );
 }
 
 /**

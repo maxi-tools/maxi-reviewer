@@ -597,9 +597,14 @@ async function pollForReview(
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
   let attempt = 0;
+  // Sticky across iterations on purpose. Declared inside the loop it reset to
+  // false on every tick, so a single transient hydrate/history error would make
+  // the heartbeat retract "agent replied" and claim no output had arrived — the
+  // status would appear to go backwards. Having seen agent output is a fact
+  // about the session, not about the current poll.
+  let sawAgentOutput = false;
   while (Date.now() < deadline) {
     attempt++;
-    let sawAgentOutput = false;
     try {
       await session.hydrate();
       let last = "";
@@ -629,7 +634,7 @@ async function pollForReview(
     // Purely diagnostic: a progress sink must never interrupt or fail polling.
     if (onProgress) {
       try {
-        await onProgress({ timeoutMs, sawAgentOutput });
+        await onProgress({ sawAgentOutput });
       } catch (err) {
         core.info(`Review progress callback failed: ${errorMessage(err)}`);
       }

@@ -90,9 +90,7 @@ export interface ListReferencesRequest {
   pathGlob?: string;
 }
 export type RetrievalToolRequest =
-  | ReadFileRequest
-  | GrepRequest
-  | ListReferencesRequest;
+  ReadFileRequest | GrepRequest | ListReferencesRequest;
 
 export interface RetrievalRequest {
   schema: "maxi.review.v1.retrieval-request";

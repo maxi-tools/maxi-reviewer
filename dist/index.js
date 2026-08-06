@@ -43366,9 +43366,14 @@ async function pollForReview(session, timeoutMs, afterMessage, onProgress) {
     const startedAt = Date.now();
     const deadline = startedAt + timeoutMs;
     let attempt = 0;
+    // Sticky across iterations on purpose. Declared inside the loop it reset to
+    // false on every tick, so a single transient hydrate/history error would make
+    // the heartbeat retract "agent replied" and claim no output had arrived — the
+    // status would appear to go backwards. Having seen agent output is a fact
+    // about the session, not about the current poll.
+    let sawAgentOutput = false;
     while (Date.now() < deadline) {
         attempt++;
-        let sawAgentOutput = false;
         try {
             await session.hydrate();
             let last = "";
@@ -43398,7 +43403,7 @@ async function pollForReview(session, timeoutMs, afterMessage, onProgress) {
         // Purely diagnostic: a progress sink must never interrupt or fail polling.
         if (onProgress) {
             try {
-                await onProgress({ timeoutMs, sawAgentOutput });
+                await onProgress({ sawAgentOutput });
             }
             catch (err) {
                 core/* info */.pq(`Review progress callback failed: ${errorMessage(err)}`);
@@ -44064,16 +44069,30 @@ const MINUTE_MS = 60_000;
 const MAX_DESCRIPTION_LENGTH = 140;
 /** Default gap between status writes. */
 const DEFAULT_INTERVAL_MS = 2 * MINUTE_MS;
-function formatHeartbeat(progress) {
-    const elapsed = Math.floor(progress.elapsedMs / MINUTE_MS);
-    const limit = Math.round(progress.timeoutMs / MINUTE_MS);
-    const state = progress.sawAgentOutput
-        ? "agent replied, finishing up"
-        : "no agent output yet";
-    const description = `Jules is reviewing this PR… (${elapsed}m of ${limit}m, ${state})`;
+/**
+ * Cap a description at the length GitHub accepts for a commit status.
+ *
+ * Exported so it can be tested against an over-long input directly. The live
+ * format never approaches the limit, so a test that only fed it real values
+ * would assert the cap vacuously without ever entering this branch.
+ */
+function capDescription(description) {
     return description.length > MAX_DESCRIPTION_LENGTH
         ? `${description.slice(0, MAX_DESCRIPTION_LENGTH - 1)}…`
         : description;
+}
+function formatHeartbeat(progress) {
+    const elapsed = Math.floor(progress.elapsedMs / MINUTE_MS);
+    const state = progress.sawAgentOutput
+        ? "agent replied, finishing up"
+        : "no agent output yet";
+    // Elapsed only, with no "of Nm" limit. Elapsed is cumulative across the whole
+    // review while each polling phase carries its OWN deadline, so pairing them
+    // produced impossible readings like "31m of 30m" while a repair phase was
+    // still legitimately inside its own budget. There is no single review-wide
+    // deadline to quote, so quoting one was a lie; elapsed alone is what
+    // distinguishes "just started" from "stalled", which is the whole point.
+    return capDescription(`Jules is reviewing this PR… (${elapsed}m elapsed, ${state})`);
 }
 /**
  * Builds a throttled progress sink for {@link ReviewProgress} updates.
@@ -45645,7 +45664,9 @@ async function runApplyAllCommand(deps, context, pr, artifact) {
         return;
     }
     const comments = artifactComments(artifact);
-    const paths = [...new Set(comments.flatMap((comment) => commentPaths(comment)))];
+    const paths = [
+        ...new Set(comments.flatMap((comment) => commentPaths(comment))),
+    ];
     const files = await deps.readFiles({
         owner: context.owner,
         repo: context.repo,

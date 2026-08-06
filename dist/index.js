@@ -29002,13 +29002,6 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:https")
 
 /***/ }),
 
-/***/ 8995:
-/***/ ((module) => {
-
-module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:module");
-
-/***/ }),
-
 /***/ 7030:
 /***/ ((module) => {
 
@@ -29361,10 +29354,11 @@ __nccwpck_require__.d(__webpack_exports__, {
   C1: () => (/* binding */ setFailed),
   uH: () => (/* binding */ setOutput),
   Pq: () => (/* binding */ core_setSecret),
+  z: () => (/* reexport */ summary),
   $e: () => (/* binding */ warning)
 });
 
-// UNUSED EXPORTS: ExitCode, addPath, endGroup, exportVariable, getIDToken, getMultilineInput, getState, group, isDebug, markdownSummary, notice, platform, saveState, setCommandEcho, startGroup, summary, toPlatformPath, toPosixPath, toWin32Path
+// UNUSED EXPORTS: ExitCode, addPath, endGroup, exportVariable, getIDToken, getMultilineInput, getState, group, isDebug, markdownSummary, notice, platform, saveState, setCommandEcho, startGroup, toPlatformPath, toPosixPath, toWin32Path
 
 // EXTERNAL MODULE: external "os"
 var external_os_ = __nccwpck_require__(857);
@@ -29894,7 +29888,7 @@ const _summary = new Summary();
  * @deprecated use `core.summary`
  */
 const markdownSummary = (/* unused pure expression or super */ null && (_summary));
-const summary = (/* unused pure expression or super */ null && (_summary));
+const summary = _summary;
 //# sourceMappingURL=summary.js.map
 ;// CONCATENATED MODULE: ./node_modules/@actions/core/lib/path-utils.js
 
@@ -32726,7 +32720,7 @@ var dist_src = __nccwpck_require__(1015);
 
 
 // pkg/dist-src/version.js
-var dist_bundle_VERSION = "10.0.11";
+var dist_bundle_VERSION = "10.0.13";
 
 // pkg/dist-src/defaults.js
 var defaults_default = {
@@ -32864,7 +32858,10 @@ async function getResponseData(response) {
     } catch (err) {
       return text;
     }
-  } else if (mimetype.type.startsWith("text/") || mimetype.parameters.charset?.toLowerCase() === "utf-8") {
+  } else if (mimetype.type.startsWith("text/") || // `application/octet-stream` is the canonical "arbitrary binary" type
+  // (RFC 2046) and must never be decoded as text, even when the response
+  // carries a (misleading) `charset=utf-8` parameter — see #751.
+  mimetype.parameters.charset?.toLowerCase() === "utf-8" && mimetype.type !== "application/octet-stream") {
     return response.text().catch(noop);
   } else {
     return response.arrayBuffer().catch(
@@ -32953,6 +32950,9 @@ var GraphqlResponseError = class extends Error {
       Error.captureStackTrace(this, this.constructor);
     }
   }
+  request;
+  headers;
+  response;
   name = "GraphqlResponseError";
   errors;
   data;
@@ -33048,6 +33048,7 @@ function withCustomRequest(customRequest) {
   });
 }
 
+/* v8 ignore if -- @preserve */
 
 ;// CONCATENATED MODULE: ./node_modules/@octokit/auth-token/dist-bundle/index.js
 // pkg/dist-src/is-jwt.js
@@ -33105,7 +33106,7 @@ var createTokenAuth = function createTokenAuth2(token) {
 
 
 ;// CONCATENATED MODULE: ./node_modules/@octokit/core/dist-src/version.js
-const version_VERSION = "7.0.6";
+const version_VERSION = "7.0.7";
 
 
 ;// CONCATENATED MODULE: ./node_modules/@octokit/core/dist-src/index.js
@@ -44635,6 +44636,11 @@ const defaultDeps = {
     recordReviewArtifact: recordReviewArtifactComment,
     listReviewArtifactComments: listReviewArtifactComments,
     wrapPermissionError: wrapPermissionError,
+    writeJobSummary: async (collectedCharacters) => {
+        core/* summary */.z.addHeading("Maxi Review");
+        core/* summary */.z.addRaw(`Collected characters: ${collectedCharacters}`);
+        await core/* summary */.z.write();
+    },
 };
 async function runReviewPr(overrides = {}) {
     const deps = { ...defaultDeps, ...overrides };
@@ -44863,6 +44869,7 @@ async function runReviewPr(overrides = {}) {
         if (!reviewResult) {
             await deps.setStatus(octokit, owner, repo, headSha, statusContext, "failure", "Review timed out; see harvested artifact");
             core/* warning */.$e(`Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`);
+            await deps.writeJobSummary(0);
             core/* setFailed */.C1(`Jules returned no review message within ${timeoutMinutes} minutes.`);
             return;
         }
@@ -45128,7 +45135,7 @@ async function executeExternalAnalyzer(command, args) {
     return stdout;
 }
 async function loadArtifactUploader() {
-    const artifact = await __nccwpck_require__.e(/* import() */ 566).then(__nccwpck_require__.bind(__nccwpck_require__, 1566));
+    const artifact = await __nccwpck_require__.e(/* import() */ 91).then(__nccwpck_require__.bind(__nccwpck_require__, 1091));
     return artifact.default;
 }
 function buildArtifactCommentContent(content) {
@@ -45540,7 +45547,9 @@ async function runApplyAllCommand(deps, context, pr, artifact) {
         return;
     }
     const comments = artifactComments(artifact);
-    const paths = [...new Set(comments.flatMap((comment) => commentPaths(comment)))];
+    const paths = [
+        ...new Set(comments.flatMap((comment) => commentPaths(comment))),
+    ];
     const files = await deps.readFiles({
         owner: context.owner,
         repo: context.repo,
@@ -45809,7 +45818,109 @@ function defaultReviewCommandDeps() {
     };
 }
 
+;// CONCATENATED MODULE: ./src/hard-deadline.ts
+/**
+ * Process-level hard deadline for the maxi-reviewer action.
+ *
+ * Jules poll already has timeout_minutes, but hangs observed in #53 produce
+ * zero step output and never reach that poll — holding the job until the
+ * 40-minute job timeout. Arming a hard wall-clock deadline at process entry
+ * releases the self-hosted runner even when the SDK/event loop stalls before
+ * the first log line.
+ */
+/** Node.js setTimeout clamps delays above this to 1ms (TimeoutOverflowWarning). */
+const NODE_MAX_TIMEOUT_MS = 2 ** 31 - 1;
+/** Largest whole-minute hard timeout that still fits in NODE_MAX_TIMEOUT_MS. */
+const NODE_MAX_TIMEOUT_MINUTES = Math.floor(NODE_MAX_TIMEOUT_MS / 60_000);
+/**
+ * Minutes added to `timeout_minutes` when `hard_timeout_minutes` is omitted.
+ * Covers checkout/setup, sequential analyzer phases (Opengrep/PMD/CPD), and a
+ * small silent-hang cushion before Jules polling begins (#59 residual U14).
+ */
+const DEFAULT_SETUP_HEADROOM_MINUTES = 20;
+function armHardDeadline(opts) {
+    if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) {
+        throw new Error(`hard deadline timeoutMs must be a positive finite number, got ${opts.timeoutMs}`);
+    }
+    // Node 24+ setTimeout converts delays > 2^31-1 ms to 1ms (#59 residual U10).
+    if (opts.timeoutMs > NODE_MAX_TIMEOUT_MS) {
+        throw new Error(`hard deadline timeoutMs must be <= ${NODE_MAX_TIMEOUT_MS} (Node setTimeout limit), got ${opts.timeoutMs}`);
+    }
+    const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+    const clearTimer = opts.clearTimer ??
+        ((handle) => {
+            clearTimeout(handle);
+        });
+    const now = opts.now ?? Date.now;
+    const started = now();
+    const deadline = started + opts.timeoutMs;
+    const fireHandle = setTimer(() => {
+        if (heartbeatHandle !== undefined) {
+            clearTimer(heartbeatHandle);
+            heartbeatHandle = undefined;
+        }
+        opts.onFire();
+    }, opts.timeoutMs);
+    let heartbeatHandle;
+    const heartbeatMs = opts.heartbeatMs ?? 60_000;
+    if (opts.onHeartbeat && heartbeatMs > 0) {
+        const tick = () => {
+            const remaining = Math.max(0, deadline - now());
+            opts.onHeartbeat?.(remaining);
+            if (remaining > 0) {
+                heartbeatHandle = setTimer(tick, heartbeatMs);
+            }
+        };
+        heartbeatHandle = setTimer(tick, heartbeatMs);
+    }
+    return {
+        clear() {
+            clearTimer(fireHandle);
+            if (heartbeatHandle !== undefined) {
+                clearTimer(heartbeatHandle);
+                heartbeatHandle = undefined;
+            }
+        },
+    };
+}
+/** Resolve overall hard-deadline minutes from inputs. */
+function resolveHardTimeoutMinutes(timeoutMinutes, hardTimeoutMinutesRaw) {
+    const base = Math.max(1, timeoutMinutes | 0);
+    if (hardTimeoutMinutesRaw !== undefined &&
+        hardTimeoutMinutesRaw.trim() !== "") {
+        const trimmed = hardTimeoutMinutesRaw.trim();
+        // Require the entire string to be a positive integer (reject "1e2", "12oops").
+        if (!/^[1-9]\d*$/.test(trimmed)) {
+            throw new Error(`Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`);
+        }
+        const parsed = Number(trimmed);
+        // Digit-only strings past Number.MAX_SAFE_INTEGER lose precision or become
+        // Infinity; reject them before armHardDeadline sees a non-safe timeoutMs.
+        if (!Number.isSafeInteger(parsed)) {
+            throw new Error(`Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be a positive integer.`);
+        }
+        // Reject values whose minute→ms conversion exceeds Node's setTimeout limit
+        // (2^31-1 ms ≈ 35791 minutes). Larger values fire almost immediately (#59 U10).
+        if (parsed > NODE_MAX_TIMEOUT_MINUTES) {
+            throw new Error(`Invalid hard_timeout_minutes: "${hardTimeoutMinutesRaw}". Must be <= ${NODE_MAX_TIMEOUT_MINUTES} (Node setTimeout limit).`);
+        }
+        return parsed;
+    }
+    // Default: Jules poll budget + setup/analyzer headroom. Opengrep/PMD/CPD can
+    // each run for several minutes before Jules starts (#59 residual U14); keep
+    // the process deadline above timeout_minutes so analysis does not steal the
+    // entire Jules wait.
+    const derived = base + DEFAULT_SETUP_HEADROOM_MINUTES;
+    // Validate the *derived* total, not only explicit hard_timeout_minutes (#59 U13).
+    if (derived > NODE_MAX_TIMEOUT_MINUTES) {
+        throw new Error(`timeout_minutes (${base}) + setup headroom (${DEFAULT_SETUP_HEADROOM_MINUTES}) exceeds Node setTimeout limit (${NODE_MAX_TIMEOUT_MINUTES}). Reduce timeout_minutes or set hard_timeout_minutes explicitly within the limit.`);
+    }
+    return derived;
+}
+
 ;// CONCATENATED MODULE: ./src/index.ts
+
+
 
 
 
@@ -45818,7 +45929,61 @@ const run = github/* context */._.eventName === "issue_comment" ||
     github/* context */._.eventName === "workflow_dispatch"
     ? runReviewCommand
     : runReviewPr;
-run().catch((err) => {
+async function publishHardDeadlineStatus(message) {
+    // Best-effort: flip pending maxi/review to error so a required status check
+    // cannot stay pending forever after process.exit (#59 residual P1).
+    try {
+        if (github/* context */._.eventName !== "pull_request") {
+            return;
+        }
+        const pr = github/* context */._.payload.pull_request;
+        if (!pr?.head?.sha) {
+            return;
+        }
+        const token = core/* getInput */.V4("github_token", { required: true });
+        const statusContext = core/* getInput */.V4("status_context") || "maxi/review";
+        const octokit = github/* getOctokit */.Q(token);
+        const description = message.length > 140 ? `${message.slice(0, 137)}...` : message;
+        await setStatus(octokit, github/* context */._.repo.owner, github/* context */._.repo.repo, pr.head.sha, statusContext, "error", description);
+    }
+    catch (err) {
+        core/* warning */.$e(`hard-deadline status cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
+async function main() {
+    const timeoutMinutesRaw = core/* getInput */.V4("timeout_minutes") || "30";
+    const timeoutMinutes = Math.max(1, parseInt(timeoutMinutesRaw, 10) || 30);
+    const hardMinutes = resolveHardTimeoutMinutes(timeoutMinutes, core/* getInput */.V4("hard_timeout_minutes") || undefined);
+    core/* info */.pq(`Hard deadline armed: ${hardMinutes} minute(s) (timeout_minutes=${timeoutMinutes}).`);
+    const deadline = armHardDeadline({
+        timeoutMs: hardMinutes * 60 * 1000,
+        onFire: () => {
+            const message = `maxi-reviewer hard deadline exceeded after ${hardMinutes} minutes (silent hang or overrun). Releasing runner.`;
+            core/* setFailed */.C1(message);
+            // Status update then force-exit so a stuck await cannot keep the process.
+            // Cap wait so a hung GitHub API cannot re-block the runner indefinitely.
+            const cleanup = publishHardDeadlineStatus(message);
+            const cap = new Promise((resolve) => {
+                setTimeout(resolve, 5_000);
+            });
+            void Promise.race([cleanup, cap]).finally(() => {
+                process.exit(1);
+            });
+        },
+        onHeartbeat: (remainingMs) => {
+            const remainingMin = Math.ceil(remainingMs / 60_000);
+            core/* info */.pq(`maxi-reviewer still running; hard deadline in ~${remainingMin} minute(s).`);
+        },
+        heartbeatMs: 60_000,
+    });
+    try {
+        await run();
+    }
+    finally {
+        deadline.clear();
+    }
+}
+main().catch((err) => {
     core/* setFailed */.C1(err instanceof Error ? err.message : String(err));
 });
 

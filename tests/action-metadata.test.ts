@@ -48,7 +48,10 @@ describe("action metadata", () => {
       "utf8"
     );
 
-    const setupIndex = workflow.indexOf("actions/setup-node@v7");
+    // SHA-pinned rather than the @v7 tag; see the note above.
+    const setupIndex = workflow.indexOf(
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+    );
     const installIndex = workflow.indexOf("npm install");
     const buildIndex = workflow.indexOf("npm run build");
     const dogfoodIndex = workflow.indexOf("uses: ./");
@@ -71,8 +74,16 @@ describe("action metadata", () => {
       "utf8"
     );
 
+    // Pinned to the v7 SHA rather than the floating @v7 tag:
+    // tests/test_workflow_policy.py requires every `uses:` in ci.yml to be
+    // SHA-pinned, and a bare tag fails it. The two suites previously demanded
+    // contradictory things — nothing surfaced that, because ci.yml never ran.
+    // What this test is actually for is the two workflows agreeing on the
+    // major version and the Node line, so assert that, not the tag syntax.
+    const setupNodeV7 =
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7";
     for (const workflow of [ci, selfTest]) {
-      expect(workflow).toContain("actions/setup-node@v7");
+      expect(workflow).toContain(setupNodeV7);
       expect(workflow).toContain('node-version: "24"');
       expect(workflow).not.toContain('cache: "npm"');
     }
@@ -94,9 +105,33 @@ describe("action metadata", () => {
       "utf8"
     );
 
-    expect(ci).toContain("if: ${{ secrets.SONAR_TOKEN != '' }}");
-    expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
-    expect(ci).not.toContain("SONAR_TOKEN: ${{ env.SONAR_TOKEN }}");
+    // The guard must read `env`, not `secrets`: the `secrets` context is not
+    // available in an `if:` expression, and referencing it there makes GitHub
+    // reject the workflow at parse time — a startup failure that creates zero
+    // jobs, which is why this workflow had never once run. The value is still
+    // sourced from `secrets`, in the env of each of the two steps that need
+    // it: the presence check that feeds the guard, and the scanner itself.
+    expect(ci).toContain("steps.sonar.outputs.present == 'true'");
+    expect(ci).not.toContain("if: ${{ secrets.SONAR_TOKEN");
+    // Every binding, enumerated — not "the string appears somewhere". A
+    // containment check still passes if one of the two steps has its value
+    // swapped for a non-secret, or if a third step is handed the token.
+    const tokenBindings = ci
+      .split("\n")
+      .filter((line) => /^\s*SONAR_TOKEN:/.test(line))
+      .map((line) => line.trim());
+    expect(tokenBindings).toEqual([
+      "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+      "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
+    ]);
+    // And never job-wide. A step's env key is indented deeper than any
+    // job-level one, so anything shallower than a step key is out of scope by
+    // construction. tests/test_workflow_policy.py carries the structural
+    // version, pairing each value with the step that owns it.
+    const shallowTokenLines = ci
+      .split("\n")
+      .filter((line) => /^ {0,7}SONAR_TOKEN:/.test(line));
+    expect(shallowTokenLines).toEqual([]);
   });
 
   it("sets a step-level timeout on the maxi-reviewer action invocation", () => {
@@ -104,9 +139,30 @@ describe("action metadata", () => {
       new URL("../.github/workflows/maxi-review.yml", import.meta.url),
       "utf8"
     );
+    // 55, and this assertion was right all along — an earlier revision of this
+    // PR lowered it to 35 by reasoning from #59's prose instead of the shipped
+    // behaviour, which was a regression. The action enforces its own deadline
+    // in-process at `hard_timeout_minutes` = `timeout_minutes + 20` = 50, and
+    // the README requires the step bound above that (>=55) plus cleanup
+    // headroom, because a blocked event loop can stop the in-process timers and
+    // this outer bound is the real runner-release watchdog. 35 would fire first
+    // and kill a review still inside its own deadline.
     expect(workflow).toContain("timeout-minutes: 55");
     expect(workflow).toMatch(
       /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 55[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
+    );
+    // And the job cap sits above it with room for setup. The cap covers the
+    // whole job — checkout, app-token mint, the pinned maxi-lint cargo
+    // install, the rules fetch — so a cap only five minutes above the step
+    // bound lets slow setup cancel the job before the step timeout can fire,
+    // and a cancellation skips the graceful status cleanup the bound exists
+    // to preserve.
+    // Scoped to the reviewer job, like the step assertion above: a bare
+    // `timeout-minutes: 70` match would be satisfied by any other job in the
+    // file (lint-gate is at 10), so the reviewer's cap could be dropped and
+    // this would still pass.
+    expect(workflow).toMatch(
+      /^ {2}review:\n(?: {4}.*\n| *\n)*? {4}timeout-minutes: 70$/m
     );
   });
 });

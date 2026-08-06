@@ -26,7 +26,15 @@ on:
   pull_request_review_comment:
     types: [created, deleted]
 
-permissions: {}
+# The gate job below needs contents:read + pull-requests:read. A job can only
+# NARROW the workflow's permissions, never widen them, so a top-level `{}` (all
+# scopes none) makes that job's request invalid and GitHub rejects the whole
+# file — a startup failure that creates zero jobs and reports only "this run
+# likely failed because of a workflow file issue". Declare the union here and
+# let the job restate its subset.
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: review-gate-${{ github.event.pull_request.number }}

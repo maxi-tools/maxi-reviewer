@@ -109,14 +109,19 @@ describe("action metadata", () => {
     // available in an `if:` expression, and referencing it there makes GitHub
     // reject the workflow at parse time — a startup failure that creates zero
     // jobs, which is why this workflow had never once run. The value is still
-    // sourced from `secrets`: at job level to feed the guard, and in the
-    // step's own env for the scanner itself.
+    // sourced from `secrets`, in the env of each of the two steps that need
+    // it: the presence check that feeds the guard, and the scanner itself.
     expect(ci).toContain("steps.sonar.outputs.present == 'true'");
     expect(ci).not.toContain("if: ${{ secrets.SONAR_TOKEN");
     expect(ci).toContain("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}");
-    // Scoped to the presence check and the scan, never job-wide: a job-level
-    // env key sits at 6 spaces, a step-level one at 10.
-    expect(ci).not.toMatch(/^ {6}SONAR_TOKEN:/m);
+    // Never job-wide. A step's env key is indented deeper than any job-level
+    // one, so anything shallower than a step key is out of scope by
+    // construction. tests/test_workflow_policy.py carries the structural
+    // version of this, which also names the two steps that may own it.
+    const shallowTokenLines = ci
+      .split("\n")
+      .filter((line) => /^ {0,7}SONAR_TOKEN:/.test(line));
+    expect(shallowTokenLines).toEqual([]);
   });
 
   it("sets a step-level timeout on the maxi-reviewer action invocation", () => {
@@ -136,5 +141,12 @@ describe("action metadata", () => {
     expect(workflow).toMatch(
       /name: Run maxi-reviewer[\s\S]*?timeout-minutes: 55[\s\S]*?uses: maxi-tools\/maxi-reviewer@/
     );
+    // And the job cap sits above it with room for setup. The cap covers the
+    // whole job — checkout, app-token mint, the pinned maxi-lint cargo
+    // install, the rules fetch — so a cap only five minutes above the step
+    // bound lets slow setup cancel the job before the step timeout can fire,
+    // and a cancellation skips the graceful status cleanup the bound exists
+    // to preserve.
+    expect(workflow).toMatch(/^ {4}timeout-minutes: 70$/m);
   });
 });

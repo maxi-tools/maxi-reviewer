@@ -10,6 +10,46 @@ PINNED_ACTION = re.compile(r"uses:\s*[^\s@]+/[^\s@]+@[0-9a-f]{40}(?:\s|$)")
 USES_ACTION = re.compile(r"uses:\s*[^\s@]+/[^\s@]+@[^\s]+")
 
 
+def indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def enclosing_line(lines: list, index: int, indent: int):
+    """The nearest preceding line that opens the scope containing `index`."""
+    for candidate in range(index - 1, -1, -1):
+        line = lines[candidate]
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if indent_of(line) < indent:
+            return candidate, line
+    return None
+
+
+def sonar_token_owners(text: str) -> list:
+    """Name the step owning each `SONAR_TOKEN:` entry, in file order.
+
+    Returns a marker string instead of a step name for any entry that is not
+    a step-scoped `env:` key, so a job-level (or otherwise misplaced) token
+    fails the assertion loudly with the offending line rather than silently
+    passing an absence check.
+    """
+    lines = text.splitlines()
+    owners = []
+    for index, line in enumerate(lines):
+        if not line.lstrip().startswith("SONAR_TOKEN:"):
+            continue
+        env = enclosing_line(lines, index, indent_of(line))
+        if env is None or env[1].strip() != "env:":
+            owners.append("NOT UNDER env: -> " + line.strip())
+            continue
+        step = enclosing_line(lines, env[0], indent_of(env[1]))
+        if step is None or not step[1].lstrip().startswith("- "):
+            owners.append("NOT STEP-SCOPED -> " + line.strip())
+            continue
+        owners.append(step[1].lstrip()[2:].removeprefix("name:").strip())
+    return owners
+
+
 class WorkflowPolicyTests(unittest.TestCase):
     def test_trusted_ci_uses_self_hosted_and_forks_use_isolation(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -36,14 +76,18 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", text)
 
         # And the credential stays scoped to the two steps that need it. A
-        # job-level env block (4-space `env:` with a 6-space key) would expose it
-        # to `npm install` lifecycle scripts and every build/test command in the
-        # job; step-level env is indented deeper.
-        job_level_env_lines = [
-            line for line in text.splitlines()
-            if line.startswith("      SONAR_TOKEN:")
-        ]
-        self.assertEqual([], job_level_env_lines)
+        # job-level env block would expose it to `npm install` lifecycle scripts
+        # and every build/test command in the job.
+        #
+        # Asserted by walking enclosing scopes rather than by matching a literal
+        # six-space prefix: re-indenting this file, or a YAML formatter pass,
+        # would silently disable a prefix match while leaving it green. Naming
+        # the owning steps also asserts the positive case — the token IS present
+        # and IS scoped to these two — which "no job-level env" never proved.
+        self.assertEqual(
+            ["Check for a SonarCloud token", "SonarCloud Scan"],
+            sonar_token_owners(text),
+        )
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")

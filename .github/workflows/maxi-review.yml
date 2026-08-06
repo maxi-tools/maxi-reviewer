@@ -209,7 +209,15 @@ jobs:
     # Must exceed the step's 55, or the job cap fires first and the step bound
     # — the actual runner-release watchdog — can never take effect. README:
     # "use a step timeout-minutes of at least 55 and a job timeout above that."
-    timeout-minutes: 60
+    #
+    # 70, not 65, because this cap covers the WHOLE job: checkout, the app-token
+    # mint, the pinned maxi-lint install (a cargo build), the rules fetch. At 60
+    # only five minutes of that fits before the cap starts eating the reviewer's
+    # own budget — a slow cargo install would cancel the job outright, and the
+    # cancellation kills the action mid-run, which is exactly the graceful
+    # status cleanup the 55 exists to preserve. 70 leaves 15 minutes of setup
+    # headroom above the step bound and still releases the runner.
+    timeout-minutes: 70
     permissions:
       pull-requests: write
       issues: write

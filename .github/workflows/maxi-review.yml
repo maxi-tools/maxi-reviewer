@@ -350,7 +350,7 @@ jobs:
         # review still legitimately inside its own deadline, defeating the
         # graceful status cleanup this is meant to preserve.
         timeout-minutes: 55
-        uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
+        uses: maxi-tools/maxi-reviewer@4db1bfb5b521a7f4d4372b6e685b86ab4e4373ca
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

@@ -1,0 +1,71 @@
+# maxi-config-owned Ruff configuration.
+#
+# Distributed to every org repo by scripts/sync-maxi-review.sh --manifest
+# review-configs. Edit it HERE, not in the target repo.
+#
+# Lives at the repo ROOT because Codacy detects Ruff config by name
+# (pyproject.toml / ruff.toml / .ruff.toml). Once the per-tool "Configuration
+# file" toggle is on, this file controls the code PATTERNS while the dashboard
+# or organization coding standard controls only whether Ruff is ENABLED — so the
+# rule set is version-controlled instead of living in a web UI.
+
+target-version = "py311"
+
+[lint]
+select = [
+  # Pyflakes — real errors, not style.
+  "F401",  # unused import
+  "F811",  # redefinition of unused name
+  "F841",  # local variable assigned but never used
+  "F821",  # undefined name
+  # flake8-bugbear — mutable defaults and silent no-ops.
+  "B006",  # mutable default argument
+  "B007",  # loop control variable not used within loop body
+  "B018",  # useless expression (a statement that does nothing)
+  # flake8-bandit. S110 in particular is try/except/pass, which is how a CI gate
+  # silently stops gating.
+  "S102",  # exec used
+  "S103",  # bad file permissions
+  "S104",  # binding to all interfaces
+  "S105",  # hardcoded password string
+  "S106",  # hardcoded password funcarg
+  "S107",  # hardcoded password default
+  "S108",  # insecure usage of temp file/directory
+  "S110",  # try-except-pass
+  "S301",  # pickle usage
+  "S608",  # possible SQL injection via string construction
+  # Same family as S110: `assert` is removed entirely under `python -O`, so an
+  # assert-based check is a guard that can stop guarding without changing a line
+  # of source. Tests are exempted below -- and that exemption is why this had to
+  # be selected: per-file-ignores only suppresses rules that are enabled, so
+  # while S101 was absent from this list the entry below excused nothing and
+  # production asserts went unflagged as well.
+  "S101",  # assert used
+]
+
+[lint.per-file-ignores]
+# Tests legitimately assert on internals.
+#
+# This file is installed in every repo, so the exemption has to cover the test
+# layouts the fleet actually uses, not just the one this repo happens to use.
+# A root-anchored `tests/**` alone is not enough, twice over:
+#
+#   - maxi-config keeps nine test modules as `scripts/test_*.py`, and
+#     `scripts/test_render_cli_capabilities.py` asserts at lines 15 and 17.
+#     Selecting S101 without widening this would have reported the distributor's
+#     own tests as defects on its first run.
+#   - a nested test tree (`packages/*/tests/`, `src/test/`) matches neither a
+#     root-anchored directory pattern nor the pytest name patterns, so a helper
+#     module inside it that is not itself named `test_*` would still be flagged.
+#     Hence `**/` on the directory patterns too.
+#
+# Both shapes are listed because they catch different things: the directory
+# patterns cover whole test trees wherever they sit, the name patterns cover test
+# modules that live beside the code they exercise. This is a best effort against
+# known layouts, not a proof — a consumer with a genuinely unusual arrangement
+# should add its own per-file-ignores rather than assume this covers it.
+"**/tests/**" = ["S101"]
+"**/test/**" = ["S101"]
+"**/test_*.py" = ["S101"]
+"**/*_test.py" = ["S101"]
+"**/conftest.py" = ["S101"]

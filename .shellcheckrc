@@ -1,0 +1,13 @@
+# maxi-config-owned ShellCheck configuration.
+#
+# Distributed to every org repo as .shellcheckrc by scripts/sync-maxi-review.sh
+# --manifest review-configs. Edit it HERE, not in the target repo.
+#
+# Lives at the repo ROOT because Codacy detects ShellCheck config by that name.
+# Kept identical to .qlty/configs/.shellcheckrc so qlty, the Codacy CLI, the
+# Codacy PR bot and a bare local `shellcheck` all behave the same way.
+
+# Resolve `source`/`.` relative to the script being checked rather than the
+# invoking directory. Without this, every script sourcing a sibling helper
+# reports SC1091 (not following: file not found).
+source-path=SCRIPTDIR

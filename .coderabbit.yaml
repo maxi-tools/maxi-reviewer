@@ -1,0 +1,111 @@
+# maxi-config-owned CodeRabbit review configuration.
+#
+# Distributed by scripts/sync-maxi-review.sh --manifest review-configs to the
+# repos in that script's push inventory -- the declared list plus any repo
+# already carrying an owned maxi-fix.yml, which is not yet every org repo
+# (maxi-config#319). Edit it HERE, not in the target repo: the fan-out overwrites
+# any copy carrying the marker above. To opt a repo out, add the opt-out marker
+# to its copy -- $opt_out_marker in scripts/sync-maxi-review.sh names the exact
+# string, and it is deliberately NOT written out here: this file is the payload
+# every repo receives, so the literal appearing anywhere in it would mark every
+# distributed copy as opted out and stop the fan-out for good after one run.
+# `check_manifest_sources` enforces that.
+#
+# Schema: https://json.schemastore.org/coderabbit.json
+language: en-US
+early_access: false
+
+# Load-bearing, not cosmetic. Inheritance is OFF by default, and CodeRabbit then
+# uses only the highest-priority source — repository YAML (priority 2) would
+# REPLACE Organization UI settings (priority 5) rather than merge with them,
+# silently discarding whatever is configured there. With it on, this file merges
+# with Central YAML and Organization UI: scalars here win, objects deep-merge,
+# and path_instructions arrays are child-first with unique parent entries kept.
+#
+# Verify with `@coderabbitai configuration` on any PR: it prints the resolved
+# config annotated with the source of each value.
+inheritance: true
+
+reviews:
+  # Review volume is a throughput control, not a taste setting: the org merge bar
+  # requires zero unresolved threads, so every comment is a gate.
+  profile: chill
+  # A bot must not gate merges on its own opinion; humans and the typed CI gates
+  # decide.
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  poem: false
+
+  path_filters:
+    # Generated, vendored or machine-owned — findings here cannot be actioned by
+    # the PR that surfaced them.
+    - "!**/*.lock"
+    - "!target/**"
+    - "!**/dist/**"
+    - "!**/*.wasm"
+    - "!**/*.bin"
+    - "!**/fixtures/**"
+    # Retired by design. In maxi-core this single path accounted for 37 of one
+    # PR's 38 unresolved threads, none of them high severity.
+    - "!docs/archive/**"
+
+  path_instructions:
+    - path: "**/*.rs"
+      instructions: |
+        Settled decisions across this org — do not re-litigate them:
+        - `maxi_utils::serialize` is a set of benchmark-derived policies
+          (msgpack/zstd/interning), NOT a style wrapper. Do not propose
+          replacing it with bare serde_json or removing its indirection.
+        - Hot paths are zero-copy by design. A "small" per-token or per-frame
+          copy is a regression, not an acceptable simplification.
+        - ANSI handling deliberately uses regex rather than a vte byte parser,
+          because a byte parser corrupts emoji.
+        - No ZWJ emoji in tool or category definitions; they break across
+          serialization and byte parsing.
+        - Internal git dependencies track `branch = "main"`, not pinned revs.
+        Do flag: unwrap/expect reachable from user input, blocking calls inside
+        async fns, and a lock held across an await.
+    - path: "**/*.py"
+      instructions: |
+        Mostly CI-critical scripts. Prioritise exit codes and error propagation:
+        a script that swallows a failure and exits 0 turns a CI gate into a
+        no-op. Flag any bare `except:`, any discarded subprocess return code,
+        and any check that can pass by doing no work.
+    - path: "**/*.sh"
+      instructions: |
+        Require `set -euo pipefail` or an explicit comment justifying its
+        absence. Flag unquoted expansions and any command substitution whose
+        failure is discarded — a guard that reads an empty value and then
+        succeeds is worse than no guard.
+    - path: ".github/workflows/**"
+      instructions: |
+        Focus on gates that report success without doing work: a job whose `if:`
+        can never be true, a required check that path-filters out, or a
+        `continue-on-error` masking the failure the job exists to catch.
+        Fork-trust conditions must RESTRICT, not admit: use
+        `github.event_name != 'pull_request' || (head.repo.full_name ==
+        github.repository && ...)`. A `head.repo.full_name != github.repository`
+        term inside an OR admits fork PRs.
+    - path: "**/*.md"
+      instructions: |
+        Review prose for accuracy against the code it describes, not for style.
+        Do not suggest rewording, heading changes or formatting preferences.
+
+  auto_review:
+    enabled: true
+    # Drafts are not merge candidates, and reviewing them consumes the rate
+    # limit that then denies review to PRs which are ready.
+    drafts: false
+    # Regex, and it must cover every default branch in the fleet -- this one
+    # file is installed in all of them. Five repos (android-backend, nami,
+    # waterkit, waterkit-1, waterui) default to `dev`, per the rollout ledger,
+    # and pinning this to `main` alone would silently disable auto-review there:
+    # enabled, configured, and never firing, which reads as "CodeRabbit found
+    # nothing" rather than "CodeRabbit never looked".
+    base_branches:
+      - "^(main|master|dev)$"
+
+chat:
+  auto_reply: true

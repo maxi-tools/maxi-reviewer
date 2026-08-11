@@ -40,7 +40,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate:
+  review-gate:
     uses: maxi-tools/maxi-config/.github/workflows/review-gate-reusable.yml@main
     # `pull-requests: read` is what the gate actually spends: its two paginated
     # GraphQL queries read this PR's reviews and its review threads to decide

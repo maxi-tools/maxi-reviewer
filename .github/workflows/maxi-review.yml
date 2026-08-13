@@ -43,6 +43,7 @@ jobs:
           owner: maxi-tools
           repositories: |
             maxi-config
+            maxi-libs
             maxi-lint
             ${{ github.event.repository.name }}
           permission-contents: read

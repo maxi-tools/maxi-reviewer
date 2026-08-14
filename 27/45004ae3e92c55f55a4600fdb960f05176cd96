@@ -1,0 +1,27 @@
+src/github.ts
+  s_dc56235329a0b3::t_45039be87de783 382-388,393,416-489
+src/review-pr.ts
+  s_dc56235329a0b3::t_6de3fa97cddd8d 62-69
+  s_dc56235329a0b3::t_368b2475b66346 526-540
+tests/index.test.ts
+  s_dc56235329a0b3::t_1db3698852eae0 33
+  s_dc56235329a0b3::t_d747f64ce7b353 102
+tests/github.test.ts
+  s_dc56235329a0b3::t_8f65889e222e9b 600-613,615-698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2745004ae3e92c55f55a4600fdb960f05176cd96",
+  "prompts": {},
+  "sessions": {
+    "s_dc56235329a0b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17430e63-47de-4491-9c7b-dc016bcff93b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "maxi boch <maxi@maxibookair26black.warbler-tawny.ts.net>"
+    }
+  }
+}

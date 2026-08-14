@@ -30,6 +30,7 @@ describe("index.ts", () => {
     setStatus: vi.fn(),
     recordReviewArtifactComment: vi.fn(),
     listReviewArtifactComments: vi.fn(),
+    pruneReviewArtifactComments: vi.fn(),
   };
 
   const mockJulesHelper = {
@@ -98,6 +99,7 @@ describe("index.ts", () => {
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([]);
     mockGithubHelper.fetchExistingFindings.mockResolvedValue([]);
     mockGithubHelper.listReviewArtifactComments.mockResolvedValue([]);
+    mockGithubHelper.pruneReviewArtifactComments.mockResolvedValue(0);
     mockGithubHelper.setStatus.mockResolvedValue(undefined);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {

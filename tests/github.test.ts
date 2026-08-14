@@ -10,6 +10,7 @@ import {
   fetchExistingFindings,
   recordReviewArtifactComment,
   listReviewArtifactComments,
+  pruneReviewArtifactComments,
 } from "../src/github.js";
 
 describe("github.ts", () => {
@@ -593,6 +594,105 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
     await expect(
       listReviewArtifactComments(octokit, "owner", "repo", 7)
     ).resolves.toEqual(["<!-- maxi-review artifact -->\ncurrent actor"]);
+  });
+});
+
+describe("pruneReviewArtifactComments", () => {
+  const makeOctokit = (
+    artifactIds: number[],
+    deleteComment = vi.fn().mockResolvedValue(undefined)
+  ) =>
+    ({
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              // Interleaved non-artifact comments must be left alone.
+              {
+                id: 900,
+                body: "a human comment",
+                user: { login: "maxi", type: "User" },
+              },
+              ...artifactIds.map((id) => ({
+                id,
+                body: `<!-- maxi-review artifact -->\nartifact ${id}`,
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              })),
+            ],
+          }),
+          deleteComment,
+        },
+        users: {
+          getAuthenticated: vi.fn().mockResolvedValue({
+            data: { login: "maxi-reviewer[bot]" },
+          }),
+        },
+      },
+    }) as any;
+
+  it("deletes the oldest artifact comments beyond the keep count", async () => {
+    const deleteComment = vi.fn().mockResolvedValue(undefined);
+    const octokit = makeOctokit([1, 2, 3, 4, 5], deleteComment);
+
+    await expect(
+      pruneReviewArtifactComments(octokit, "owner", "repo", 7, 3)
+    ).resolves.toBe(2);
+
+    // Oldest-first: 1 and 2 go, the three newest stay.
+    expect(deleteComment).toHaveBeenCalledTimes(2);
+    expect(deleteComment).toHaveBeenCalledWith(
+      expect.objectContaining({ comment_id: 1 })
+    );
+    expect(deleteComment).toHaveBeenCalledWith(
+      expect.objectContaining({ comment_id: 2 })
+    );
+  });
+
+  it("deletes nothing when the artifact count is within the keep count", async () => {
+    const deleteComment = vi.fn().mockResolvedValue(undefined);
+    const octokit = makeOctokit([1, 2], deleteComment);
+
+    await expect(
+      pruneReviewArtifactComments(octokit, "owner", "repo", 7, 3)
+    ).resolves.toBe(0);
+    expect(deleteComment).not.toHaveBeenCalled();
+  });
+
+  it("never touches comments that are not review artifacts", async () => {
+    const deleteComment = vi.fn().mockResolvedValue(undefined);
+    const octokit = makeOctokit([1, 2, 3, 4], deleteComment);
+
+    await pruneReviewArtifactComments(octokit, "owner", "repo", 7, 1);
+
+    // The human comment carries id 900 and must survive every prune.
+    expect(deleteComment).not.toHaveBeenCalledWith(
+      expect.objectContaining({ comment_id: 900 })
+    );
+  });
+
+  it("keeps going when one delete fails, and reports the successful count", async () => {
+    const deleteComment = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("403"))
+      .mockResolvedValue(undefined);
+    const octokit = makeOctokit([1, 2, 3, 4], deleteComment);
+
+    // Pruning is cosmetic — a failure must not abort the rest or throw into
+    // the review, which would turn a tidy-up into a failed review.
+    await expect(
+      pruneReviewArtifactComments(octokit, "owner", "repo", 7, 1)
+    ).resolves.toBe(2);
+    expect(deleteComment).toHaveBeenCalledTimes(3);
+  });
+
+  it("is a no-op for a keep count below one", async () => {
+    const deleteComment = vi.fn().mockResolvedValue(undefined);
+    const octokit = makeOctokit([1, 2, 3], deleteComment);
+
+    await expect(
+      pruneReviewArtifactComments(octokit, "owner", "repo", 7, 0)
+    ).resolves.toBe(0);
+    expect(deleteComment).not.toHaveBeenCalled();
   });
 });
 

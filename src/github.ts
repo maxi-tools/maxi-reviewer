@@ -379,12 +379,18 @@ ${encodedContent}
   });
 }
 
-export async function listReviewArtifactComments(
+/// An artifact comment together with the id needed to delete it.
+export interface ReviewArtifactComment {
+  id: number;
+  body: string;
+}
+
+async function listReviewArtifactCommentRecords(
   octokit: ReturnType<typeof github.getOctokit>,
   owner: string,
   repo: string,
   prNumber: number
-): Promise<string[]> {
+): Promise<ReviewArtifactComment[]> {
   const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
   const request = {
     owner,
@@ -407,7 +413,80 @@ export async function listReviewArtifactComments(
         typeof comment.user.login === "string" &&
         trustedAuthors.has(comment.user.login)
     )
-    .map((comment: { body?: string }) => comment.body || "");
+    .map((comment: { id?: number; body?: string }) => ({
+      id: comment.id ?? 0,
+      body: comment.body || "",
+    }));
+}
+
+export async function listReviewArtifactComments(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<string[]> {
+  const records = await listReviewArtifactCommentRecords(
+    octokit,
+    owner,
+    repo,
+    prNumber
+  );
+  return records.map((record) => record.body);
+}
+
+/// Delete superseded artifact comments, keeping the newest `keep`.
+///
+/// Artifact comments render as nothing — their whole body is HTML comments —
+/// so every run leaves another blank comment on the PR. They exist only to let
+/// a later run resume a Jules session, and `latestReviewArtifactSessionId`
+/// reads them newest-first and stops at the first one that actually responded.
+/// Anything older than that is unreachable, so keeping it buys nothing and
+/// costs a blank comment per push.
+///
+/// `keep` is honoured from the newest end so the caller can retain a margin
+/// rather than trusting this function's view of which artifact responded.
+///
+/// Failures are reported and swallowed: pruning cosmetics must never fail a
+/// review.
+export async function pruneReviewArtifactComments(
+  octokit: ReturnType<typeof github.getOctokit>,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  keep: number
+): Promise<number> {
+  if (keep < 1) return 0;
+  let records: ReviewArtifactComment[];
+  try {
+    records = await listReviewArtifactCommentRecords(
+      octokit,
+      owner,
+      repo,
+      prNumber
+    );
+  } catch (err) {
+    core.warning(`Failed to list review artifact comments: ${String(err)}`);
+    return 0;
+  }
+
+  const stale = records.slice(0, Math.max(0, records.length - keep));
+  let deleted = 0;
+  for (const record of stale) {
+    if (!record.id) continue;
+    try {
+      await octokit.rest.issues.deleteComment({
+        owner,
+        repo,
+        comment_id: record.id,
+      });
+      deleted += 1;
+    } catch (err) {
+      core.warning(
+        `Failed to delete superseded review artifact comment ${record.id}: ${String(err)}`
+      );
+    }
+  }
+  return deleted;
 }
 
 async function trustedArtifactCommentAuthors(

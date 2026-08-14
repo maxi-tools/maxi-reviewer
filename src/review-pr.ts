@@ -29,6 +29,7 @@ import {
   setStatus,
   recordReviewArtifactComment,
   listReviewArtifactComments,
+  pruneReviewArtifactComments,
 } from "./github.js";
 import {
   runJulesReview,
@@ -58,6 +59,14 @@ import { validateReviewArtifact } from "./schema.js";
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON: FailOn[] = ["never", "blocking", "any"];
 const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
+/// Artifact comments retained per PR, newest first.
+///
+/// One would be enough for the common case — `latestReviewArtifactSessionId`
+/// stops at the newest artifact that actually responded. The margin covers a
+/// run of hung sessions: those record artifacts the reader skips, and with a
+/// keep of 1 the last *responding* artifact would be pruned away behind them,
+/// losing the session that could still be resumed.
+const REVIEW_ARTIFACT_COMMENTS_KEPT = 3;
 const RETRIEVAL_MAX_STEPS = 4;
 const execFileAsync = promisify(execFile);
 
@@ -153,6 +162,7 @@ export interface ReviewPrDeps {
   uploadArtifact: (name: string, content: string) => Promise<void>;
   recordReviewArtifact: typeof recordReviewArtifactComment;
   listReviewArtifactComments: typeof listReviewArtifactComments;
+  pruneReviewArtifactComments: typeof pruneReviewArtifactComments;
   wrapPermissionError: typeof wrapPermissionError;
   writeJobSummary: (collectedCharacters: number) => Promise<void>;
 }
@@ -172,6 +182,7 @@ const defaultDeps: ReviewPrDeps = {
   uploadArtifact: uploadReviewArtifact,
   recordReviewArtifact: recordReviewArtifactComment,
   listReviewArtifactComments,
+  pruneReviewArtifactComments,
   wrapPermissionError,
   writeJobSummary: async (collectedCharacters: number) => {
     core.summary.addHeading("Maxi Review");
@@ -511,6 +522,21 @@ export async function runReviewPr(
     } catch (err) {
       core.warning(`Failed to record review artifact comment: ${String(err)}`);
     }
+
+    // Artifact comments render as nothing — their whole body is HTML comments —
+    // so without this every push leaves another blank comment on the PR. They
+    // exist only for session resume, and `latestReviewArtifactSessionId` reads
+    // them newest-first and stops at the first that actually responded, so
+    // older ones are unreachable. Keep a few beyond the one just written rather
+    // than exactly one, so a run of non-responding sessions still has something
+    // older to fall back to.
+    await deps.pruneReviewArtifactComments(
+      octokit,
+      owner,
+      repo,
+      prNumber,
+      REVIEW_ARTIFACT_COMMENTS_KEPT
+    );
 
     if (!reviewResult) {
       await deps.setStatus(

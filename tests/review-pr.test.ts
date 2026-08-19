@@ -55,6 +55,41 @@ ${encoded}
 -->`;
 }
 
+// A run in which Jules returned a clean, valid review. Only the artifact
+// transport varies in the tests that use this.
+function completedReviewDeps() {
+  return {
+    fetchPullRequestContext: vi.fn().mockResolvedValue({
+      diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+      changedFiles: ["src/a.ts"],
+      files: new Map([["src/a.ts", "new\n"]]),
+      changedLines: new Map([["src/a.ts", new Set([1])]]),
+      rulesFromFile: undefined,
+      openThreads: [],
+      linkedIssues: [],
+    }),
+    selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+    loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+    runAnalyzers: vi.fn().mockResolvedValue([]),
+    buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+    runJulesReview: vi.fn().mockResolvedValue({
+      reviewResult: {
+        verdict: "approve",
+        summary: "Looks okay.",
+        resolvedCommentIds: [],
+        newComments: [],
+      },
+      sessionId: "session-1",
+    }),
+    submitReview: vi.fn().mockResolvedValue(undefined),
+    resolveThreads: vi.fn().mockResolvedValue(undefined),
+    setStatus: vi.fn().mockResolvedValue(undefined),
+    uploadArtifact: vi.fn().mockResolvedValue(undefined),
+    recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+    wrapPermissionError: vi.fn((err: unknown) => err),
+  };
+}
+
 describe("runReviewPr orchestration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -361,6 +396,86 @@ describe("runReviewPr orchestration", () => {
     expect(core.warning).toHaveBeenCalledWith(
       "Failed to record review artifact comment: Error: too large"
     );
+  });
+
+  it("continues when artifact storage is unavailable", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      uploadArtifact: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            "Failed to CreateArtifact: Artifact storage quota has been hit."
+          )
+        ),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await runReviewPr(deps);
+
+    // The verdict still reaches the PR: storage capacity is not a property of
+    // the code under review.
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review complete (verdict: approve)"
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to upload review artifact")
+    );
+  });
+
+  it("fails when neither artifact channel records the review", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      uploadArtifact: vi
+        .fn()
+        .mockRejectedValue(new Error("Artifact storage quota has been hit.")),
+      recordReviewArtifact: vi.fn().mockRejectedValue(new Error("too large")),
+    };
+
+    await runReviewPr(deps);
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("could not be recorded")
+    );
+    expect(deps.submitReview).not.toHaveBeenCalled();
+  });
+
+  it("still fails a review that could not be produced, artifacts aside", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: undefined,
+        sessionId: "session-1",
+      }),
+      uploadArtifact: vi
+        .fn()
+        .mockRejectedValue(new Error("Artifact storage quota has been hit.")),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await runReviewPr(deps);
+
+    // Tolerating the transport must never tolerate a missing review: the
+    // no-review verdict still reaches the commit status unchanged, and no
+    // review is submitted as if one had been produced.
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      "Review timed out; see harvested artifact"
+    );
+    expect(deps.submitReview).not.toHaveBeenCalled();
   });
 
   it("passes the latest recorded Jules session id into the review request", async () => {

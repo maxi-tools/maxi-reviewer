@@ -498,7 +498,34 @@ export async function runReviewPr(
       validationErrors: validationErrors || [],
       sessionId,
     });
-    await deps.uploadArtifact(artifactName, artifactContent);
+    // The verdict is already decided -- it is in `reviewResult` above. What
+    // follows only moves the record of it off this runner, over two independent
+    // channels: the Actions artifact store (a 90-day archive humans download)
+    // and a hidden PR comment (the channel `/maxi harvest` and calibration
+    // actually read back, via listReviewArtifactComments). Neither channel
+    // grades the PR, so a transport outage must not be reported as a failed
+    // review.
+    //
+    // It has been. Artifact storage is a SHARED org-wide quota; when it is
+    // exhausted every upload in the org fails with "Artifact storage quota has
+    // been hit", and this call was unguarded, so a completed review surfaced as
+    // "Jules PR review failed: Failed to CreateArtifact". Whether the org has
+    // artifact storage left today is not a property of the code under review.
+    //
+    // Each channel is tolerated on its own; losing BOTH is still fatal. At that
+    // point the review genuinely was not recorded anywhere and there is nothing
+    // left to harvest, so failing loudly beats passing silently.
+    let artifactUploaded = false;
+    try {
+      await deps.uploadArtifact(artifactName, artifactContent);
+      artifactUploaded = true;
+    } catch (err) {
+      core.warning(
+        `Failed to upload review artifact ${artifactName}: ${String(err)}`
+      );
+    }
+
+    let artifactRecorded = false;
     try {
       await deps.recordReviewArtifact(
         octokit,
@@ -508,8 +535,15 @@ export async function runReviewPr(
         artifactName,
         buildArtifactCommentContent(artifactContent)
       );
+      artifactRecorded = true;
     } catch (err) {
       core.warning(`Failed to record review artifact comment: ${String(err)}`);
+    }
+
+    if (!artifactUploaded && !artifactRecorded) {
+      throw new Error(
+        `Review completed but could not be recorded: both the artifact upload and the harvestable PR comment failed for ${artifactName}.`
+      );
     }
 
     if (!reviewResult) {

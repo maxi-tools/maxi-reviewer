@@ -28,11 +28,24 @@ jobs:
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
-    runs-on: ubuntu-latest
+    # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
+    # jobs are rejected before a runner is assigned -- zero steps, no log, ~3s
+    # to "failure" -- so this gate reported every PR broken without scanning a
+    # single line. Same-repository PRs only (the `if` above), so this is org
+    # code on the org's own fleet, not fork code.
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: read
+    # Primary handoff channel to `review`. The artifact below is the backup, and
+    # the only carrier of the human-facing .md -- but artifact storage is a
+    # SHARED org-wide quota, so an unrelated repo's images can make every upload
+    # in the org fail, and with it every download. A job output travels with the
+    # run itself and depends on no storage at all, so the findings reach `review`
+    # whether or not artifact storage happens to be available today.
+    outputs:
+      findings-json: ${{ steps.findings-output.outputs.json }}
     steps:
       - name: Create Maxi Review app token
         id: app-token
@@ -64,6 +77,22 @@ jobs:
           sparse-checkout: maxi-review
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
+
+      # The self-hosted Linux x64 fleet is NixOS, and gh is not in the
+      # default profile there -- but it IS in the nix store, so this resolves
+      # in ~30ms and downloads nothing. No-op wherever gh already exists.
+      - name: Ensure gh on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            exit 0
+          fi
+          if ! command -v nix >/dev/null 2>&1; then
+            echo "::error::gh is absent and nix is unavailable to provision it on $RUNNER_NAME"
+            exit 1
+          fi
+          echo "$(nix build nixpkgs#gh --no-link --print-out-paths)/bin" >> "$GITHUB_PATH"
 
       - name: Run maxi-lint deny gate
         id: maxilint
@@ -186,11 +215,72 @@ jobs:
               sys.exit(1)
           PY
 
+      # Deliberately a SEPARATE step from the deny gate above, and deliberately
+      # always(): the gate decides the verdict by its own exit status, and
+      # `review` runs with always() and still needs the findings when that
+      # verdict is a failure. Splitting them means publishing cannot change the
+      # verdict, and the verdict cannot suppress the handoff.
+      - name: Publish maxi-lint findings as a job output
+        id: findings-output
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s maxi-lint-findings.json ]; then
+            echo "no maxi-lint findings file on disk; nothing to publish as a job output"
+            exit 0
+          fi
+          # Job outputs are capped at 1 MB across the whole job. Stop well short
+          # of it. Past this threshold, omit the output ENTIRELY rather than ship
+          # a truncated array: a clipped JSON list still parses, as a shorter
+          # findings list, and would read as a cleaner PR than it is. Omitting is
+          # visible -- `review` falls back to the artifact, and fails loudly if
+          # that is missing too -- where truncation would be silent.
+          max_bytes=524288
+          size="$(wc -c < maxi-lint-findings.json | tr -d '[:space:]')"
+          if [ "$size" -gt "$max_bytes" ]; then
+            echo "::warning::maxi-lint findings are ${size} bytes, over the ${max_bytes}-byte job-output threshold; omitting the job output -- the uploaded artifact is the only findings channel for this run"
+            exit 0
+          fi
+          # Unique per run. The heredoc body is scanner output quoting the code
+          # under review, so a fixed delimiter appearing inside a finding would
+          # close the block early and let the remaining findings be parsed as
+          # further step outputs.
+          delim="MAXI_LINT_JSON_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+          {
+            echo "json<<${delim}"
+            cat maxi-lint-findings.json
+            # json.dump leaves no trailing newline; without this the closing
+            # delimiter would land on the last line of JSON and never match.
+            echo ""
+            echo "${delim}"
+          } >> "$GITHUB_OUTPUT"
+          echo "published ${size} bytes of maxi-lint findings as a job output"
+
       - name: Upload maxi-lint findings
         if: ${{ always() }}
+        # Scoped to THIS step and never to the job: the deny gate above must
+        # still fail the job on deny-level findings. By the time this runs the
+        # verdict is already decided and this step only moves the result around.
+        # Whether the org's shared artifact storage has room today is not a
+        # property of the code under review, so a storage failure must not turn a
+        # clean lint into a red check -- which is exactly what it did while the
+        # quota was exhausted. The upload still runs: humans download it, and it
+        # carries the .md that a job output cannot. `review` falls back to the
+        # job output when this is missing, and fails loudly when BOTH channels
+        # come up empty.
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: maxi-lint-findings
+          # Consumed by the `review` job in this same run and never needed
+          # afterwards, but it inherited the 90-day default retention, so every
+          # PR run left a copy behind. 73 had accumulated. Combined with much
+          # larger images elsewhere in the org this exhausted the shared
+          # artifact storage quota, which fails this gate -- and every other
+          # artifact upload org-wide -- with "Artifact storage quota has been
+          # hit". A same-run handoff does not need to outlive the run.
+          retention-days: 1
           path: |
             maxi-lint-findings.json
             maxi-lint-findings.md
@@ -206,7 +296,12 @@ jobs:
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
     continue-on-error: true
-    runs-on: ubuntu-latest
+    # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
+    # jobs are rejected before a runner is assigned -- zero steps, no log, ~3s
+    # to "failure" -- so this gate reported every PR broken without scanning a
+    # single line. Same-repository PRs only (the `if` above), so this is org
+    # code on the org's own fleet, not fork code.
+    runs-on: [self-hosted, Linux, X64]
     # Must exceed the step's 55, or the job cap fires first and the step bound
     # — the actual runner-release watchdog — can never take effect. README:
     # "use a step timeout-minutes of at least 55 and a job timeout above that."
@@ -244,10 +339,50 @@ jobs:
           permission-statuses: write
 
       - name: Download maxi-lint findings
+        # Scoped to THIS step. The artifact is the backup channel and the only
+        # carrier of the human-facing .md; when the org's shared artifact storage
+        # is unavailable there is nothing to download, and that says nothing
+        # about the PR. The next step materialises the JSON from lint-gate's job
+        # output instead, and FAILS if neither channel produced findings -- so
+        # tolerating the missing download here never lets a review proceed
+        # unscanned, it only stops storage outages from being reported as one.
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: maxi-lint-findings
           path: .maxi-lint-findings
+
+      - name: Materialise maxi-lint findings
+        env:
+          # Via env, not inline `${{ }}` in the script: the value is scanner
+          # output quoting the PR's own code and must reach the shell as data.
+          LINT_FINDINGS_JSON: ${{ needs.lint-gate.outputs.findings-json }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .maxi-lint-findings
+          json=.maxi-lint-findings/maxi-lint-findings.json
+          if [ -s "$json" ]; then
+            echo "maxi-lint findings JSON came from the artifact"
+          elif [ -n "${LINT_FINDINGS_JSON:-}" ]; then
+            printf '%s\n' "$LINT_FINDINGS_JSON" > "$json"
+            echo "artifact unavailable; materialised maxi-lint findings JSON from the lint-gate job output"
+          fi
+          # An empty findings array is a legitimate clean scan. NO findings from
+          # either channel is not -- it is an unknown, and reviewing without the
+          # deterministic scan would report a green review the scan never backed.
+          # Same stance the lint gate takes when its binary is missing: fail
+          # rather than pass without a scan (maxi-config#163).
+          if [ ! -s "$json" ] || ! python3 -c 'import json,sys; sys.exit(0 if isinstance(json.load(open(sys.argv[1])), list) else 1)' "$json"; then
+            echo "::error::no maxi-lint findings from either channel (artifact download and lint-gate job output both empty or invalid); failing review rather than reviewing without a scan (maxi-config#163)"
+            exit 1
+          fi
+          # The .md is human-facing prose built from the same findings; the
+          # reviewer prompt below simply omits it. Losing it degrades the write-up,
+          # not the scan, so it is worth a log line and not a failure.
+          if [ ! -s .maxi-lint-findings/maxi-lint-findings.md ]; then
+            echo "maxi-lint findings markdown is unavailable (human-facing only); proceeding on the JSON alone"
+          fi
 
       - name: Fetch maxi-review rules
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -257,6 +392,22 @@ jobs:
           sparse-checkout: maxi-review
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
+
+      # The self-hosted Linux x64 fleet is NixOS, and gh is not in the
+      # default profile there -- but it IS in the nix store, so this resolves
+      # in ~30ms and downloads nothing. No-op wherever gh already exists.
+      - name: Ensure gh on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            exit 0
+          fi
+          if ! command -v nix >/dev/null 2>&1; then
+            echo "::error::gh is absent and nix is unavailable to provision it on $RUNNER_NAME"
+            exit 1
+          fi
+          echo "$(nix build nixpkgs#gh --no-link --print-out-paths)/bin" >> "$GITHUB_PATH"
 
       - name: Select per-language rules from changed files
         id: rules
@@ -314,7 +465,7 @@ jobs:
           # runs the action that consumes them. Split them and the reviewer
           # grades with one revision's code against another revision's rules —
           # a mismatch nothing else in this workflow would surface.
-          ref: 6fe937df0ae988a7a858caec193a085e54d01315
+          ref: ae2700a9171b4204bbd5416d17e90910ace4c128
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -331,12 +482,17 @@ jobs:
             exit 1
           fi
 
-      # Pinned to what the maxi-reviewer repo itself runs (verified ancestor of
-      # its main, 2026-07-22), not to its head — the fleet should be graded by a
-      # build with dogfood evidence behind it. The previous pin was 2026-06-27,
-      # so every repo was reviewed by a build 36 commits older than the reviewer
-      # repo's own. Evaluating a newer head is a deliberate follow-up, not a
-      # drive-by bump inside the PR whose job is to stop unreviewed drift.
+      # Pinned to a verified ancestor of maxi-reviewer's main, not to its head —
+      # the fleet should be graded by a build with dogfood evidence behind it.
+      # Evaluating a newer head is a deliberate follow-up, not a drive-by bump
+      # inside the PR whose job is to stop unreviewed drift.
+      #
+      # ae2700a is the previous pin, 6fe937d (2026-07-22), plus exactly one
+      # commit: the fix that stops an artifact-storage outage from failing a
+      # completed review (maxi-reviewer ae2700a). It was cut FROM 6fe937d and
+      # then merged to main precisely so this pin could move by that one commit
+      # rather than by the 41 of unrelated drift that separate 6fe937d from
+      # maxi-reviewer's head.
       - name: Run maxi-reviewer
         # ~37% of invocations used to hang with no step output and hold a scarce
         # self-hosted runner until the job timeout (maxi-reviewer#53).
@@ -351,7 +507,7 @@ jobs:
         # review still legitimately inside its own deadline, defeating the
         # graceful status cleanup this is meant to preserve.
         timeout-minutes: 55
-        uses: maxi-tools/maxi-reviewer@6fe937df0ae988a7a858caec193a085e54d01315
+        uses: maxi-tools/maxi-reviewer@ae2700a9171b4204bbd5416d17e90910ace4c128
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

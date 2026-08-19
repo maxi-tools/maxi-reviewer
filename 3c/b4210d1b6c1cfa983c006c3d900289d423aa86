@@ -1,0 +1,25 @@
+tests/review-pr.test.ts
+  s_78057e92abce6c::t_c1a3bdfc55a1bc 401-465,477,479-480
+  s_78057e92abce6c::t_52512e9eae243e 466-476,478
+  s_78057e92abce6c::t_6fe22b7528dc5c 58-92
+README.md
+  s_78057e92abce6c::t_da14b599535a2a 103
+src/review-pr.ts
+  s_78057e92abce6c::t_aed386d03c83f7 501-528,538,543-546
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3cb4210d1b6c1cfa983c006c3d900289d423aa86",
+  "prompts": {},
+  "sessions": {
+    "s_78057e92abce6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b80cce1d-aacd-48e0-875a-a8d24d7d4479",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

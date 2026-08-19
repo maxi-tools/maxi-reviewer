@@ -37,7 +37,46 @@ permissions: {}
 
 concurrency:
   group: review-gate-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # NOT cancel-in-progress. `true` here did not de-duplicate this gate --
+  # it stopped the gate running at all, and left a red X where the verdict
+  # should be.
+  #
+  # Measured on maxi-terminal#464, 2026-08-19: TWELVE consecutive check runs
+  # for this gate, every one `cancelled`, not one of them with a single step
+  # executed. maxi-tray#424, maxi-terminal#463, maxi-memory#168 and
+  # maxi-config#344 were in the same state on the same day.
+  #
+  # The mechanism needs both halves to be visible:
+  #
+  #   1. This job runs on the self-hosted fleet, which is saturated, so a run
+  #      waits in the queue for minutes rather than seconds -- maxi-tray#424's
+  #      run sat queued for 7m27s (19:11:11Z -> 19:18:38Z).
+  #   2. The review bots post diff comments in BURSTS. Each one is a
+  #      `pull_request_review_comment: created` event, so each one starts a new
+  #      run, and with cancel-in-progress each new run killed the queued one.
+  #
+  # Nothing ever reached a runner. Every event replaced a pending verdict with
+  # a cancellation, and a cancelled check run is red -- on the PR page it is
+  # indistinguishable from a genuine failure. That is strictly worse than no
+  # gate: this check is already routinely misread as "this PR needs a human
+  # reviewer", and a cancellation makes it say exactly that while carrying no
+  # verdict at all.
+  #
+  # cancel-in-progress is for expensive jobs a newer commit has obsoleted.
+  # Neither clause applies. The gate is two API calls and a python script --
+  # about two seconds of runner time, so there is nothing to save by killing
+  # it -- and it judges the PR's CURRENT review state, not a commit, so an
+  # in-flight run is never stale in the way that setting assumes.
+  #
+  # With `false` the run holding the group is left alone and completes.
+  # Later requests wait behind it; only PENDING ones are superseded, and the
+  # last request to arrive is never superseded, so the newest check run for
+  # this name always carries a real verdict.
+  #
+  # The group is kept: on a saturated fleet, serialising a burst behind one
+  # runner slot is the point. It is cancellation, not queueing, that was the
+  # defect.
+  cancel-in-progress: false
 
 jobs:
   review-gate:

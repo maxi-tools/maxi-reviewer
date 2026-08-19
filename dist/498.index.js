@@ -1,8 +1,8 @@
-export const id = 713;
-export const ids = [713];
+export const id = 498;
+export const ids = [498];
 export const modules = {
 
-/***/ 8802:
+/***/ 4782:
 /***/ (function(__unused_webpack_module, exports) {
 
 
@@ -59,7 +59,7 @@ exports.ClientStreamingCall = ClientStreamingCall;
 
 /***/ }),
 
-/***/ 8784:
+/***/ 6284:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -152,7 +152,7 @@ exports.Deferred = Deferred;
 
 /***/ }),
 
-/***/ 3489:
+/***/ 1709:
 /***/ (function(__unused_webpack_module, exports) {
 
 
@@ -208,7 +208,7 @@ exports.DuplexStreamingCall = DuplexStreamingCall;
 
 /***/ }),
 
-/***/ 8259:
+/***/ 5535:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 var __webpack_unused_export__;
@@ -217,50 +217,50 @@ var __webpack_unused_export__;
 // Note: we do not use `export * from ...` to help tree shakers,
 // webpack verbose output hints that this should be useful
 __webpack_unused_export__ = ({ value: true });
-var service_type_1 = __webpack_require__(861);
+var service_type_1 = __webpack_require__(8041);
 Object.defineProperty(exports, "C0", ({ enumerable: true, get: function () { return service_type_1.ServiceType; } }));
-var reflection_info_1 = __webpack_require__(8755);
+var reflection_info_1 = __webpack_require__(1711);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return reflection_info_1.readMethodOptions; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return reflection_info_1.readMethodOption; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return reflection_info_1.readServiceOption; } });
-var rpc_error_1 = __webpack_require__(4963);
+var rpc_error_1 = __webpack_require__(4911);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_error_1.RpcError; } });
-var rpc_options_1 = __webpack_require__(971);
+var rpc_options_1 = __webpack_require__(8215);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_options_1.mergeRpcOptions; } });
-var rpc_output_stream_1 = __webpack_require__(3189);
+var rpc_output_stream_1 = __webpack_require__(1049);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_output_stream_1.RpcOutputStreamController; } });
-var test_transport_1 = __webpack_require__(6895);
+var test_transport_1 = __webpack_require__(3307);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return test_transport_1.TestTransport; } });
-var deferred_1 = __webpack_require__(8784);
+var deferred_1 = __webpack_require__(6284);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return deferred_1.Deferred; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return deferred_1.DeferredState; } });
-var duplex_streaming_call_1 = __webpack_require__(3489);
+var duplex_streaming_call_1 = __webpack_require__(1709);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return duplex_streaming_call_1.DuplexStreamingCall; } });
-var client_streaming_call_1 = __webpack_require__(8802);
+var client_streaming_call_1 = __webpack_require__(4782);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return client_streaming_call_1.ClientStreamingCall; } });
-var server_streaming_call_1 = __webpack_require__(6526);
+var server_streaming_call_1 = __webpack_require__(3810);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return server_streaming_call_1.ServerStreamingCall; } });
-var unary_call_1 = __webpack_require__(9477);
+var unary_call_1 = __webpack_require__(5337);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return unary_call_1.UnaryCall; } });
-var rpc_interceptor_1 = __webpack_require__(534);
+var rpc_interceptor_1 = __webpack_require__(3698);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_interceptor_1.stackIntercept; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_interceptor_1.stackDuplexStreamingInterceptors; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_interceptor_1.stackClientStreamingInterceptors; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_interceptor_1.stackServerStreamingInterceptors; } });
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return rpc_interceptor_1.stackUnaryInterceptors; } });
-var server_call_context_1 = __webpack_require__(1711);
+var server_call_context_1 = __webpack_require__(5731);
 __webpack_unused_export__ = ({ enumerable: true, get: function () { return server_call_context_1.ServerCallContextController; } });
 
 
 /***/ }),
 
-/***/ 8755:
+/***/ 1711:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.readServiceOption = exports.readMethodOption = exports.readMethodOptions = exports.normalizeMethodInfo = void 0;
-const runtime_1 = __webpack_require__(2675);
+const runtime_1 = __webpack_require__(5471);
 /**
  * Turns PartialMethodInfo into MethodInfo.
  */
@@ -318,7 +318,7 @@ exports.readServiceOption = readServiceOption;
 
 /***/ }),
 
-/***/ 4963:
+/***/ 4911:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -361,13 +361,13 @@ exports.RpcError = RpcError;
 
 /***/ }),
 
-/***/ 534:
+/***/ 3698:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.stackDuplexStreamingInterceptors = exports.stackClientStreamingInterceptors = exports.stackServerStreamingInterceptors = exports.stackUnaryInterceptors = exports.stackIntercept = void 0;
-const runtime_1 = __webpack_require__(2675);
+const runtime_1 = __webpack_require__(5471);
 /**
  * Creates a "stack" of of all interceptors specified in the given `RpcOptions`.
  * Used by generated client implementations.
@@ -442,13 +442,13 @@ exports.stackDuplexStreamingInterceptors = stackDuplexStreamingInterceptors;
 
 /***/ }),
 
-/***/ 971:
+/***/ 8215:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.mergeRpcOptions = void 0;
-const runtime_1 = __webpack_require__(2675);
+const runtime_1 = __webpack_require__(5471);
 /**
  * Merges custom RPC options with defaults. Returns a new instance and keeps
  * the "defaults" and the "options" unmodified.
@@ -515,14 +515,14 @@ function copy(a, into) {
 
 /***/ }),
 
-/***/ 3189:
+/***/ 1049:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.RpcOutputStreamController = void 0;
-const deferred_1 = __webpack_require__(8784);
-const runtime_1 = __webpack_require__(2675);
+const deferred_1 = __webpack_require__(6284);
+const runtime_1 = __webpack_require__(5471);
 /**
  * A `RpcOutputStream` that you control.
  */
@@ -692,7 +692,7 @@ exports.RpcOutputStreamController = RpcOutputStreamController;
 
 /***/ }),
 
-/***/ 1711:
+/***/ 5731:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -759,7 +759,7 @@ exports.ServerCallContextController = ServerCallContextController;
 
 /***/ }),
 
-/***/ 6526:
+/***/ 3810:
 /***/ (function(__unused_webpack_module, exports) {
 
 
@@ -816,13 +816,13 @@ exports.ServerStreamingCall = ServerStreamingCall;
 
 /***/ }),
 
-/***/ 861:
+/***/ 8041:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ServiceType = void 0;
-const reflection_info_1 = __webpack_require__(8755);
+const reflection_info_1 = __webpack_require__(1711);
 class ServiceType {
     constructor(typeName, methods, options) {
         this.typeName = typeName;
@@ -835,7 +835,7 @@ exports.ServiceType = ServiceType;
 
 /***/ }),
 
-/***/ 6895:
+/***/ 3307:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -850,14 +850,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TestTransport = void 0;
-const rpc_error_1 = __webpack_require__(4963);
-const runtime_1 = __webpack_require__(2675);
-const rpc_output_stream_1 = __webpack_require__(3189);
-const rpc_options_1 = __webpack_require__(971);
-const unary_call_1 = __webpack_require__(9477);
-const server_streaming_call_1 = __webpack_require__(6526);
-const client_streaming_call_1 = __webpack_require__(8802);
-const duplex_streaming_call_1 = __webpack_require__(3489);
+const rpc_error_1 = __webpack_require__(4911);
+const runtime_1 = __webpack_require__(5471);
+const rpc_output_stream_1 = __webpack_require__(1049);
+const rpc_options_1 = __webpack_require__(8215);
+const unary_call_1 = __webpack_require__(5337);
+const server_streaming_call_1 = __webpack_require__(3810);
+const client_streaming_call_1 = __webpack_require__(4782);
+const duplex_streaming_call_1 = __webpack_require__(1709);
 /**
  * Transport for testing.
  */
@@ -1163,7 +1163,7 @@ class TestInputStream {
 
 /***/ }),
 
-/***/ 9477:
+/***/ 5337:
 /***/ (function(__unused_webpack_module, exports) {
 
 
@@ -1219,7 +1219,7 @@ exports.UnaryCall = UnaryCall;
 
 /***/ }),
 
-/***/ 8837:
+/***/ 2417:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -1269,7 +1269,7 @@ exports.assertFloat32 = assertFloat32;
 
 /***/ }),
 
-/***/ 812:
+/***/ 8000:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -1394,7 +1394,7 @@ exports.base64encode = base64encode;
 
 /***/ }),
 
-/***/ 3367:
+/***/ 3851:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -1501,15 +1501,15 @@ var WireType;
 
 /***/ }),
 
-/***/ 8176:
+/***/ 3276:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BinaryReader = exports.binaryReadOptions = void 0;
-const binary_format_contract_1 = __webpack_require__(3367);
-const pb_long_1 = __webpack_require__(8716);
-const goog_varint_1 = __webpack_require__(5370);
+const binary_format_contract_1 = __webpack_require__(3851);
+const pb_long_1 = __webpack_require__(5176);
+const goog_varint_1 = __webpack_require__(4622);
 const defaultsRead = {
     readUnknownField: true,
     readerFactory: bytes => new BinaryReader(bytes),
@@ -1691,15 +1691,15 @@ exports.BinaryReader = BinaryReader;
 
 /***/ }),
 
-/***/ 2636:
+/***/ 1608:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BinaryWriter = exports.binaryWriteOptions = void 0;
-const pb_long_1 = __webpack_require__(8716);
-const goog_varint_1 = __webpack_require__(5370);
-const assert_1 = __webpack_require__(8837);
+const pb_long_1 = __webpack_require__(5176);
+const goog_varint_1 = __webpack_require__(4622);
+const assert_1 = __webpack_require__(2417);
 const defaultsWrite = {
     writeUnknownFields: true,
     writerFactory: () => new BinaryWriter(),
@@ -1930,7 +1930,7 @@ exports.BinaryWriter = BinaryWriter;
 
 /***/ }),
 
-/***/ 1724:
+/***/ 512:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2024,7 +2024,7 @@ exports.listEnumNumbers = listEnumNumbers;
 
 /***/ }),
 
-/***/ 5370:
+/***/ 4622:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2305,7 +2305,7 @@ exports.varint32read = varint32read;
 
 /***/ }),
 
-/***/ 2675:
+/***/ 5471:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
@@ -2314,46 +2314,46 @@ exports.varint32read = varint32read;
 // webpack verbose output hints that this should be useful
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 // Convenience JSON typings and corresponding type guards
-var json_typings_1 = __webpack_require__(596);
+var json_typings_1 = __webpack_require__(8400);
 Object.defineProperty(exports, "typeofJsonValue", ({ enumerable: true, get: function () { return json_typings_1.typeofJsonValue; } }));
 Object.defineProperty(exports, "isJsonObject", ({ enumerable: true, get: function () { return json_typings_1.isJsonObject; } }));
 // Base 64 encoding
-var base64_1 = __webpack_require__(812);
+var base64_1 = __webpack_require__(8000);
 Object.defineProperty(exports, "base64decode", ({ enumerable: true, get: function () { return base64_1.base64decode; } }));
 Object.defineProperty(exports, "base64encode", ({ enumerable: true, get: function () { return base64_1.base64encode; } }));
 // UTF8 encoding
-var protobufjs_utf8_1 = __webpack_require__(6147);
+var protobufjs_utf8_1 = __webpack_require__(4239);
 Object.defineProperty(exports, "utf8read", ({ enumerable: true, get: function () { return protobufjs_utf8_1.utf8read; } }));
 // Binary format contracts, options for reading and writing, for example
-var binary_format_contract_1 = __webpack_require__(3367);
+var binary_format_contract_1 = __webpack_require__(3851);
 Object.defineProperty(exports, "WireType", ({ enumerable: true, get: function () { return binary_format_contract_1.WireType; } }));
 Object.defineProperty(exports, "mergeBinaryOptions", ({ enumerable: true, get: function () { return binary_format_contract_1.mergeBinaryOptions; } }));
 Object.defineProperty(exports, "UnknownFieldHandler", ({ enumerable: true, get: function () { return binary_format_contract_1.UnknownFieldHandler; } }));
 // Standard IBinaryReader implementation
-var binary_reader_1 = __webpack_require__(8176);
+var binary_reader_1 = __webpack_require__(3276);
 Object.defineProperty(exports, "BinaryReader", ({ enumerable: true, get: function () { return binary_reader_1.BinaryReader; } }));
 Object.defineProperty(exports, "binaryReadOptions", ({ enumerable: true, get: function () { return binary_reader_1.binaryReadOptions; } }));
 // Standard IBinaryWriter implementation
-var binary_writer_1 = __webpack_require__(2636);
+var binary_writer_1 = __webpack_require__(1608);
 Object.defineProperty(exports, "BinaryWriter", ({ enumerable: true, get: function () { return binary_writer_1.BinaryWriter; } }));
 Object.defineProperty(exports, "binaryWriteOptions", ({ enumerable: true, get: function () { return binary_writer_1.binaryWriteOptions; } }));
 // Int64 and UInt64 implementations required for the binary format
-var pb_long_1 = __webpack_require__(8716);
+var pb_long_1 = __webpack_require__(5176);
 Object.defineProperty(exports, "PbLong", ({ enumerable: true, get: function () { return pb_long_1.PbLong; } }));
 Object.defineProperty(exports, "PbULong", ({ enumerable: true, get: function () { return pb_long_1.PbULong; } }));
 // JSON format contracts, options for reading and writing, for example
-var json_format_contract_1 = __webpack_require__(4520);
+var json_format_contract_1 = __webpack_require__(6228);
 Object.defineProperty(exports, "jsonReadOptions", ({ enumerable: true, get: function () { return json_format_contract_1.jsonReadOptions; } }));
 Object.defineProperty(exports, "jsonWriteOptions", ({ enumerable: true, get: function () { return json_format_contract_1.jsonWriteOptions; } }));
 Object.defineProperty(exports, "mergeJsonOptions", ({ enumerable: true, get: function () { return json_format_contract_1.mergeJsonOptions; } }));
 // Message type contract
-var message_type_contract_1 = __webpack_require__(8012);
+var message_type_contract_1 = __webpack_require__(5552);
 Object.defineProperty(exports, "MESSAGE_TYPE", ({ enumerable: true, get: function () { return message_type_contract_1.MESSAGE_TYPE; } }));
 // Message type implementation via reflection
-var message_type_1 = __webpack_require__(593);
+var message_type_1 = __webpack_require__(5461);
 Object.defineProperty(exports, "MessageType", ({ enumerable: true, get: function () { return message_type_1.MessageType; } }));
 // Reflection info, generated by the plugin, exposed to the user, used by reflection ops
-var reflection_info_1 = __webpack_require__(227);
+var reflection_info_1 = __webpack_require__(3263);
 Object.defineProperty(exports, "ScalarType", ({ enumerable: true, get: function () { return reflection_info_1.ScalarType; } }));
 Object.defineProperty(exports, "LongType", ({ enumerable: true, get: function () { return reflection_info_1.LongType; } }));
 Object.defineProperty(exports, "RepeatType", ({ enumerable: true, get: function () { return reflection_info_1.RepeatType; } }));
@@ -2362,44 +2362,44 @@ Object.defineProperty(exports, "readFieldOptions", ({ enumerable: true, get: fun
 Object.defineProperty(exports, "readFieldOption", ({ enumerable: true, get: function () { return reflection_info_1.readFieldOption; } }));
 Object.defineProperty(exports, "readMessageOption", ({ enumerable: true, get: function () { return reflection_info_1.readMessageOption; } }));
 // Message operations via reflection
-var reflection_type_check_1 = __webpack_require__(2866);
+var reflection_type_check_1 = __webpack_require__(3094);
 Object.defineProperty(exports, "ReflectionTypeCheck", ({ enumerable: true, get: function () { return reflection_type_check_1.ReflectionTypeCheck; } }));
-var reflection_create_1 = __webpack_require__(2539);
+var reflection_create_1 = __webpack_require__(1655);
 Object.defineProperty(exports, "reflectionCreate", ({ enumerable: true, get: function () { return reflection_create_1.reflectionCreate; } }));
-var reflection_scalar_default_1 = __webpack_require__(659);
+var reflection_scalar_default_1 = __webpack_require__(711);
 Object.defineProperty(exports, "reflectionScalarDefault", ({ enumerable: true, get: function () { return reflection_scalar_default_1.reflectionScalarDefault; } }));
-var reflection_merge_partial_1 = __webpack_require__(1735);
+var reflection_merge_partial_1 = __webpack_require__(8651);
 Object.defineProperty(exports, "reflectionMergePartial", ({ enumerable: true, get: function () { return reflection_merge_partial_1.reflectionMergePartial; } }));
-var reflection_equals_1 = __webpack_require__(730);
+var reflection_equals_1 = __webpack_require__(5046);
 Object.defineProperty(exports, "reflectionEquals", ({ enumerable: true, get: function () { return reflection_equals_1.reflectionEquals; } }));
-var reflection_binary_reader_1 = __webpack_require__(2808);
+var reflection_binary_reader_1 = __webpack_require__(9868);
 Object.defineProperty(exports, "ReflectionBinaryReader", ({ enumerable: true, get: function () { return reflection_binary_reader_1.ReflectionBinaryReader; } }));
-var reflection_binary_writer_1 = __webpack_require__(6692);
+var reflection_binary_writer_1 = __webpack_require__(8024);
 Object.defineProperty(exports, "ReflectionBinaryWriter", ({ enumerable: true, get: function () { return reflection_binary_writer_1.ReflectionBinaryWriter; } }));
-var reflection_json_reader_1 = __webpack_require__(5081);
+var reflection_json_reader_1 = __webpack_require__(8117);
 Object.defineProperty(exports, "ReflectionJsonReader", ({ enumerable: true, get: function () { return reflection_json_reader_1.ReflectionJsonReader; } }));
-var reflection_json_writer_1 = __webpack_require__(2005);
+var reflection_json_writer_1 = __webpack_require__(5121);
 Object.defineProperty(exports, "ReflectionJsonWriter", ({ enumerable: true, get: function () { return reflection_json_writer_1.ReflectionJsonWriter; } }));
-var reflection_contains_message_type_1 = __webpack_require__(8229);
+var reflection_contains_message_type_1 = __webpack_require__(3201);
 Object.defineProperty(exports, "containsMessageType", ({ enumerable: true, get: function () { return reflection_contains_message_type_1.containsMessageType; } }));
 // Oneof helpers
-var oneof_1 = __webpack_require__(374);
+var oneof_1 = __webpack_require__(9330);
 Object.defineProperty(exports, "isOneofGroup", ({ enumerable: true, get: function () { return oneof_1.isOneofGroup; } }));
 Object.defineProperty(exports, "setOneofValue", ({ enumerable: true, get: function () { return oneof_1.setOneofValue; } }));
 Object.defineProperty(exports, "getOneofValue", ({ enumerable: true, get: function () { return oneof_1.getOneofValue; } }));
 Object.defineProperty(exports, "clearOneofValue", ({ enumerable: true, get: function () { return oneof_1.clearOneofValue; } }));
 Object.defineProperty(exports, "getSelectedOneofValue", ({ enumerable: true, get: function () { return oneof_1.getSelectedOneofValue; } }));
 // Enum object type guard and reflection util, may be interesting to the user.
-var enum_object_1 = __webpack_require__(1724);
+var enum_object_1 = __webpack_require__(512);
 Object.defineProperty(exports, "listEnumValues", ({ enumerable: true, get: function () { return enum_object_1.listEnumValues; } }));
 Object.defineProperty(exports, "listEnumNames", ({ enumerable: true, get: function () { return enum_object_1.listEnumNames; } }));
 Object.defineProperty(exports, "listEnumNumbers", ({ enumerable: true, get: function () { return enum_object_1.listEnumNumbers; } }));
 Object.defineProperty(exports, "isEnumObject", ({ enumerable: true, get: function () { return enum_object_1.isEnumObject; } }));
 // lowerCamelCase() is exported for plugin, rpc-runtime and other rpc packages
-var lower_camel_case_1 = __webpack_require__(9374);
+var lower_camel_case_1 = __webpack_require__(8362);
 Object.defineProperty(exports, "lowerCamelCase", ({ enumerable: true, get: function () { return lower_camel_case_1.lowerCamelCase; } }));
 // assertion functions are exported for plugin, may also be useful to user
-var assert_1 = __webpack_require__(8837);
+var assert_1 = __webpack_require__(2417);
 Object.defineProperty(exports, "assert", ({ enumerable: true, get: function () { return assert_1.assert; } }));
 Object.defineProperty(exports, "assertNever", ({ enumerable: true, get: function () { return assert_1.assertNever; } }));
 Object.defineProperty(exports, "assertInt32", ({ enumerable: true, get: function () { return assert_1.assertInt32; } }));
@@ -2409,7 +2409,7 @@ Object.defineProperty(exports, "assertFloat32", ({ enumerable: true, get: functi
 
 /***/ }),
 
-/***/ 4520:
+/***/ 6228:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2451,7 +2451,7 @@ exports.mergeJsonOptions = mergeJsonOptions;
 
 /***/ }),
 
-/***/ 596:
+/***/ 8400:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2483,7 +2483,7 @@ exports.isJsonObject = isJsonObject;
 
 /***/ }),
 
-/***/ 9374:
+/***/ 8362:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2525,7 +2525,7 @@ exports.lowerCamelCase = lowerCamelCase;
 
 /***/ }),
 
-/***/ 8012:
+/***/ 5552:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2542,26 +2542,26 @@ exports.MESSAGE_TYPE = Symbol.for("protobuf-ts/message-type");
 
 /***/ }),
 
-/***/ 593:
+/***/ 5461:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.MessageType = void 0;
-const message_type_contract_1 = __webpack_require__(8012);
-const reflection_info_1 = __webpack_require__(227);
-const reflection_type_check_1 = __webpack_require__(2866);
-const reflection_json_reader_1 = __webpack_require__(5081);
-const reflection_json_writer_1 = __webpack_require__(2005);
-const reflection_binary_reader_1 = __webpack_require__(2808);
-const reflection_binary_writer_1 = __webpack_require__(6692);
-const reflection_create_1 = __webpack_require__(2539);
-const reflection_merge_partial_1 = __webpack_require__(1735);
-const json_typings_1 = __webpack_require__(596);
-const json_format_contract_1 = __webpack_require__(4520);
-const reflection_equals_1 = __webpack_require__(730);
-const binary_writer_1 = __webpack_require__(2636);
-const binary_reader_1 = __webpack_require__(8176);
+const message_type_contract_1 = __webpack_require__(5552);
+const reflection_info_1 = __webpack_require__(3263);
+const reflection_type_check_1 = __webpack_require__(3094);
+const reflection_json_reader_1 = __webpack_require__(8117);
+const reflection_json_writer_1 = __webpack_require__(5121);
+const reflection_binary_reader_1 = __webpack_require__(9868);
+const reflection_binary_writer_1 = __webpack_require__(8024);
+const reflection_create_1 = __webpack_require__(1655);
+const reflection_merge_partial_1 = __webpack_require__(8651);
+const json_typings_1 = __webpack_require__(8400);
+const json_format_contract_1 = __webpack_require__(6228);
+const reflection_equals_1 = __webpack_require__(5046);
+const binary_writer_1 = __webpack_require__(1608);
+const binary_reader_1 = __webpack_require__(3276);
 const baseDescriptors = Object.getOwnPropertyDescriptors(Object.getPrototypeOf({}));
 const messageTypeDescriptor = baseDescriptors[message_type_contract_1.MESSAGE_TYPE] = {};
 /**
@@ -2726,7 +2726,7 @@ exports.MessageType = MessageType;
 
 /***/ }),
 
-/***/ 374:
+/***/ 9330:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2847,13 +2847,13 @@ exports.getSelectedOneofValue = getSelectedOneofValue;
 
 /***/ }),
 
-/***/ 8716:
+/***/ 5176:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PbLong = exports.PbULong = exports.detectBi = void 0;
-const goog_varint_1 = __webpack_require__(5370);
+const goog_varint_1 = __webpack_require__(4622);
 let BI;
 function detectBi() {
     const dv = new DataView(new ArrayBuffer(8));
@@ -3092,7 +3092,7 @@ PbLong.ZERO = new PbLong(0, 0);
 
 /***/ }),
 
-/***/ 6147:
+/***/ 4239:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -3174,16 +3174,16 @@ exports.utf8read = utf8read;
 
 /***/ }),
 
-/***/ 2808:
+/***/ 9868:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReflectionBinaryReader = void 0;
-const binary_format_contract_1 = __webpack_require__(3367);
-const reflection_info_1 = __webpack_require__(227);
-const reflection_long_convert_1 = __webpack_require__(3499);
-const reflection_scalar_default_1 = __webpack_require__(659);
+const binary_format_contract_1 = __webpack_require__(3851);
+const reflection_info_1 = __webpack_require__(3263);
+const reflection_long_convert_1 = __webpack_require__(9135);
+const reflection_scalar_default_1 = __webpack_require__(711);
 /**
  * Reads proto3 messages in binary format using reflection information.
  *
@@ -3364,16 +3364,16 @@ exports.ReflectionBinaryReader = ReflectionBinaryReader;
 
 /***/ }),
 
-/***/ 6692:
+/***/ 8024:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReflectionBinaryWriter = void 0;
-const binary_format_contract_1 = __webpack_require__(3367);
-const reflection_info_1 = __webpack_require__(227);
-const assert_1 = __webpack_require__(8837);
-const pb_long_1 = __webpack_require__(8716);
+const binary_format_contract_1 = __webpack_require__(3851);
+const reflection_info_1 = __webpack_require__(3263);
+const assert_1 = __webpack_require__(2417);
+const pb_long_1 = __webpack_require__(5176);
 /**
  * Writes proto3 messages in binary format using reflection information.
  *
@@ -3604,13 +3604,13 @@ exports.ReflectionBinaryWriter = ReflectionBinaryWriter;
 
 /***/ }),
 
-/***/ 8229:
+/***/ 3201:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.containsMessageType = void 0;
-const message_type_contract_1 = __webpack_require__(8012);
+const message_type_contract_1 = __webpack_require__(5552);
 /**
  * Check if the provided object is a proto message.
  *
@@ -3625,14 +3625,14 @@ exports.containsMessageType = containsMessageType;
 
 /***/ }),
 
-/***/ 2539:
+/***/ 1655:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.reflectionCreate = void 0;
-const reflection_scalar_default_1 = __webpack_require__(659);
-const message_type_contract_1 = __webpack_require__(8012);
+const reflection_scalar_default_1 = __webpack_require__(711);
+const message_type_contract_1 = __webpack_require__(5552);
 /**
  * Creates an instance of the generic message, using the field
  * information.
@@ -3680,13 +3680,13 @@ exports.reflectionCreate = reflectionCreate;
 
 /***/ }),
 
-/***/ 730:
+/***/ 5046:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.reflectionEquals = void 0;
-const reflection_info_1 = __webpack_require__(227);
+const reflection_info_1 = __webpack_require__(3263);
 /**
  * Determines whether two message of the same type have the same field values.
  * Checks for deep equality, traversing repeated fields, oneof groups, maps
@@ -3764,13 +3764,13 @@ function repeatedMsgEq(type, a, b) {
 
 /***/ }),
 
-/***/ 227:
+/***/ 3263:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.readMessageOption = exports.readFieldOption = exports.readFieldOptions = exports.normalizeFieldInfo = exports.RepeatType = exports.LongType = exports.ScalarType = void 0;
-const lower_camel_case_1 = __webpack_require__(9374);
+const lower_camel_case_1 = __webpack_require__(8362);
 /**
  * Scalar value types. This is a subset of field types declared by protobuf
  * enum google.protobuf.FieldDescriptorProto.Type The types GROUP and MESSAGE
@@ -3929,18 +3929,18 @@ exports.readMessageOption = readMessageOption;
 
 /***/ }),
 
-/***/ 5081:
+/***/ 8117:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReflectionJsonReader = void 0;
-const json_typings_1 = __webpack_require__(596);
-const base64_1 = __webpack_require__(812);
-const reflection_info_1 = __webpack_require__(227);
-const pb_long_1 = __webpack_require__(8716);
-const assert_1 = __webpack_require__(8837);
-const reflection_long_convert_1 = __webpack_require__(3499);
+const json_typings_1 = __webpack_require__(8400);
+const base64_1 = __webpack_require__(8000);
+const reflection_info_1 = __webpack_require__(3263);
+const pb_long_1 = __webpack_require__(5176);
+const assert_1 = __webpack_require__(2417);
+const reflection_long_convert_1 = __webpack_require__(9135);
 /**
  * Reads proto3 messages in canonical JSON format using reflection information.
  *
@@ -4253,16 +4253,16 @@ exports.ReflectionJsonReader = ReflectionJsonReader;
 
 /***/ }),
 
-/***/ 2005:
+/***/ 5121:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReflectionJsonWriter = void 0;
-const base64_1 = __webpack_require__(812);
-const pb_long_1 = __webpack_require__(8716);
-const reflection_info_1 = __webpack_require__(227);
-const assert_1 = __webpack_require__(8837);
+const base64_1 = __webpack_require__(8000);
+const pb_long_1 = __webpack_require__(5176);
+const reflection_info_1 = __webpack_require__(3263);
+const assert_1 = __webpack_require__(2417);
 /**
  * Writes proto3 messages in canonical JSON format using reflection
  * information.
@@ -4490,13 +4490,13 @@ exports.ReflectionJsonWriter = ReflectionJsonWriter;
 
 /***/ }),
 
-/***/ 3499:
+/***/ 9135:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.reflectionLongConvert = void 0;
-const reflection_info_1 = __webpack_require__(227);
+const reflection_info_1 = __webpack_require__(3263);
 /**
  * Utility method to convert a PbLong or PbUlong to a JavaScript
  * representation during runtime.
@@ -4521,7 +4521,7 @@ exports.reflectionLongConvert = reflectionLongConvert;
 
 /***/ }),
 
-/***/ 1735:
+/***/ 8651:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -4618,15 +4618,15 @@ exports.reflectionMergePartial = reflectionMergePartial;
 
 /***/ }),
 
-/***/ 659:
+/***/ 711:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.reflectionScalarDefault = void 0;
-const reflection_info_1 = __webpack_require__(227);
-const reflection_long_convert_1 = __webpack_require__(3499);
-const pb_long_1 = __webpack_require__(8716);
+const reflection_info_1 = __webpack_require__(3263);
+const reflection_long_convert_1 = __webpack_require__(9135);
+const pb_long_1 = __webpack_require__(5176);
 /**
  * Creates the default value for a scalar type.
  */
@@ -4662,14 +4662,14 @@ exports.reflectionScalarDefault = reflectionScalarDefault;
 
 /***/ }),
 
-/***/ 2866:
+/***/ 3094:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReflectionTypeCheck = void 0;
-const reflection_info_1 = __webpack_require__(227);
-const oneof_1 = __webpack_require__(374);
+const reflection_info_1 = __webpack_require__(3263);
+const oneof_1 = __webpack_require__(9330);
 // noinspection JSMethodCanBeStatic
 class ReflectionTypeCheck {
     constructor(info) {
@@ -4899,7 +4899,7 @@ exports.ReflectionTypeCheck = ReflectionTypeCheck;
 
 /***/ }),
 
-/***/ 6953:
+/***/ 5565:
 /***/ ((module, exports, __webpack_require__) => {
 
 /**
@@ -4910,7 +4910,7 @@ exports.ReflectionTypeCheck = ReflectionTypeCheck;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 
-var eventTargetShim = __webpack_require__(8409);
+var eventTargetShim = __webpack_require__(4925);
 
 /**
  * The signal class.
@@ -5033,7 +5033,7 @@ module.exports.AbortSignal = AbortSignal
 
 /***/ }),
 
-/***/ 1534:
+/***/ 2610:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5105,7 +5105,7 @@ exports.req = req;
 
 /***/ }),
 
-/***/ 7487:
+/***/ 8227:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5140,7 +5140,7 @@ exports.Agent = void 0;
 const net = __importStar(__webpack_require__(9278));
 const http = __importStar(__webpack_require__(8611));
 const https_1 = __webpack_require__(5692);
-__exportStar(__webpack_require__(1534), exports);
+__exportStar(__webpack_require__(2610), exports);
 const INTERNAL = Symbol('AgentBaseInternalState');
 class Agent extends http.Agent {
     constructor(opts) {
@@ -5289,7 +5289,7 @@ exports.Agent = Agent;
 
 /***/ }),
 
-/***/ 8911:
+/***/ 2323:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -5299,15 +5299,15 @@ exports.Agent = Agent;
  * Licensed under the MIT license.
  * https://github.com/archiverjs/node-archiver/blob/master/LICENSE-MIT
  */
-var fs = __webpack_require__(2889);
+var fs = __webpack_require__(3149);
 var path = __webpack_require__(6928);
 
-var flatten = __webpack_require__(8266);
-var difference = __webpack_require__(2173);
-var union = __webpack_require__(6227);
-var isPlainObject = __webpack_require__(2139);
+var flatten = __webpack_require__(6422);
+var difference = __webpack_require__(745);
+var union = __webpack_require__(1695);
+var isPlainObject = __webpack_require__(1391);
 
-var glob = __webpack_require__(2085);
+var glob = __webpack_require__(3257);
 
 var file = module.exports = {};
 
@@ -5505,7 +5505,7 @@ file.normalizeFilesArray = function(data) {
 
 /***/ }),
 
-/***/ 8501:
+/***/ 3601:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -5515,18 +5515,18 @@ file.normalizeFilesArray = function(data) {
  * Licensed under the MIT license.
  * https://github.com/archiverjs/archiver-utils/blob/master/LICENSE
  */
-var fs = __webpack_require__(2889);
+var fs = __webpack_require__(3149);
 var path = __webpack_require__(6928);
-var isStream = __webpack_require__(9949);
-var lazystream = __webpack_require__(7140);
-var normalizePath = __webpack_require__(5049);
-var defaults = __webpack_require__(2852);
+var isStream = __webpack_require__(2641);
+var lazystream = __webpack_require__(7272);
+var normalizePath = __webpack_require__(8477);
+var defaults = __webpack_require__(9480);
 
-var Stream = (__webpack_require__(4584).Stream);
-var PassThrough = (__webpack_require__(7409).PassThrough);
+var Stream = (__webpack_require__(2203).Stream);
+var PassThrough = (__webpack_require__(9989).PassThrough);
 
 var utils = module.exports = {};
-utils.file = __webpack_require__(8911);
+utils.file = __webpack_require__(2323);
 
 utils.collectStream = function(source, callback) {
   var collection = [];
@@ -5667,7 +5667,7 @@ utils.walkdir = function(dirpath, base, callback) {
 
 /***/ }),
 
-/***/ 2146:
+/***/ 814:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -5677,7 +5677,7 @@ utils.walkdir = function(dirpath, base, callback) {
  * @license [MIT]{@link https://github.com/archiverjs/node-archiver/blob/master/LICENSE}
  * @copyright (c) 2012-2014 Chris Talkington, contributors.
  */
-var Archiver = __webpack_require__(8779);
+var Archiver = __webpack_require__(6711);
 
 var formats = {};
 
@@ -5749,15 +5749,15 @@ vending.isRegisteredFormat = function (format) {
   return false;
 };
 
-vending.registerFormat('zip', __webpack_require__(6446));
-vending.registerFormat('tar', __webpack_require__(6246));
-vending.registerFormat('json', __webpack_require__(8015));
+vending.registerFormat('zip', __webpack_require__(1802));
+vending.registerFormat('tar', __webpack_require__(8970));
+vending.registerFormat('json', __webpack_require__(1875));
 
 module.exports = vending;
 
 /***/ }),
 
-/***/ 8779:
+/***/ 6711:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -5768,14 +5768,14 @@ module.exports = vending;
  * @copyright (c) 2012-2014 Chris Talkington, contributors.
  */
 var fs = __webpack_require__(9896);
-var glob = __webpack_require__(1529);
-var async = __webpack_require__(7828);
+var glob = __webpack_require__(3421);
+var async = __webpack_require__(5616);
 var path = __webpack_require__(6928);
-var util = __webpack_require__(8501);
+var util = __webpack_require__(3601);
 
 var inherits = (__webpack_require__(9023).inherits);
-var ArchiverError = __webpack_require__(5508);
-var Transform = (__webpack_require__(7409).Transform);
+var ArchiverError = __webpack_require__(5768);
+var Transform = (__webpack_require__(9989).Transform);
 
 var win32 = process.platform === 'win32';
 
@@ -6738,7 +6738,7 @@ module.exports = Archiver;
 
 /***/ }),
 
-/***/ 5508:
+/***/ 5768:
 /***/ ((module, exports, __webpack_require__) => {
 
 /**
@@ -6784,7 +6784,7 @@ exports = module.exports = ArchiverError;
 
 /***/ }),
 
-/***/ 8015:
+/***/ 1875:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -6795,10 +6795,10 @@ exports = module.exports = ArchiverError;
  * @copyright (c) 2012-2014 Chris Talkington, contributors.
  */
 var inherits = (__webpack_require__(9023).inherits);
-var Transform = (__webpack_require__(7409).Transform);
+var Transform = (__webpack_require__(9989).Transform);
 
-var crc32 = __webpack_require__(3107);
-var util = __webpack_require__(8501);
+var crc32 = __webpack_require__(1631);
+var util = __webpack_require__(3601);
 
 /**
  * @constructor
@@ -6901,7 +6901,7 @@ module.exports = Json;
 
 /***/ }),
 
-/***/ 6246:
+/***/ 8970:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -6913,8 +6913,8 @@ module.exports = Json;
  */
 var zlib = __webpack_require__(3106);
 
-var engine = __webpack_require__(8391);
-var util = __webpack_require__(8501);
+var engine = __webpack_require__(5083);
+var util = __webpack_require__(3601);
 
 /**
  * @constructor
@@ -7075,7 +7075,7 @@ module.exports = Tar;
 
 /***/ }),
 
-/***/ 6446:
+/***/ 1802:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -7085,8 +7085,8 @@ module.exports = Tar;
  * @license [MIT]{@link https://github.com/archiverjs/node-archiver/blob/master/LICENSE}
  * @copyright (c) 2012-2014 Chris Talkington, contributors.
  */
-var engine = __webpack_require__(649);
-var util = __webpack_require__(8501);
+var engine = __webpack_require__(8037);
+var util = __webpack_require__(3601);
 
 /**
  * @constructor
@@ -7202,7 +7202,7 @@ module.exports = Zip;
 
 /***/ }),
 
-/***/ 7828:
+/***/ 5616:
 /***/ (function(__unused_webpack_module, exports) {
 
 (function (global, factory) {
@@ -13269,7 +13269,7 @@ module.exports = Zip;
 
 /***/ }),
 
-/***/ 3662:
+/***/ 5314:
 /***/ ((module) => {
 
 function isBuffer(value) {
@@ -13464,7 +13464,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 1897:
+/***/ 1085:
 /***/ ((module) => {
 
 
@@ -13533,14 +13533,14 @@ function range(a, b, str) {
 
 /***/ }),
 
-/***/ 6101:
+/***/ 25:
 /***/ ((module, exports, __webpack_require__) => {
 
-var Chainsaw = __webpack_require__(2399);
+var Chainsaw = __webpack_require__(9555);
 var EventEmitter = (__webpack_require__(4434).EventEmitter);
-var Buffers = __webpack_require__(6830);
-var Vars = __webpack_require__(295);
-var Stream = (__webpack_require__(4584).Stream);
+var Buffers = __webpack_require__(2674);
+var Vars = __webpack_require__(8067);
+var Stream = (__webpack_require__(2203).Stream);
 
 exports = module.exports = function (bufOrEm, eventName) {
     if (Buffer.isBuffer(bufOrEm)) {
@@ -13937,7 +13937,7 @@ function words (decode) {
 
 /***/ }),
 
-/***/ 295:
+/***/ 8067:
 /***/ ((module) => {
 
 module.exports = function (store) {
@@ -13972,7 +13972,7 @@ module.exports = function (store) {
 
 /***/ }),
 
-/***/ 2821:
+/***/ 6297:
 /***/ (function(module) {
 
 /**
@@ -15502,10 +15502,10 @@ module.exports = function (store) {
 
 /***/ }),
 
-/***/ 996:
+/***/ 2681:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var balanced = __webpack_require__(1897);
+var balanced = __webpack_require__(1085);
 
 module.exports = expandTop;
 
@@ -15514,6 +15514,20 @@ var escOpen = '\0OPEN'+Math.random()+'\0';
 var escClose = '\0CLOSE'+Math.random()+'\0';
 var escComma = '\0COMMA'+Math.random()+'\0';
 var escPeriod = '\0PERIOD'+Math.random()+'\0';
+
+var EXPANSION_MAX = 100000
+
+// `EXPANSION_MAX` caps the *number* of expansions, but not their length. An
+// input like `'{a,b}'.repeat(1500)` stays under that count - its output is
+// truncated to 100k results - while making every result ~1500 characters
+// long. The result set, and the intermediate arrays built while combining
+// brace sets, then grow large enough to exhaust memory and crash the process
+// (CVE-2026-14257). `EXPANSION_MAX_LENGTH` bounds the total number of
+// characters the accumulator may hold at any point, so memory stays flat no
+// matter how many brace groups are chained. The limit sits well above any
+// realistic expansion (100k results hitting `EXPANSION_MAX` measure ~1M
+// characters) so legitimate input is unaffected.
+var EXPANSION_MAX_LENGTH = 4000000
 
 function numeric(str) {
   return parseInt(str, 10) == str
@@ -15573,7 +15587,8 @@ function expandTop(str, options) {
     return [];
 
   options = options || {};
-  var max = options.max == null ? Infinity : options.max;
+  var max = options.max == null ? EXPANSION_MAX : options.max;
+  var maxLength = options.maxLength == null ? EXPANSION_MAX_LENGTH : options.maxLength;
 
   // I don't know why Bash 4.3 does this, but it does.
   // Anything starting with {} will have the first two bytes preserved
@@ -15585,7 +15600,7 @@ function expandTop(str, options) {
     str = '\\{\\}' + str.substr(2);
   }
 
-  return expand(escapeBraces(str), max, true).map(unescapeBraces);
+  return expand(escapeBraces(str), max, maxLength, true).map(unescapeBraces);
 }
 
 function embrace(str) {
@@ -15602,24 +15617,144 @@ function gte(i, y) {
   return i >= y;
 }
 
-function expand(str, max, isTop) {
-  var expansions = [];
-
-  var m = balanced('{', '}', str);
-  if (!m) return [str];
-
-  // no need to expand pre, since it is guaranteed to be free of brace-sets
-  var pre = m.pre;
-  var post = m.post.length
-    ? expand(m.post, max, false)
-    : [''];
-
-  if (/\$$/.test(m.pre)) {    
-    for (var k = 0; k < post.length && k < max; k++) {
-      var expansion = pre+ '{' + m.body + '}' + post[k];
-      expansions.push(expansion);
+// Build `{ acc[a] + pre + values[v] }` for every combination, capping the
+// number of results at `max` and the total number of characters at `maxLength`.
+// This is the one place output grows, so bounding it here keeps the single
+// accumulator - and therefore memory - flat regardless of how many brace groups
+// are combined (CVE-2026-14257).
+function combine(
+  acc,
+  pre,
+  values,
+  max,
+  maxLength,
+  dropEmpties
+) {
+  var out = []
+  var length = 0
+  for (var a = 0; a < acc.length; a++) {
+    for (var v = 0; v < values.length; v++) {
+      if (out.length >= max) return out
+      var expansion = acc[a] + pre + values[v]
+      // Bash drops empty results at the top level. Skip them before they count
+      // against `max`, so `max` bounds the number of *kept* results.
+      if (dropEmpties && !expansion) continue
+      if (length + expansion.length > maxLength) return out
+      out.push(expansion)
+      length += expansion.length
     }
-  } else {
+  }
+  return out
+}
+
+// The expansion values of a single numeric (`1..5`) or alphabetic (`a..e..2`)
+// sequence body.
+function expandSequence(
+  body,
+  isAlphaSequence,
+  max,
+  maxLength
+) {
+  var n = body.split(/\.\./)
+  var N = []
+  // A sequence body always splits into two or three parts, but the compiler
+  // can't know that.
+  /* c8 ignore start */
+  if (n[0] === undefined || n[1] === undefined) {
+    return N
+  }
+  /* c8 ignore stop */
+  var x = numeric(n[0])
+  var y = numeric(n[1])
+  var width = Math.max(n[0].length, n[1].length)
+  var incr =
+    n.length === 3 && n[2] !== undefined ?
+      Math.max(Math.abs(numeric(n[2])), 1)
+    : 1
+  var test = lte
+  var reverse = y < x
+  if (reverse) {
+    incr *= -1
+    test = gte
+  }
+  var pad = n.some(isPadded)
+
+  var length = 0
+  for (var i = x; test(i, y) && N.length < max; i += incr) {
+    var c
+    if (isAlphaSequence) {
+      c = String.fromCharCode(i)
+      if (c === '\\') {
+        c = ''
+      }
+    } else {
+      c = String(i)
+      if (pad) {
+        var need = width - c.length
+        if (need > 0) {
+          var z = new Array(need + 1).join('0')
+          if (i < 0) {
+            c = '-' + z + c.slice(1)
+          } else {
+            c = z + c
+          }
+        }
+      }
+    }
+    if (length + c.length > maxLength) break
+    N.push(c)
+    length += c.length
+  }
+  return N
+}
+
+function expand(
+  str,
+  max,
+  maxLength,
+  isTop
+) {
+  // Consume the string's top-level brace groups left to right, threading a
+  // running set of combined prefixes (`acc`). Expanding the tail iteratively -
+  // rather than recursing on `m.post` once per group - keeps the native stack
+  // depth constant, so deeply chained input (`'{a,b}'.repeat(3000)`) can no
+  // longer overflow the stack, and leaves a single accumulator whose size
+  // `maxLength` bounds directly (CVE-2026-14257).
+  var acc = ['']
+
+  // Bash drops empty results, but only when the *first* top-level group is a
+  // comma set - a sequence like `{a..\}` may legitimately yield ''. The drop
+  // is on the final strings, so it is applied to whichever `combine` produces
+  // them (the one with no brace set left in the tail).
+  var dropEmpties = false
+  var firstGroup = true
+
+  for (;;) {
+    const m = balanced('{', '}', str)
+
+    // No brace set left: the rest of the string is literal.
+    if (!m) {
+      return combine(acc, str, [''], max, maxLength, dropEmpties)
+    }
+
+    // no need to expand pre, since it is guaranteed to be free of brace-sets
+    const pre = m.pre
+
+    if (/\$$/.test(pre)) {
+      acc = combine(
+        acc,
+        pre + '{' + m.body + '}',
+        [''],
+        max,
+        maxLength,
+        dropEmpties && !m.post.length
+      )
+      firstGroup = false
+      if (!m.post.length) break
+      str = m.post
+      continue
+    }
+
     var isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
     var isAlphaSequence = /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(m.body);
     var isSequence = isNumericSequence || isAlphaSequence;
@@ -15628,93 +15763,91 @@ function expand(str, max, isTop) {
       // {a},b}
       if (m.post.match(/,(?!,).*\}/)) {
         str = m.pre + '{' + m.body + escClose + m.post;
-        return expand(str, max, true);
+        isTop = true;
+        continue;
       }
-      return [str];
+      // Nothing here expands, so the whole remaining string is literal.
+      return combine(
+        acc,
+        pre + '{' + m.body + '}' + m.post,
+        [''],
+        max,
+        maxLength,
+        dropEmpties
+      )
     }
 
-    var n;
+    if (firstGroup) {
+      dropEmpties = isTop && !isSequence
+      firstGroup = false
+    }
+
+    var values;
     if (isSequence) {
-      n = m.body.split(/\.\./);
+      values = expandSequence(m.body, isAlphaSequence, max, maxLength);
     } else {
-      n = parseCommaParts(m.body);
-      if (n.length === 1) {
+      var n = parseCommaParts(m.body);
+      if (n.length === 1 && n[0] !== undefined) {
         // x{{a,b}}y ==> x{a}y x{b}y
-        n = expand(n[0], max, false).map(embrace);
+        n = expand(n[0], max, maxLength, false).map(embrace);
+        //XXX is this necessary? Can't seem to hit it in tests.
+        /* c8 ignore start */
         if (n.length === 1) {
-          return post.map(function(p) {
-            return m.pre + n[0] + p;
-          });
+          acc = combine(
+            acc,
+            pre + n[0],
+            [''],
+            max,
+            maxLength,
+            dropEmpties && !m.post.length
+          )
+          if (!m.post.length) break
+          str = m.post
+          continue
+        }
+        /* c8 ignore stop */
+      }
+
+      // Values that `combine` is going to drop as empty produce no result, so
+      // they must not count against `max` - otherwise `{a,,b}` with `max: 2`
+      // would stop at `['a', '']` and yield one result instead of two. Skipping
+      // them outright keeps `values` bounded while leaving `max` a bound on
+      // *kept* results.
+      var dropsEmpties = dropEmpties && !m.post.length && !pre
+      for (var d = 0; dropsEmpties && d < acc.length; d++) {
+        if (acc[d]) {
+          dropsEmpties = false
         }
       }
-    }
 
-    // at this point, n is the parts, and we know it's not a comma set
-    // with a single entry.
-    var N;
-
-    if (isSequence) {
-      var x = numeric(n[0]);
-      var y = numeric(n[1]);
-      var width = Math.max(n[0].length, n[1].length)
-      var incr = n.length == 3
-        ? Math.max(Math.abs(numeric(n[2])), 1)
-        : 1;
-      var test = lte;
-      var reverse = y < x;
-      if (reverse) {
-        incr *= -1;
-        test = gte;
-      }
-      var pad = n.some(isPadded);
-
-      N = [];
-
-      for (var i = x; test(i, y) && N.length < max; i += incr) {
-        var c;
-        if (isAlphaSequence) {
-          c = String.fromCharCode(i);
-          if (c === '\\')
-            c = '';
-        } else {
-          c = String(i);
-          if (pad) {
-            var need = width - c.length;
-            if (need > 0) {
-              var z = new Array(need + 1).join('0');
-              if (i < 0)
-                c = '-' + z + c.slice(1);
-              else
-                c = z + c;
-            }
+      values = []
+      var valuesLength = 0
+      outer: for (var j = 0; j < n.length; j++) {
+        var expanded = expand(n[j], max, maxLength, false)
+        for (var k = 0; k < expanded.length; k++) {
+          var v = expanded[k]
+          if (dropsEmpties && !v) continue
+          if (values.length >= max || valuesLength + v.length > maxLength) {
+            break outer
           }
+          values.push(v)
+          valuesLength += v.length
         }
-        N.push(c);
-      }
-    } else {
-      N = [];
-
-      for (var j = 0; j < n.length; j++) {
-        N.push.apply(N, expand(n[j], max, false));
       }
     }
 
-    for (var j = 0; j < N.length; j++) {
-      for (var k = 0; k < post.length && expansions.length < max; k++) {
-        var expansion = pre + N[j] + post[k];
-        if (!isTop || isSequence || expansion)
-          expansions.push(expansion);
-      }
-    }
+    acc = combine(acc, pre, values, max, maxLength, dropEmpties && !m.post.length)
+    if (!m.post.length) break
+    str = m.post
   }
 
-  return expansions;
+  return acc
 }
 
 
 /***/ }),
 
-/***/ 6830:
+/***/ 2674:
 /***/ ((module) => {
 
 module.exports = Buffers;
@@ -15990,10 +16123,10 @@ Buffers.prototype.toString = function(encoding, start, end) {
 
 /***/ }),
 
-/***/ 2399:
+/***/ 9555:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Traverse = __webpack_require__(4750);
+var Traverse = __webpack_require__(5372);
 var EventEmitter = (__webpack_require__(4434).EventEmitter);
 
 module.exports = Chainsaw;
@@ -16142,7 +16275,7 @@ function upgradeChainsaw(saw) {
 
 /***/ }),
 
-/***/ 3138:
+/***/ 4385:
 /***/ ((module) => {
 
 /**
@@ -16164,7 +16297,7 @@ ArchiveEntry.prototype.isDirectory = function() {};
 
 /***/ }),
 
-/***/ 8093:
+/***/ 9273:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -16175,11 +16308,11 @@ ArchiveEntry.prototype.isDirectory = function() {};
  * https://github.com/archiverjs/node-compress-commons/blob/master/LICENSE-MIT
  */
 var inherits = (__webpack_require__(9023).inherits);
-var isStream = __webpack_require__(9949);
-var Transform = (__webpack_require__(7409).Transform);
+var isStream = __webpack_require__(2641);
+var Transform = (__webpack_require__(9989).Transform);
 
-var ArchiveEntry = __webpack_require__(3138);
-var util = __webpack_require__(261);
+var ArchiveEntry = __webpack_require__(4385);
+var util = __webpack_require__(2873);
 
 var ArchiveOutputStream = module.exports = function(options) {
   if (!(this instanceof ArchiveOutputStream)) {
@@ -16288,7 +16421,7 @@ ArchiveOutputStream.prototype.write = function(chunk, cb) {
 
 /***/ }),
 
-/***/ 2807:
+/***/ 9683:
 /***/ ((module) => {
 
 /**
@@ -16366,7 +16499,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 8043:
+/***/ 8087:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -16376,7 +16509,7 @@ module.exports = {
  * Licensed under the MIT license.
  * https://github.com/archiverjs/node-compress-commons/blob/master/LICENSE-MIT
  */
-var zipUtil = __webpack_require__(920);
+var zipUtil = __webpack_require__(6604);
 
 var DATA_DESCRIPTOR_FLAG = 1 << 3;
 var ENCRYPTION_FLAG = 1 << 0;
@@ -16473,7 +16606,7 @@ GeneralPurposeBit.prototype.usesUTF8ForNames = function() {
 
 /***/ }),
 
-/***/ 9049:
+/***/ 4261:
 /***/ ((module) => {
 
 /**
@@ -16532,7 +16665,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 920:
+/***/ 6604:
 /***/ ((module) => {
 
 /**
@@ -16612,7 +16745,7 @@ util.toDosTime = function(d) {
 
 /***/ }),
 
-/***/ 9039:
+/***/ 2907:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -16623,14 +16756,14 @@ util.toDosTime = function(d) {
  * https://github.com/archiverjs/node-compress-commons/blob/master/LICENSE-MIT
  */
 var inherits = (__webpack_require__(9023).inherits);
-var normalizePath = __webpack_require__(5049);
+var normalizePath = __webpack_require__(8477);
 
-var ArchiveEntry = __webpack_require__(3138);
-var GeneralPurposeBit = __webpack_require__(8043);
-var UnixStat = __webpack_require__(9049);
+var ArchiveEntry = __webpack_require__(4385);
+var GeneralPurposeBit = __webpack_require__(8087);
+var UnixStat = __webpack_require__(4261);
 
-var constants = __webpack_require__(2807);
-var zipUtil = __webpack_require__(920);
+var constants = __webpack_require__(9683);
+var zipUtil = __webpack_require__(6604);
 
 var ZipArchiveEntry = module.exports = function(name) {
   if (!(this instanceof ZipArchiveEntry)) {
@@ -17032,7 +17165,7 @@ ZipArchiveEntry.prototype.isZip64 = function() {
 
 /***/ }),
 
-/***/ 2035:
+/***/ 6207:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -17043,17 +17176,17 @@ ZipArchiveEntry.prototype.isZip64 = function() {
  * https://github.com/archiverjs/node-compress-commons/blob/master/LICENSE-MIT
  */
 var inherits = (__webpack_require__(9023).inherits);
-var crc32 = __webpack_require__(3912);
-var {CRC32Stream} = __webpack_require__(6866);
-var {DeflateCRC32Stream} = __webpack_require__(6866);
+var crc32 = __webpack_require__(164);
+var {CRC32Stream} = __webpack_require__(3086);
+var {DeflateCRC32Stream} = __webpack_require__(3086);
 
-var ArchiveOutputStream = __webpack_require__(8093);
-var ZipArchiveEntry = __webpack_require__(9039);
-var GeneralPurposeBit = __webpack_require__(8043);
+var ArchiveOutputStream = __webpack_require__(9273);
+var ZipArchiveEntry = __webpack_require__(2907);
+var GeneralPurposeBit = __webpack_require__(8087);
 
-var constants = __webpack_require__(2807);
-var util = __webpack_require__(261);
-var zipUtil = __webpack_require__(920);
+var constants = __webpack_require__(9683);
+var util = __webpack_require__(2873);
+var zipUtil = __webpack_require__(6604);
 
 var ZipArchiveOutputStream = module.exports = function(options) {
   if (!(this instanceof ZipArchiveOutputStream)) {
@@ -17476,7 +17609,7 @@ ZipArchiveOutputStream.prototype.setComment = function(comment) {
 
 /***/ }),
 
-/***/ 1085:
+/***/ 4449:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -17487,15 +17620,15 @@ ZipArchiveOutputStream.prototype.setComment = function(comment) {
  * https://github.com/archiverjs/node-compress-commons/blob/master/LICENSE-MIT
  */
 module.exports = {
-  ArchiveEntry: __webpack_require__(3138),
-  ZipArchiveEntry: __webpack_require__(9039),
-  ArchiveOutputStream: __webpack_require__(8093),
-  ZipArchiveOutputStream: __webpack_require__(2035)
+  ArchiveEntry: __webpack_require__(4385),
+  ZipArchiveEntry: __webpack_require__(2907),
+  ArchiveOutputStream: __webpack_require__(9273),
+  ZipArchiveOutputStream: __webpack_require__(6207)
 };
 
 /***/ }),
 
-/***/ 261:
+/***/ 2873:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -17505,9 +17638,9 @@ module.exports = {
  * Licensed under the MIT license.
  * https://github.com/archiverjs/node-compress-commons/blob/master/LICENSE-MIT
  */
-var Stream = (__webpack_require__(4584).Stream);
-var PassThrough = (__webpack_require__(7409).PassThrough);
-var isStream = __webpack_require__(9949);
+var Stream = (__webpack_require__(2203).Stream);
+var PassThrough = (__webpack_require__(9989).PassThrough);
+var isStream = __webpack_require__(2641);
 
 var util = module.exports = {};
 
@@ -17528,7 +17661,7 @@ util.normalizeInputSource = function(source) {
 
 /***/ }),
 
-/***/ 2708:
+/***/ 5824:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -17642,7 +17775,7 @@ function objectToString(o) {
 
 /***/ }),
 
-/***/ 3912:
+/***/ 164:
 /***/ ((__unused_webpack_module, exports) => {
 
 /*! crc32.js (C) 2014-present SheetJS -- http://sheetjs.com */
@@ -17756,7 +17889,7 @@ CRC32.str = crc32_str;
 
 /***/ }),
 
-/***/ 5134:
+/***/ 2970:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -17769,9 +17902,9 @@ CRC32.str = crc32_str;
 
  
 
-const {Transform} = __webpack_require__(7409);
+const {Transform} = __webpack_require__(9989);
 
-const crc32 = __webpack_require__(3912);
+const crc32 = __webpack_require__(164);
 
 class CRC32Stream extends Transform {
   constructor(options) {
@@ -17811,7 +17944,7 @@ module.exports = CRC32Stream;
 
 /***/ }),
 
-/***/ 8188:
+/***/ 1088:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -17826,7 +17959,7 @@ module.exports = CRC32Stream;
 
 const {DeflateRaw} = __webpack_require__(3106);
 
-const crc32 = __webpack_require__(3912);
+const crc32 = __webpack_require__(164);
 
 class DeflateCRC32Stream extends DeflateRaw {
   constructor(options) {
@@ -17880,7 +18013,7 @@ module.exports = DeflateCRC32Stream;
 
 /***/ }),
 
-/***/ 6866:
+/***/ 3086:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -17894,14 +18027,14 @@ module.exports = DeflateCRC32Stream;
 
 
 module.exports = {
-  CRC32Stream: __webpack_require__(5134),
-  DeflateCRC32Stream: __webpack_require__(8188)
+  CRC32Stream: __webpack_require__(2970),
+  DeflateCRC32Stream: __webpack_require__(1088)
 }
 
 
 /***/ }),
 
-/***/ 6100:
+/***/ 3364:
 /***/ ((module, exports, __webpack_require__) => {
 
 /* eslint-env browser */
@@ -18161,7 +18294,7 @@ function localstorage() {
 	}
 }
 
-module.exports = __webpack_require__(7547)(exports);
+module.exports = __webpack_require__(5515)(exports);
 
 const {formatters} = module.exports;
 
@@ -18180,7 +18313,7 @@ formatters.j = function (v) {
 
 /***/ }),
 
-/***/ 7547:
+/***/ 5515:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
@@ -18196,7 +18329,7 @@ function setup(env) {
 	createDebug.disable = disable;
 	createDebug.enable = enable;
 	createDebug.enabled = enabled;
-	createDebug.humanize = __webpack_require__(3884);
+	createDebug.humanize = __webpack_require__(6112);
 	createDebug.destroy = destroy;
 
 	Object.keys(env).forEach(key => {
@@ -18479,7 +18612,7 @@ module.exports = setup;
 
 /***/ }),
 
-/***/ 5880:
+/***/ 1528:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -18488,15 +18621,15 @@ module.exports = setup;
  */
 
 if (typeof process === 'undefined' || process.type === 'renderer' || process.browser === true || process.__nwjs) {
-	module.exports = __webpack_require__(6100);
+	module.exports = __webpack_require__(3364);
 } else {
-	module.exports = __webpack_require__(8313);
+	module.exports = __webpack_require__(502);
 }
 
 
 /***/ }),
 
-/***/ 8313:
+/***/ 502:
 /***/ ((module, exports, __webpack_require__) => {
 
 /**
@@ -18530,7 +18663,7 @@ exports.colors = [6, 2, 3, 4, 5, 1];
 try {
 	// Optional dependency (as in, doesn't need to be installed, NOT like optionalDependencies in package.json)
 	// eslint-disable-next-line import/no-extraneous-dependencies
-	const supportsColor = __webpack_require__(2172);
+	const supportsColor = __webpack_require__(1187);
 
 	if (supportsColor && (supportsColor.stderr || supportsColor).level >= 2) {
 		exports.colors = [
@@ -18738,7 +18871,7 @@ function init(debug) {
 	}
 }
 
-module.exports = __webpack_require__(7547)(exports);
+module.exports = __webpack_require__(5515)(exports);
 
 const {formatters} = module.exports;
 
@@ -18766,7 +18899,7 @@ formatters.O = function (v) {
 
 /***/ }),
 
-/***/ 8409:
+/***/ 4925:
 /***/ ((module, exports) => {
 
 /**
@@ -19644,7 +19777,7 @@ module.exports.defineEventAttribute = defineEventAttribute
 
 /***/ }),
 
-/***/ 5865:
+/***/ 4789:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 module.exports = __webpack_require__(4434)
@@ -19652,7 +19785,7 @@ module.exports = __webpack_require__(4434)
 
 /***/ }),
 
-/***/ 6992:
+/***/ 9692:
 /***/ ((module) => {
 
 module.exports = class FixedFIFO {
@@ -19698,10 +19831,10 @@ module.exports = class FixedFIFO {
 
 /***/ }),
 
-/***/ 5614:
+/***/ 5250:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const FixedFIFO = __webpack_require__(6992)
+const FixedFIFO = __webpack_require__(9692)
 
 module.exports = class FastFIFO {
   constructor (hwm) {
@@ -19753,7 +19886,7 @@ module.exports = class FastFIFO {
 
 /***/ }),
 
-/***/ 5841:
+/***/ 2717:
 /***/ ((module) => {
 
 
@@ -19783,13 +19916,13 @@ function clone (obj) {
 
 /***/ }),
 
-/***/ 2889:
+/***/ 3149:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 var fs = __webpack_require__(9896)
-var polyfills = __webpack_require__(1984)
-var legacy = __webpack_require__(3437)
-var clone = __webpack_require__(5841)
+var polyfills = __webpack_require__(7252)
+var legacy = __webpack_require__(1497)
+var clone = __webpack_require__(2717)
 
 var util = __webpack_require__(9023)
 
@@ -20238,10 +20371,10 @@ function retry () {
 
 /***/ }),
 
-/***/ 3437:
+/***/ 1497:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Stream = (__webpack_require__(4584).Stream)
+var Stream = (__webpack_require__(2203).Stream)
 
 module.exports = legacy
 
@@ -20363,7 +20496,7 @@ function legacy (fs) {
 
 /***/ }),
 
-/***/ 1984:
+/***/ 7252:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 var constants = __webpack_require__(9140)
@@ -20725,22 +20858,22 @@ function patch (fs) {
 
 /***/ }),
 
-/***/ 3569:
+/***/ 1076:
 /***/ ((module) => {
 
 
-module.exports = (flag, argv) => {
-	argv = argv || process.argv;
+
+module.exports = (flag, argv = process.argv) => {
 	const prefix = flag.startsWith('-') ? '' : (flag.length === 1 ? '-' : '--');
-	const pos = argv.indexOf(prefix + flag);
-	const terminatorPos = argv.indexOf('--');
-	return pos !== -1 && (terminatorPos === -1 ? true : pos < terminatorPos);
+	const position = argv.indexOf(prefix + flag);
+	const terminatorPosition = argv.indexOf('--');
+	return position !== -1 && (terminatorPosition === -1 || position < terminatorPosition);
 };
 
 
 /***/ }),
 
-/***/ 1632:
+/***/ 5336:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -20774,9 +20907,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.HttpProxyAgent = void 0;
 const net = __importStar(__webpack_require__(9278));
 const tls = __importStar(__webpack_require__(4756));
-const debug_1 = __importDefault(__webpack_require__(5880));
+const debug_1 = __importDefault(__webpack_require__(1528));
 const events_1 = __webpack_require__(4434);
-const agent_base_1 = __webpack_require__(7487);
+const agent_base_1 = __webpack_require__(8227);
 const url_1 = __webpack_require__(7016);
 const debug = (0, debug_1.default)('http-proxy-agent');
 /**
@@ -20894,7 +21027,7 @@ function omit(obj, ...keys) {
 
 /***/ }),
 
-/***/ 7350:
+/***/ 4328:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -20929,10 +21062,10 @@ exports.HttpsProxyAgent = void 0;
 const net = __importStar(__webpack_require__(9278));
 const tls = __importStar(__webpack_require__(4756));
 const assert_1 = __importDefault(__webpack_require__(2613));
-const debug_1 = __importDefault(__webpack_require__(5880));
-const agent_base_1 = __webpack_require__(7487);
+const debug_1 = __importDefault(__webpack_require__(1528));
+const agent_base_1 = __webpack_require__(8227);
 const url_1 = __webpack_require__(7016);
-const parse_proxy_response_1 = __webpack_require__(7806);
+const parse_proxy_response_1 = __webpack_require__(4644);
 const debug = (0, debug_1.default)('https-proxy-agent');
 const setServernameFromNonIpHost = (options) => {
     if (options.servername === undefined &&
@@ -21080,7 +21213,7 @@ function omit(obj, ...keys) {
 
 /***/ }),
 
-/***/ 7806:
+/***/ 4644:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -21089,7 +21222,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.parseProxyResponse = void 0;
-const debug_1 = __importDefault(__webpack_require__(5880));
+const debug_1 = __importDefault(__webpack_require__(1528));
 const debug = (0, debug_1.default)('https-proxy-agent:parse-proxy-response');
 function parseProxyResponse(socket) {
     return new Promise((resolve, reject) => {
@@ -21187,7 +21320,7 @@ exports.parseProxyResponse = parseProxyResponse;
 
 /***/ }),
 
-/***/ 1892:
+/***/ 5080:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 try {
@@ -21197,13 +21330,13 @@ try {
   module.exports = util.inherits;
 } catch (e) {
   /* istanbul ignore next */
-  module.exports = __webpack_require__(6287);
+  module.exports = __webpack_require__(7427);
 }
 
 
 /***/ }),
 
-/***/ 6287:
+/***/ 7427:
 /***/ ((module) => {
 
 if (typeof Object.create === 'function') {
@@ -21237,7 +21370,7 @@ if (typeof Object.create === 'function') {
 
 /***/ }),
 
-/***/ 9949:
+/***/ 2641:
 /***/ ((module) => {
 
 
@@ -21272,7 +21405,7 @@ module.exports = isStream;
 
 /***/ }),
 
-/***/ 5231:
+/***/ 3392:
 /***/ ((module) => {
 
 var toString = {}.toString;
@@ -21284,11 +21417,11 @@ module.exports = Array.isArray || function (arr) {
 
 /***/ }),
 
-/***/ 7140:
+/***/ 7272:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 var util = __webpack_require__(9023);
-var PassThrough = __webpack_require__(6697);
+var PassThrough = __webpack_require__(4501);
 
 module.exports = {
   Readable: Readable,
@@ -21345,14 +21478,14 @@ function Writable(fn, options) {
 
 /***/ }),
 
-/***/ 7989:
+/***/ 8713:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var hashClear = __webpack_require__(5112),
-    hashDelete = __webpack_require__(5182),
-    hashGet = __webpack_require__(5881),
-    hashHas = __webpack_require__(1909),
-    hashSet = __webpack_require__(1565);
+var hashClear = __webpack_require__(6308),
+    hashDelete = __webpack_require__(7522),
+    hashGet = __webpack_require__(1597),
+    hashHas = __webpack_require__(7553),
+    hashSet = __webpack_require__(5913);
 
 /**
  * Creates a hash object.
@@ -21384,14 +21517,14 @@ module.exports = Hash;
 
 /***/ }),
 
-/***/ 8839:
+/***/ 5355:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var listCacheClear = __webpack_require__(8526),
-    listCacheDelete = __webpack_require__(7896),
-    listCacheGet = __webpack_require__(8011),
-    listCacheHas = __webpack_require__(103),
-    listCacheSet = __webpack_require__(3679);
+var listCacheClear = __webpack_require__(4314),
+    listCacheDelete = __webpack_require__(3628),
+    listCacheGet = __webpack_require__(767),
+    listCacheHas = __webpack_require__(8464),
+    listCacheSet = __webpack_require__(1451);
 
 /**
  * Creates an list cache object.
@@ -21423,11 +21556,11 @@ module.exports = ListCache;
 
 /***/ }),
 
-/***/ 6823:
+/***/ 2603:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getNative = __webpack_require__(3110),
-    root = __webpack_require__(8469);
+var getNative = __webpack_require__(794),
+    root = __webpack_require__(6177);
 
 /* Built-in method references that are verified to be native. */
 var Map = getNative(root, 'Map');
@@ -21437,14 +21570,14 @@ module.exports = Map;
 
 /***/ }),
 
-/***/ 9941:
+/***/ 3161:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var mapCacheClear = __webpack_require__(7704),
-    mapCacheDelete = __webpack_require__(1118),
-    mapCacheGet = __webpack_require__(2057),
-    mapCacheHas = __webpack_require__(5829),
-    mapCacheSet = __webpack_require__(8349);
+var mapCacheClear = __webpack_require__(9044),
+    mapCacheDelete = __webpack_require__(7922),
+    mapCacheGet = __webpack_require__(9325),
+    mapCacheHas = __webpack_require__(4721),
+    mapCacheSet = __webpack_require__(3033);
 
 /**
  * Creates a map cache object to store key-value pairs.
@@ -21476,11 +21609,11 @@ module.exports = MapCache;
 
 /***/ }),
 
-/***/ 1849:
+/***/ 5845:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getNative = __webpack_require__(3110),
-    root = __webpack_require__(8469);
+var getNative = __webpack_require__(794),
+    root = __webpack_require__(6177);
 
 /* Built-in method references that are verified to be native. */
 var Set = getNative(root, 'Set');
@@ -21490,12 +21623,12 @@ module.exports = Set;
 
 /***/ }),
 
-/***/ 9603:
+/***/ 911:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var MapCache = __webpack_require__(9941),
-    setCacheAdd = __webpack_require__(4476),
-    setCacheHas = __webpack_require__(2475);
+var MapCache = __webpack_require__(3161),
+    setCacheAdd = __webpack_require__(3696),
+    setCacheHas = __webpack_require__(7567);
 
 /**
  *
@@ -21524,10 +21657,10 @@ module.exports = SetCache;
 
 /***/ }),
 
-/***/ 4985:
+/***/ 1525:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var root = __webpack_require__(8469);
+var root = __webpack_require__(6177);
 
 /** Built-in value references. */
 var Symbol = root.Symbol;
@@ -21537,7 +21670,7 @@ module.exports = Symbol;
 
 /***/ }),
 
-/***/ 2065:
+/***/ 4837:
 /***/ ((module) => {
 
 /**
@@ -21565,10 +21698,10 @@ module.exports = apply;
 
 /***/ }),
 
-/***/ 8101:
+/***/ 5561:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseIndexOf = __webpack_require__(8251);
+var baseIndexOf = __webpack_require__(5559);
 
 /**
  * A specialized version of `_.includes` for arrays without support for
@@ -21589,7 +21722,7 @@ module.exports = arrayIncludes;
 
 /***/ }),
 
-/***/ 5465:
+/***/ 9645:
 /***/ ((module) => {
 
 /**
@@ -21618,15 +21751,15 @@ module.exports = arrayIncludesWith;
 
 /***/ }),
 
-/***/ 1695:
+/***/ 1091:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseTimes = __webpack_require__(1752),
-    isArguments = __webpack_require__(9988),
-    isArray = __webpack_require__(3561),
-    isBuffer = __webpack_require__(9936),
-    isIndex = __webpack_require__(1678),
-    isTypedArray = __webpack_require__(2439);
+var baseTimes = __webpack_require__(9988),
+    isArguments = __webpack_require__(2192),
+    isArray = __webpack_require__(7989),
+    isBuffer = __webpack_require__(5476),
+    isIndex = __webpack_require__(7941),
+    isTypedArray = __webpack_require__(9715);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -21674,7 +21807,7 @@ module.exports = arrayLikeKeys;
 
 /***/ }),
 
-/***/ 4332:
+/***/ 632:
 /***/ ((module) => {
 
 /**
@@ -21702,7 +21835,7 @@ module.exports = arrayMap;
 
 /***/ }),
 
-/***/ 3064:
+/***/ 5788:
 /***/ ((module) => {
 
 /**
@@ -21729,10 +21862,10 @@ module.exports = arrayPush;
 
 /***/ }),
 
-/***/ 2625:
+/***/ 7525:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var eq = __webpack_require__(3312);
+var eq = __webpack_require__(2860);
 
 /**
  * Gets the index at which the `key` is found in `array` of key-value pairs.
@@ -21757,15 +21890,15 @@ module.exports = assocIndexOf;
 
 /***/ }),
 
-/***/ 4259:
+/***/ 9687:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var SetCache = __webpack_require__(9603),
-    arrayIncludes = __webpack_require__(8101),
-    arrayIncludesWith = __webpack_require__(5465),
-    arrayMap = __webpack_require__(4332),
-    baseUnary = __webpack_require__(4829),
-    cacheHas = __webpack_require__(4427);
+var SetCache = __webpack_require__(911),
+    arrayIncludes = __webpack_require__(5561),
+    arrayIncludesWith = __webpack_require__(9645),
+    arrayMap = __webpack_require__(632),
+    baseUnary = __webpack_require__(3121),
+    cacheHas = __webpack_require__(647);
 
 /** Used as the size to enable large array optimizations. */
 var LARGE_ARRAY_SIZE = 200;
@@ -21831,7 +21964,7 @@ module.exports = baseDifference;
 
 /***/ }),
 
-/***/ 2883:
+/***/ 9351:
 /***/ ((module) => {
 
 /**
@@ -21862,11 +21995,11 @@ module.exports = baseFindIndex;
 
 /***/ }),
 
-/***/ 1368:
+/***/ 2620:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var arrayPush = __webpack_require__(3064),
-    isFlattenable = __webpack_require__(5627);
+var arrayPush = __webpack_require__(5788),
+    isFlattenable = __webpack_require__(5703);
 
 /**
  * The base implementation of `_.flatten` with support for restricting flattening.
@@ -21907,12 +22040,12 @@ module.exports = baseFlatten;
 
 /***/ }),
 
-/***/ 9056:
+/***/ 8996:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Symbol = __webpack_require__(4985),
-    getRawTag = __webpack_require__(5835),
-    objectToString = __webpack_require__(1342);
+var Symbol = __webpack_require__(1525),
+    getRawTag = __webpack_require__(3303),
+    objectToString = __webpack_require__(8306);
 
 /** `Object#toString` result references. */
 var nullTag = '[object Null]',
@@ -21942,12 +22075,12 @@ module.exports = baseGetTag;
 
 /***/ }),
 
-/***/ 8251:
+/***/ 5559:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseFindIndex = __webpack_require__(2883),
-    baseIsNaN = __webpack_require__(9263),
-    strictIndexOf = __webpack_require__(1111);
+var baseFindIndex = __webpack_require__(9351),
+    baseIsNaN = __webpack_require__(3587),
+    strictIndexOf = __webpack_require__(43);
 
 /**
  * The base implementation of `_.indexOf` without `fromIndex` bounds checks.
@@ -21969,11 +22102,11 @@ module.exports = baseIndexOf;
 
 /***/ }),
 
-/***/ 7062:
+/***/ 4282:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseGetTag = __webpack_require__(9056),
-    isObjectLike = __webpack_require__(8338);
+var baseGetTag = __webpack_require__(8996),
+    isObjectLike = __webpack_require__(7054);
 
 /** `Object#toString` result references. */
 var argsTag = '[object Arguments]';
@@ -21994,7 +22127,7 @@ module.exports = baseIsArguments;
 
 /***/ }),
 
-/***/ 9263:
+/***/ 3587:
 /***/ ((module) => {
 
 /**
@@ -22013,13 +22146,13 @@ module.exports = baseIsNaN;
 
 /***/ }),
 
-/***/ 4883:
+/***/ 4415:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var isFunction = __webpack_require__(7202),
-    isMasked = __webpack_require__(1880),
-    isObject = __webpack_require__(8693),
-    toSource = __webpack_require__(2009);
+var isFunction = __webpack_require__(7446),
+    isMasked = __webpack_require__(9588),
+    isObject = __webpack_require__(8321),
+    toSource = __webpack_require__(4885);
 
 /**
  * Used to match `RegExp`
@@ -22067,12 +22200,12 @@ module.exports = baseIsNative;
 
 /***/ }),
 
-/***/ 8125:
+/***/ 977:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseGetTag = __webpack_require__(9056),
-    isLength = __webpack_require__(7726),
-    isObjectLike = __webpack_require__(8338);
+var baseGetTag = __webpack_require__(8996),
+    isLength = __webpack_require__(970),
+    isObjectLike = __webpack_require__(7054);
 
 /** `Object#toString` result references. */
 var argsTag = '[object Arguments]',
@@ -22134,12 +22267,12 @@ module.exports = baseIsTypedArray;
 
 /***/ }),
 
-/***/ 8175:
+/***/ 3643:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var isObject = __webpack_require__(8693),
-    isPrototype = __webpack_require__(2959),
-    nativeKeysIn = __webpack_require__(5709);
+var isObject = __webpack_require__(8321),
+    isPrototype = __webpack_require__(9075),
+    nativeKeysIn = __webpack_require__(3377);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -22174,12 +22307,12 @@ module.exports = baseKeysIn;
 
 /***/ }),
 
-/***/ 5278:
+/***/ 1994:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var identity = __webpack_require__(4168),
-    overRest = __webpack_require__(5117),
-    setToString = __webpack_require__(265);
+var identity = __webpack_require__(9556),
+    overRest = __webpack_require__(4585),
+    setToString = __webpack_require__(3405);
 
 /**
  * The base implementation of `_.rest` which doesn't validate or coerce arguments.
@@ -22198,12 +22331,12 @@ module.exports = baseRest;
 
 /***/ }),
 
-/***/ 2730:
+/***/ 6022:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var constant = __webpack_require__(7982),
-    defineProperty = __webpack_require__(4131),
-    identity = __webpack_require__(4168);
+var constant = __webpack_require__(5146),
+    defineProperty = __webpack_require__(3255),
+    identity = __webpack_require__(9556);
 
 /**
  * The base implementation of `setToString` without support for hot loop shorting.
@@ -22227,7 +22360,7 @@ module.exports = baseSetToString;
 
 /***/ }),
 
-/***/ 1752:
+/***/ 9988:
 /***/ ((module) => {
 
 /**
@@ -22254,7 +22387,7 @@ module.exports = baseTimes;
 
 /***/ }),
 
-/***/ 4829:
+/***/ 3121:
 /***/ ((module) => {
 
 /**
@@ -22275,15 +22408,15 @@ module.exports = baseUnary;
 
 /***/ }),
 
-/***/ 493:
+/***/ 6329:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var SetCache = __webpack_require__(9603),
-    arrayIncludes = __webpack_require__(8101),
-    arrayIncludesWith = __webpack_require__(5465),
-    cacheHas = __webpack_require__(4427),
-    createSet = __webpack_require__(6221),
-    setToArray = __webpack_require__(8415);
+var SetCache = __webpack_require__(911),
+    arrayIncludes = __webpack_require__(5561),
+    arrayIncludesWith = __webpack_require__(9645),
+    cacheHas = __webpack_require__(647),
+    createSet = __webpack_require__(3681),
+    setToArray = __webpack_require__(8339);
 
 /** Used as the size to enable large array optimizations. */
 var LARGE_ARRAY_SIZE = 200;
@@ -22354,7 +22487,7 @@ module.exports = baseUniq;
 
 /***/ }),
 
-/***/ 4427:
+/***/ 647:
 /***/ ((module) => {
 
 /**
@@ -22374,10 +22507,10 @@ module.exports = cacheHas;
 
 /***/ }),
 
-/***/ 2161:
+/***/ 6645:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var root = __webpack_require__(8469);
+var root = __webpack_require__(6177);
 
 /** Used to detect overreaching core-js shims. */
 var coreJsData = root['__core-js_shared__'];
@@ -22387,12 +22520,12 @@ module.exports = coreJsData;
 
 /***/ }),
 
-/***/ 6221:
+/***/ 3681:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Set = __webpack_require__(1849),
-    noop = __webpack_require__(7190),
-    setToArray = __webpack_require__(8415);
+var Set = __webpack_require__(5845),
+    noop = __webpack_require__(2130),
+    setToArray = __webpack_require__(8339);
 
 /** Used as references for various `Number` constants. */
 var INFINITY = 1 / 0;
@@ -22413,10 +22546,10 @@ module.exports = createSet;
 
 /***/ }),
 
-/***/ 4131:
+/***/ 3255:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getNative = __webpack_require__(3110);
+var getNative = __webpack_require__(794);
 
 var defineProperty = (function() {
   try {
@@ -22431,7 +22564,7 @@ module.exports = defineProperty;
 
 /***/ }),
 
-/***/ 1520:
+/***/ 9516:
 /***/ ((module) => {
 
 /** Detect free variable `global` from Node.js. */
@@ -22442,10 +22575,10 @@ module.exports = freeGlobal;
 
 /***/ }),
 
-/***/ 291:
+/***/ 791:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var isKeyable = __webpack_require__(7506);
+var isKeyable = __webpack_require__(9414);
 
 /**
  * Gets the data for `map`.
@@ -22467,11 +22600,11 @@ module.exports = getMapData;
 
 /***/ }),
 
-/***/ 3110:
+/***/ 794:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseIsNative = __webpack_require__(4883),
-    getValue = __webpack_require__(2352);
+var baseIsNative = __webpack_require__(4415),
+    getValue = __webpack_require__(1372);
 
 /**
  * Gets the native function at `key` of `object`.
@@ -22491,10 +22624,10 @@ module.exports = getNative;
 
 /***/ }),
 
-/***/ 9479:
+/***/ 1435:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var overArg = __webpack_require__(9143);
+var overArg = __webpack_require__(9091);
 
 /** Built-in value references. */
 var getPrototype = overArg(Object.getPrototypeOf, Object);
@@ -22504,10 +22637,10 @@ module.exports = getPrototype;
 
 /***/ }),
 
-/***/ 5835:
+/***/ 3303:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Symbol = __webpack_require__(4985);
+var Symbol = __webpack_require__(1525);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -22557,7 +22690,7 @@ module.exports = getRawTag;
 
 /***/ }),
 
-/***/ 2352:
+/***/ 1372:
 /***/ ((module) => {
 
 /**
@@ -22577,10 +22710,10 @@ module.exports = getValue;
 
 /***/ }),
 
-/***/ 5112:
+/***/ 6308:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var nativeCreate = __webpack_require__(906);
+var nativeCreate = __webpack_require__(1206);
 
 /**
  * Removes all key-value entries from the hash.
@@ -22599,7 +22732,7 @@ module.exports = hashClear;
 
 /***/ }),
 
-/***/ 5182:
+/***/ 7522:
 /***/ ((module) => {
 
 /**
@@ -22623,10 +22756,10 @@ module.exports = hashDelete;
 
 /***/ }),
 
-/***/ 5881:
+/***/ 1597:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var nativeCreate = __webpack_require__(906);
+var nativeCreate = __webpack_require__(1206);
 
 /** Used to stand-in for `undefined` hash values. */
 var HASH_UNDEFINED = '__lodash_hash_undefined__';
@@ -22660,10 +22793,10 @@ module.exports = hashGet;
 
 /***/ }),
 
-/***/ 1909:
+/***/ 7553:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var nativeCreate = __webpack_require__(906);
+var nativeCreate = __webpack_require__(1206);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -22690,10 +22823,10 @@ module.exports = hashHas;
 
 /***/ }),
 
-/***/ 1565:
+/***/ 5913:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var nativeCreate = __webpack_require__(906);
+var nativeCreate = __webpack_require__(1206);
 
 /** Used to stand-in for `undefined` hash values. */
 var HASH_UNDEFINED = '__lodash_hash_undefined__';
@@ -22720,12 +22853,12 @@ module.exports = hashSet;
 
 /***/ }),
 
-/***/ 5627:
+/***/ 5703:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Symbol = __webpack_require__(4985),
-    isArguments = __webpack_require__(9988),
-    isArray = __webpack_require__(3561);
+var Symbol = __webpack_require__(1525),
+    isArguments = __webpack_require__(2192),
+    isArray = __webpack_require__(7989);
 
 /** Built-in value references. */
 var spreadableSymbol = Symbol ? Symbol.isConcatSpreadable : undefined;
@@ -22747,7 +22880,7 @@ module.exports = isFlattenable;
 
 /***/ }),
 
-/***/ 1678:
+/***/ 7941:
 /***/ ((module) => {
 
 /** Used as references for various `Number` constants. */
@@ -22779,13 +22912,13 @@ module.exports = isIndex;
 
 /***/ }),
 
-/***/ 7048:
+/***/ 6532:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var eq = __webpack_require__(3312),
-    isArrayLike = __webpack_require__(3670),
-    isIndex = __webpack_require__(1678),
-    isObject = __webpack_require__(8693);
+var eq = __webpack_require__(2860),
+    isArrayLike = __webpack_require__(9314),
+    isIndex = __webpack_require__(7941),
+    isObject = __webpack_require__(8321);
 
 /**
  * Checks if the given arguments are from an iteratee call.
@@ -22816,7 +22949,7 @@ module.exports = isIterateeCall;
 
 /***/ }),
 
-/***/ 7506:
+/***/ 9414:
 /***/ ((module) => {
 
 /**
@@ -22838,10 +22971,10 @@ module.exports = isKeyable;
 
 /***/ }),
 
-/***/ 1880:
+/***/ 9588:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var coreJsData = __webpack_require__(2161);
+var coreJsData = __webpack_require__(6645);
 
 /** Used to detect methods masquerading as native. */
 var maskSrcKey = (function() {
@@ -22865,7 +22998,7 @@ module.exports = isMasked;
 
 /***/ }),
 
-/***/ 2959:
+/***/ 9075:
 /***/ ((module) => {
 
 /** Used for built-in method references. */
@@ -22890,7 +23023,7 @@ module.exports = isPrototype;
 
 /***/ }),
 
-/***/ 8526:
+/***/ 4314:
 /***/ ((module) => {
 
 /**
@@ -22910,10 +23043,10 @@ module.exports = listCacheClear;
 
 /***/ }),
 
-/***/ 7896:
+/***/ 3628:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var assocIndexOf = __webpack_require__(2625);
+var assocIndexOf = __webpack_require__(7525);
 
 /** Used for built-in method references. */
 var arrayProto = Array.prototype;
@@ -22952,10 +23085,10 @@ module.exports = listCacheDelete;
 
 /***/ }),
 
-/***/ 8011:
+/***/ 767:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var assocIndexOf = __webpack_require__(2625);
+var assocIndexOf = __webpack_require__(7525);
 
 /**
  * Gets the list cache value for `key`.
@@ -22978,10 +23111,10 @@ module.exports = listCacheGet;
 
 /***/ }),
 
-/***/ 103:
+/***/ 8464:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var assocIndexOf = __webpack_require__(2625);
+var assocIndexOf = __webpack_require__(7525);
 
 /**
  * Checks if a list cache value for `key` exists.
@@ -23001,10 +23134,10 @@ module.exports = listCacheHas;
 
 /***/ }),
 
-/***/ 3679:
+/***/ 1451:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var assocIndexOf = __webpack_require__(2625);
+var assocIndexOf = __webpack_require__(7525);
 
 /**
  * Sets the list cache `key` to `value`.
@@ -23034,12 +23167,12 @@ module.exports = listCacheSet;
 
 /***/ }),
 
-/***/ 7704:
+/***/ 9044:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Hash = __webpack_require__(7989),
-    ListCache = __webpack_require__(8839),
-    Map = __webpack_require__(6823);
+var Hash = __webpack_require__(8713),
+    ListCache = __webpack_require__(5355),
+    Map = __webpack_require__(2603);
 
 /**
  * Removes all key-value entries from the map.
@@ -23062,10 +23195,10 @@ module.exports = mapCacheClear;
 
 /***/ }),
 
-/***/ 1118:
+/***/ 7922:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getMapData = __webpack_require__(291);
+var getMapData = __webpack_require__(791);
 
 /**
  * Removes `key` and its value from the map.
@@ -23087,10 +23220,10 @@ module.exports = mapCacheDelete;
 
 /***/ }),
 
-/***/ 2057:
+/***/ 9325:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getMapData = __webpack_require__(291);
+var getMapData = __webpack_require__(791);
 
 /**
  * Gets the map value for `key`.
@@ -23110,10 +23243,10 @@ module.exports = mapCacheGet;
 
 /***/ }),
 
-/***/ 5829:
+/***/ 4721:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getMapData = __webpack_require__(291);
+var getMapData = __webpack_require__(791);
 
 /**
  * Checks if a map value for `key` exists.
@@ -23133,10 +23266,10 @@ module.exports = mapCacheHas;
 
 /***/ }),
 
-/***/ 8349:
+/***/ 3033:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getMapData = __webpack_require__(291);
+var getMapData = __webpack_require__(791);
 
 /**
  * Sets the map `key` to `value`.
@@ -23162,10 +23295,10 @@ module.exports = mapCacheSet;
 
 /***/ }),
 
-/***/ 906:
+/***/ 1206:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var getNative = __webpack_require__(3110);
+var getNative = __webpack_require__(794);
 
 /* Built-in method references that are verified to be native. */
 var nativeCreate = getNative(Object, 'create');
@@ -23175,7 +23308,7 @@ module.exports = nativeCreate;
 
 /***/ }),
 
-/***/ 5709:
+/***/ 3377:
 /***/ ((module) => {
 
 /**
@@ -23202,11 +23335,11 @@ module.exports = nativeKeysIn;
 
 /***/ }),
 
-/***/ 7985:
+/***/ 7533:
 /***/ ((module, exports, __webpack_require__) => {
 
 /* module decorator */ module = __webpack_require__.nmd(module);
-var freeGlobal = __webpack_require__(1520);
+var freeGlobal = __webpack_require__(9516);
 
 /** Detect free variable `exports`. */
 var freeExports =  true && exports && !exports.nodeType && exports;
@@ -23240,7 +23373,7 @@ module.exports = nodeUtil;
 
 /***/ }),
 
-/***/ 1342:
+/***/ 8306:
 /***/ ((module) => {
 
 /** Used for built-in method references. */
@@ -23269,7 +23402,7 @@ module.exports = objectToString;
 
 /***/ }),
 
-/***/ 9143:
+/***/ 9091:
 /***/ ((module) => {
 
 /**
@@ -23291,10 +23424,10 @@ module.exports = overArg;
 
 /***/ }),
 
-/***/ 5117:
+/***/ 4585:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var apply = __webpack_require__(2065);
+var apply = __webpack_require__(4837);
 
 /* Built-in method references for those with the same name as other `lodash` methods. */
 var nativeMax = Math.max;
@@ -23334,10 +23467,10 @@ module.exports = overRest;
 
 /***/ }),
 
-/***/ 8469:
+/***/ 6177:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var freeGlobal = __webpack_require__(1520);
+var freeGlobal = __webpack_require__(9516);
 
 /** Detect free variable `self`. */
 var freeSelf = typeof self == 'object' && self && self.Object === Object && self;
@@ -23350,7 +23483,7 @@ module.exports = root;
 
 /***/ }),
 
-/***/ 4476:
+/***/ 3696:
 /***/ ((module) => {
 
 /** Used to stand-in for `undefined` hash values. */
@@ -23376,7 +23509,7 @@ module.exports = setCacheAdd;
 
 /***/ }),
 
-/***/ 2475:
+/***/ 7567:
 /***/ ((module) => {
 
 /**
@@ -23397,7 +23530,7 @@ module.exports = setCacheHas;
 
 /***/ }),
 
-/***/ 8415:
+/***/ 8339:
 /***/ ((module) => {
 
 /**
@@ -23422,11 +23555,11 @@ module.exports = setToArray;
 
 /***/ }),
 
-/***/ 265:
+/***/ 3405:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseSetToString = __webpack_require__(2730),
-    shortOut = __webpack_require__(8203);
+var baseSetToString = __webpack_require__(6022),
+    shortOut = __webpack_require__(695);
 
 /**
  * Sets the `toString` method of `func` to return `string`.
@@ -23443,7 +23576,7 @@ module.exports = setToString;
 
 /***/ }),
 
-/***/ 8203:
+/***/ 695:
 /***/ ((module) => {
 
 /** Used to detect hot functions by number of calls within a span of milliseconds. */
@@ -23487,7 +23620,7 @@ module.exports = shortOut;
 
 /***/ }),
 
-/***/ 1111:
+/***/ 43:
 /***/ ((module) => {
 
 /**
@@ -23517,7 +23650,7 @@ module.exports = strictIndexOf;
 
 /***/ }),
 
-/***/ 2009:
+/***/ 4885:
 /***/ ((module) => {
 
 /** Used for built-in method references. */
@@ -23550,7 +23683,7 @@ module.exports = toSource;
 
 /***/ }),
 
-/***/ 7982:
+/***/ 5146:
 /***/ ((module) => {
 
 /**
@@ -23583,13 +23716,13 @@ module.exports = constant;
 
 /***/ }),
 
-/***/ 2852:
+/***/ 9480:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseRest = __webpack_require__(5278),
-    eq = __webpack_require__(3312),
-    isIterateeCall = __webpack_require__(7048),
-    keysIn = __webpack_require__(5281);
+var baseRest = __webpack_require__(1994),
+    eq = __webpack_require__(2860),
+    isIterateeCall = __webpack_require__(6532),
+    keysIn = __webpack_require__(3685);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -23654,13 +23787,13 @@ module.exports = defaults;
 
 /***/ }),
 
-/***/ 2173:
+/***/ 745:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseDifference = __webpack_require__(4259),
-    baseFlatten = __webpack_require__(1368),
-    baseRest = __webpack_require__(5278),
-    isArrayLikeObject = __webpack_require__(5525);
+var baseDifference = __webpack_require__(9687),
+    baseFlatten = __webpack_require__(2620),
+    baseRest = __webpack_require__(1994),
+    isArrayLikeObject = __webpack_require__(3545);
 
 /**
  * Creates an array of `array` values not included in the other given arrays
@@ -23694,7 +23827,7 @@ module.exports = difference;
 
 /***/ }),
 
-/***/ 3312:
+/***/ 2860:
 /***/ ((module) => {
 
 /**
@@ -23738,10 +23871,10 @@ module.exports = eq;
 
 /***/ }),
 
-/***/ 8266:
+/***/ 6422:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseFlatten = __webpack_require__(1368);
+var baseFlatten = __webpack_require__(2620);
 
 /**
  * Flattens `array` a single level deep.
@@ -23767,7 +23900,7 @@ module.exports = flatten;
 
 /***/ }),
 
-/***/ 4168:
+/***/ 9556:
 /***/ ((module) => {
 
 /**
@@ -23795,11 +23928,11 @@ module.exports = identity;
 
 /***/ }),
 
-/***/ 9988:
+/***/ 2192:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseIsArguments = __webpack_require__(7062),
-    isObjectLike = __webpack_require__(8338);
+var baseIsArguments = __webpack_require__(4282),
+    isObjectLike = __webpack_require__(7054);
 
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
@@ -23838,7 +23971,7 @@ module.exports = isArguments;
 
 /***/ }),
 
-/***/ 3561:
+/***/ 7989:
 /***/ ((module) => {
 
 /**
@@ -23871,11 +24004,11 @@ module.exports = isArray;
 
 /***/ }),
 
-/***/ 3670:
+/***/ 9314:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var isFunction = __webpack_require__(7202),
-    isLength = __webpack_require__(7726);
+var isFunction = __webpack_require__(7446),
+    isLength = __webpack_require__(970);
 
 /**
  * Checks if `value` is array-like. A value is considered array-like if it's
@@ -23911,11 +24044,11 @@ module.exports = isArrayLike;
 
 /***/ }),
 
-/***/ 5525:
+/***/ 3545:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var isArrayLike = __webpack_require__(3670),
-    isObjectLike = __webpack_require__(8338);
+var isArrayLike = __webpack_require__(9314),
+    isObjectLike = __webpack_require__(7054);
 
 /**
  * This method is like `_.isArrayLike` except that it also checks if `value`
@@ -23951,12 +24084,12 @@ module.exports = isArrayLikeObject;
 
 /***/ }),
 
-/***/ 9936:
+/***/ 5476:
 /***/ ((module, exports, __webpack_require__) => {
 
 /* module decorator */ module = __webpack_require__.nmd(module);
-var root = __webpack_require__(8469),
-    stubFalse = __webpack_require__(6407);
+var root = __webpack_require__(6177),
+    stubFalse = __webpack_require__(8267);
 
 /** Detect free variable `exports`. */
 var freeExports =  true && exports && !exports.nodeType && exports;
@@ -23997,11 +24130,11 @@ module.exports = isBuffer;
 
 /***/ }),
 
-/***/ 7202:
+/***/ 7446:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseGetTag = __webpack_require__(9056),
-    isObject = __webpack_require__(8693);
+var baseGetTag = __webpack_require__(8996),
+    isObject = __webpack_require__(8321);
 
 /** `Object#toString` result references. */
 var asyncTag = '[object AsyncFunction]',
@@ -24041,7 +24174,7 @@ module.exports = isFunction;
 
 /***/ }),
 
-/***/ 7726:
+/***/ 970:
 /***/ ((module) => {
 
 /** Used as references for various `Number` constants. */
@@ -24083,7 +24216,7 @@ module.exports = isLength;
 
 /***/ }),
 
-/***/ 8693:
+/***/ 8321:
 /***/ ((module) => {
 
 /**
@@ -24121,7 +24254,7 @@ module.exports = isObject;
 
 /***/ }),
 
-/***/ 8338:
+/***/ 7054:
 /***/ ((module) => {
 
 /**
@@ -24157,12 +24290,12 @@ module.exports = isObjectLike;
 
 /***/ }),
 
-/***/ 2139:
+/***/ 1391:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseGetTag = __webpack_require__(9056),
-    getPrototype = __webpack_require__(9479),
-    isObjectLike = __webpack_require__(8338);
+var baseGetTag = __webpack_require__(8996),
+    getPrototype = __webpack_require__(1435),
+    isObjectLike = __webpack_require__(7054);
 
 /** `Object#toString` result references. */
 var objectTag = '[object Object]';
@@ -24226,12 +24359,12 @@ module.exports = isPlainObject;
 
 /***/ }),
 
-/***/ 2439:
+/***/ 9715:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseIsTypedArray = __webpack_require__(8125),
-    baseUnary = __webpack_require__(4829),
-    nodeUtil = __webpack_require__(7985);
+var baseIsTypedArray = __webpack_require__(977),
+    baseUnary = __webpack_require__(3121),
+    nodeUtil = __webpack_require__(7533);
 
 /* Node.js helper references. */
 var nodeIsTypedArray = nodeUtil && nodeUtil.isTypedArray;
@@ -24260,12 +24393,12 @@ module.exports = isTypedArray;
 
 /***/ }),
 
-/***/ 5281:
+/***/ 3685:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var arrayLikeKeys = __webpack_require__(1695),
-    baseKeysIn = __webpack_require__(8175),
-    isArrayLike = __webpack_require__(3670);
+var arrayLikeKeys = __webpack_require__(1091),
+    baseKeysIn = __webpack_require__(3643),
+    isArrayLike = __webpack_require__(9314);
 
 /**
  * Creates an array of the own and inherited enumerable property names of `object`.
@@ -24299,7 +24432,7 @@ module.exports = keysIn;
 
 /***/ }),
 
-/***/ 7190:
+/***/ 2130:
 /***/ ((module) => {
 
 /**
@@ -24323,7 +24456,7 @@ module.exports = noop;
 
 /***/ }),
 
-/***/ 6407:
+/***/ 8267:
 /***/ ((module) => {
 
 /**
@@ -24348,13 +24481,13 @@ module.exports = stubFalse;
 
 /***/ }),
 
-/***/ 6227:
+/***/ 1695:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var baseFlatten = __webpack_require__(1368),
-    baseRest = __webpack_require__(5278),
-    baseUniq = __webpack_require__(493),
-    isArrayLikeObject = __webpack_require__(5525);
+var baseFlatten = __webpack_require__(2620),
+    baseRest = __webpack_require__(1994),
+    baseUniq = __webpack_require__(6329),
+    isArrayLikeObject = __webpack_require__(3545);
 
 /**
  * Creates an array of unique values, in order, from all given arrays using
@@ -24381,7 +24514,7 @@ module.exports = union;
 
 /***/ }),
 
-/***/ 6782:
+/***/ 5970:
 /***/ ((module) => {
 
 const isWindows = typeof process === 'object' &&
@@ -24392,7 +24525,7 @@ module.exports = isWindows ? { sep: '\\' } : { sep: '/' }
 
 /***/ }),
 
-/***/ 1061:
+/***/ 2329:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 const minimatch = module.exports = (p, pattern, options = {}) => {
@@ -24408,12 +24541,12 @@ const minimatch = module.exports = (p, pattern, options = {}) => {
 
 module.exports = minimatch
 
-const path = __webpack_require__(6782)
+const path = __webpack_require__(5970)
 minimatch.sep = path.sep
 
 const GLOBSTAR = Symbol('globstar **')
 minimatch.GLOBSTAR = GLOBSTAR
-const expand = __webpack_require__(996)
+const expand = __webpack_require__(2681)
 
 const plTypes = {
   '!': { open: '(?:(?!(?:', close: '))[^/]*?)'},
@@ -25395,7 +25528,7 @@ minimatch.Minimatch = Minimatch
 
 /***/ }),
 
-/***/ 850:
+/***/ 809:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 var path = __webpack_require__(6928);
@@ -25504,7 +25637,7 @@ mkdirP.sync = function sync (p, opts, made) {
 
 /***/ }),
 
-/***/ 3884:
+/***/ 6112:
 /***/ ((module) => {
 
 /**
@@ -25673,7 +25806,7 @@ function plural(ms, msAbs, n, name) {
 
 /***/ }),
 
-/***/ 5049:
+/***/ 8477:
 /***/ ((module) => {
 
 /*!
@@ -25715,7 +25848,7 @@ module.exports = function(path, stripTrailing) {
 
 /***/ }),
 
-/***/ 113:
+/***/ 3349:
 /***/ ((module) => {
 
 
@@ -25767,7 +25900,7 @@ function nextTick(fn, arg1, arg2, arg3) {
 
 /***/ }),
 
-/***/ 3411:
+/***/ 7351:
 /***/ ((module) => {
 
 // for now just expose the builtin process global from node.js
@@ -25776,7 +25909,7 @@ module.exports = global.process;
 
 /***/ }),
 
-/***/ 1423:
+/***/ 9291:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -25809,7 +25942,7 @@ module.exports = global.process;
 
 /*<replacement>*/
 
-var pna = __webpack_require__(113);
+var pna = __webpack_require__(3349);
 /*</replacement>*/
 
 /*<replacement>*/
@@ -25824,12 +25957,12 @@ var objectKeys = Object.keys || function (obj) {
 module.exports = Duplex;
 
 /*<replacement>*/
-var util = Object.create(__webpack_require__(2708));
-util.inherits = __webpack_require__(1892);
+var util = Object.create(__webpack_require__(5824));
+util.inherits = __webpack_require__(5080);
 /*</replacement>*/
 
-var Readable = __webpack_require__(2445);
-var Writable = __webpack_require__(7821);
+var Readable = __webpack_require__(617);
+var Writable = __webpack_require__(4969);
 
 util.inherits(Duplex, Readable);
 
@@ -25913,7 +26046,7 @@ Duplex.prototype._destroy = function (err, cb) {
 
 /***/ }),
 
-/***/ 8291:
+/***/ 5367:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -25945,11 +26078,11 @@ Duplex.prototype._destroy = function (err, cb) {
 
 module.exports = PassThrough;
 
-var Transform = __webpack_require__(5745);
+var Transform = __webpack_require__(9709);
 
 /*<replacement>*/
-var util = Object.create(__webpack_require__(2708));
-util.inherits = __webpack_require__(1892);
+var util = Object.create(__webpack_require__(5824));
+util.inherits = __webpack_require__(5080);
 /*</replacement>*/
 
 util.inherits(PassThrough, Transform);
@@ -25966,7 +26099,7 @@ PassThrough.prototype._transform = function (chunk, encoding, cb) {
 
 /***/ }),
 
-/***/ 2445:
+/***/ 617:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -25994,13 +26127,13 @@ PassThrough.prototype._transform = function (chunk, encoding, cb) {
 
 /*<replacement>*/
 
-var pna = __webpack_require__(113);
+var pna = __webpack_require__(3349);
 /*</replacement>*/
 
 module.exports = Readable;
 
 /*<replacement>*/
-var isArray = __webpack_require__(5231);
+var isArray = __webpack_require__(3392);
 /*</replacement>*/
 
 /*<replacement>*/
@@ -26018,12 +26151,12 @@ var EElistenerCount = function (emitter, type) {
 /*</replacement>*/
 
 /*<replacement>*/
-var Stream = __webpack_require__(67);
+var Stream = __webpack_require__(3911);
 /*</replacement>*/
 
 /*<replacement>*/
 
-var Buffer = (__webpack_require__(3202).Buffer);
+var Buffer = (__webpack_require__(2510).Buffer);
 var OurUint8Array = (typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).Uint8Array || function () {};
 function _uint8ArrayToBuffer(chunk) {
   return Buffer.from(chunk);
@@ -26035,8 +26168,8 @@ function _isUint8Array(obj) {
 /*</replacement>*/
 
 /*<replacement>*/
-var util = Object.create(__webpack_require__(2708));
-util.inherits = __webpack_require__(1892);
+var util = Object.create(__webpack_require__(5824));
+util.inherits = __webpack_require__(5080);
 /*</replacement>*/
 
 /*<replacement>*/
@@ -26049,8 +26182,8 @@ if (debugUtil && debugUtil.debuglog) {
 }
 /*</replacement>*/
 
-var BufferList = __webpack_require__(4261);
-var destroyImpl = __webpack_require__(1009);
+var BufferList = __webpack_require__(449);
+var destroyImpl = __webpack_require__(9477);
 var StringDecoder;
 
 util.inherits(Readable, Stream);
@@ -26070,7 +26203,7 @@ function prependListener(emitter, event, fn) {
 }
 
 function ReadableState(options, stream) {
-  Duplex = Duplex || __webpack_require__(1423);
+  Duplex = Duplex || __webpack_require__(9291);
 
   options = options || {};
 
@@ -26140,14 +26273,14 @@ function ReadableState(options, stream) {
   this.decoder = null;
   this.encoding = null;
   if (options.encoding) {
-    if (!StringDecoder) StringDecoder = (__webpack_require__(2909)/* .StringDecoder */ .I);
+    if (!StringDecoder) StringDecoder = (__webpack_require__(6009)/* .StringDecoder */ .I);
     this.decoder = new StringDecoder(options.encoding);
     this.encoding = options.encoding;
   }
 }
 
 function Readable(options) {
-  Duplex = Duplex || __webpack_require__(1423);
+  Duplex = Duplex || __webpack_require__(9291);
 
   if (!(this instanceof Readable)) return new Readable(options);
 
@@ -26296,7 +26429,7 @@ Readable.prototype.isPaused = function () {
 
 // backwards compatibility.
 Readable.prototype.setEncoding = function (enc) {
-  if (!StringDecoder) StringDecoder = (__webpack_require__(2909)/* .StringDecoder */ .I);
+  if (!StringDecoder) StringDecoder = (__webpack_require__(6009)/* .StringDecoder */ .I);
   this._readableState.decoder = new StringDecoder(enc);
   this._readableState.encoding = enc;
   return this;
@@ -26991,7 +27124,7 @@ function indexOf(xs, x) {
 
 /***/ }),
 
-/***/ 5745:
+/***/ 9709:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -27061,11 +27194,11 @@ function indexOf(xs, x) {
 
 module.exports = Transform;
 
-var Duplex = __webpack_require__(1423);
+var Duplex = __webpack_require__(9291);
 
 /*<replacement>*/
-var util = Object.create(__webpack_require__(2708));
-util.inherits = __webpack_require__(1892);
+var util = Object.create(__webpack_require__(5824));
+util.inherits = __webpack_require__(5080);
 /*</replacement>*/
 
 util.inherits(Transform, Duplex);
@@ -27211,7 +27344,7 @@ function done(stream, er, data) {
 
 /***/ }),
 
-/***/ 7821:
+/***/ 4969:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -27243,7 +27376,7 @@ function done(stream, er, data) {
 
 /*<replacement>*/
 
-var pna = __webpack_require__(113);
+var pna = __webpack_require__(3349);
 /*</replacement>*/
 
 module.exports = Writable;
@@ -27280,23 +27413,23 @@ var Duplex;
 Writable.WritableState = WritableState;
 
 /*<replacement>*/
-var util = Object.create(__webpack_require__(2708));
-util.inherits = __webpack_require__(1892);
+var util = Object.create(__webpack_require__(5824));
+util.inherits = __webpack_require__(5080);
 /*</replacement>*/
 
 /*<replacement>*/
 var internalUtil = {
-  deprecate: __webpack_require__(9597)
+  deprecate: __webpack_require__(5569)
 };
 /*</replacement>*/
 
 /*<replacement>*/
-var Stream = __webpack_require__(67);
+var Stream = __webpack_require__(3911);
 /*</replacement>*/
 
 /*<replacement>*/
 
-var Buffer = (__webpack_require__(3202).Buffer);
+var Buffer = (__webpack_require__(2510).Buffer);
 var OurUint8Array = (typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : typeof self !== 'undefined' ? self : {}).Uint8Array || function () {};
 function _uint8ArrayToBuffer(chunk) {
   return Buffer.from(chunk);
@@ -27307,14 +27440,14 @@ function _isUint8Array(obj) {
 
 /*</replacement>*/
 
-var destroyImpl = __webpack_require__(1009);
+var destroyImpl = __webpack_require__(9477);
 
 util.inherits(Writable, Stream);
 
 function nop() {}
 
 function WritableState(options, stream) {
-  Duplex = Duplex || __webpack_require__(1423);
+  Duplex = Duplex || __webpack_require__(9291);
 
   options = options || {};
 
@@ -27464,7 +27597,7 @@ if (typeof Symbol === 'function' && Symbol.hasInstance && typeof Function.protot
 }
 
 function Writable(options) {
-  Duplex = Duplex || __webpack_require__(1423);
+  Duplex = Duplex || __webpack_require__(9291);
 
   // Writable ctor is applied to Duplexes, too.
   // `realHasInstance` is necessary because using plain `instanceof`
@@ -27902,14 +28035,14 @@ Writable.prototype._destroy = function (err, cb) {
 
 /***/ }),
 
-/***/ 4261:
+/***/ 449:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var Buffer = (__webpack_require__(3202).Buffer);
+var Buffer = (__webpack_require__(2510).Buffer);
 var util = __webpack_require__(9023);
 
 function copyBuffer(src, target, offset) {
@@ -27986,14 +28119,14 @@ if (util && util.inspect && util.inspect.custom) {
 
 /***/ }),
 
-/***/ 1009:
+/***/ 9477:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
 /*<replacement>*/
 
-var pna = __webpack_require__(113);
+var pna = __webpack_require__(3349);
 /*</replacement>*/
 
 // undocumented cb() API, needed for core, not for public API
@@ -28076,26 +28209,26 @@ module.exports = {
 
 /***/ }),
 
-/***/ 67:
+/***/ 3911:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-module.exports = __webpack_require__(4584);
+module.exports = __webpack_require__(2203);
 
 
 /***/ }),
 
-/***/ 6697:
+/***/ 4501:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-module.exports = __webpack_require__(8867).PassThrough
+module.exports = __webpack_require__(2119).PassThrough
 
 
 /***/ }),
 
-/***/ 8867:
+/***/ 2119:
 /***/ ((module, exports, __webpack_require__) => {
 
-var Stream = __webpack_require__(4584);
+var Stream = __webpack_require__(2203);
 if (process.env.READABLE_STREAM === 'disable' && Stream) {
   module.exports = Stream;
   exports = module.exports = Stream.Readable;
@@ -28106,27 +28239,27 @@ if (process.env.READABLE_STREAM === 'disable' && Stream) {
   exports.PassThrough = Stream.PassThrough;
   exports.Stream = Stream;
 } else {
-  exports = module.exports = __webpack_require__(2445);
+  exports = module.exports = __webpack_require__(617);
   exports.Stream = Stream || exports;
   exports.Readable = exports;
-  exports.Writable = __webpack_require__(7821);
-  exports.Duplex = __webpack_require__(1423);
-  exports.Transform = __webpack_require__(5745);
-  exports.PassThrough = __webpack_require__(8291);
+  exports.Writable = __webpack_require__(4969);
+  exports.Duplex = __webpack_require__(9291);
+  exports.Transform = __webpack_require__(9709);
+  exports.PassThrough = __webpack_require__(5367);
 }
 
 
 /***/ }),
 
-/***/ 3010:
+/***/ 1750:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { SymbolDispose } = __webpack_require__(521)
-const { AbortError, codes } = __webpack_require__(7046)
-const { isNodeStream, isWebStream, kControllerErrorFunction } = __webpack_require__(3504)
-const eos = __webpack_require__(1757)
+const { SymbolDispose } = __webpack_require__(3173)
+const { AbortError, codes } = __webpack_require__(6858)
+const { isNodeStream, isWebStream, kControllerErrorFunction } = __webpack_require__(2476)
+const eos = __webpack_require__(2913)
 const { ERR_INVALID_ARG_TYPE } = codes
 let addAbortListener
 
@@ -28167,7 +28300,7 @@ module.exports.addAbortSignalNoValidate = function (signal, stream) {
   if (signal.aborted) {
     onAbort()
   } else {
-    addAbortListener = addAbortListener || (__webpack_require__(3993).addAbortListener)
+    addAbortListener = addAbortListener || (__webpack_require__(3733).addAbortListener)
     const disposable = addAbortListener(signal, onAbort)
     eos(stream, disposable[SymbolDispose])
   }
@@ -28177,14 +28310,14 @@ module.exports.addAbortSignalNoValidate = function (signal, stream) {
 
 /***/ }),
 
-/***/ 9882:
+/***/ 422:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { StringPrototypeSlice, SymbolIterator, TypedArrayPrototypeSet, Uint8Array } = __webpack_require__(521)
+const { StringPrototypeSlice, SymbolIterator, TypedArrayPrototypeSet, Uint8Array } = __webpack_require__(3173)
 const { Buffer } = __webpack_require__(181)
-const { inspect } = __webpack_require__(3993)
+const { inspect } = __webpack_require__(3733)
 module.exports = class BufferList {
   constructor() {
     this.head = null
@@ -28341,14 +28474,14 @@ module.exports = class BufferList {
 
 /***/ }),
 
-/***/ 7041:
+/***/ 8885:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { pipeline } = __webpack_require__(5943)
-const Duplex = __webpack_require__(991)
-const { destroyer } = __webpack_require__(887)
+const { pipeline } = __webpack_require__(7891)
+const Duplex = __webpack_require__(2427)
+const { destroyer } = __webpack_require__(9963)
 const {
   isNodeStream,
   isReadable,
@@ -28357,12 +28490,12 @@ const {
   isTransformStream,
   isWritableStream,
   isReadableStream
-} = __webpack_require__(3504)
+} = __webpack_require__(2476)
 const {
   AbortError,
   codes: { ERR_INVALID_ARG_VALUE, ERR_MISSING_ARGS }
-} = __webpack_require__(7046)
-const eos = __webpack_require__(1757)
+} = __webpack_require__(6858)
+const eos = __webpack_require__(2913)
 module.exports = function compose(...streams) {
   if (streams.length === 0) {
     throw new ERR_MISSING_ARGS('streams')
@@ -28542,14 +28675,14 @@ module.exports = function compose(...streams) {
 
 /***/ }),
 
-/***/ 887:
+/***/ 9963:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 
@@ -28557,9 +28690,9 @@ const {
   aggregateTwoErrors,
   codes: { ERR_MULTIPLE_CALLBACK },
   AbortError
-} = __webpack_require__(7046)
-const { Symbol } = __webpack_require__(521)
-const { kIsDestroyed, isDestroyed, isFinished, isServerRequest } = __webpack_require__(3504)
+} = __webpack_require__(6858)
+const { Symbol } = __webpack_require__(3173)
+const { kIsDestroyed, isDestroyed, isFinished, isServerRequest } = __webpack_require__(2476)
 const kDestroy = Symbol('kDestroy')
 const kConstruct = Symbol('kConstruct')
 function checkError(err, w, r) {
@@ -28839,7 +28972,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 991:
+/***/ 2427:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -28875,10 +29008,10 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectKeys,
   ObjectSetPrototypeOf
-} = __webpack_require__(521)
+} = __webpack_require__(3173)
 module.exports = Duplex
-const Readable = __webpack_require__(781)
-const Writable = __webpack_require__(2685)
+const Readable = __webpack_require__(6153)
+const Writable = __webpack_require__(8505)
 ObjectSetPrototypeOf(Duplex.prototype, Readable.prototype)
 ObjectSetPrototypeOf(Duplex, Readable)
 {
@@ -28981,7 +29114,7 @@ Duplex.toWeb = function (duplex) {
 let duplexify
 Duplex.from = function (body) {
   if (!duplexify) {
-    duplexify = __webpack_require__(7309)
+    duplexify = __webpack_require__(7177)
   }
   return duplexify(body, 'body')
 }
@@ -28989,12 +29122,12 @@ Duplex.from = function (body) {
 
 /***/ }),
 
-/***/ 7309:
+/***/ 7177:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 
@@ -29010,18 +29143,18 @@ const {
   isDuplexNodeStream,
   isReadableStream,
   isWritableStream
-} = __webpack_require__(3504)
-const eos = __webpack_require__(1757)
+} = __webpack_require__(2476)
+const eos = __webpack_require__(2913)
 const {
   AbortError,
   codes: { ERR_INVALID_ARG_TYPE, ERR_INVALID_RETURN_VALUE }
-} = __webpack_require__(7046)
-const { destroyer } = __webpack_require__(887)
-const Duplex = __webpack_require__(991)
-const Readable = __webpack_require__(781)
-const Writable = __webpack_require__(2685)
-const { createDeferredPromise } = __webpack_require__(3993)
-const from = __webpack_require__(3109)
+} = __webpack_require__(6858)
+const { destroyer } = __webpack_require__(9963)
+const Duplex = __webpack_require__(2427)
+const Readable = __webpack_require__(6153)
+const Writable = __webpack_require__(8505)
+const { createDeferredPromise } = __webpack_require__(3733)
+const from = __webpack_require__(2425)
 const Blob = globalThis.Blob || bufferModule.Blob
 const isBlob =
   typeof Blob !== 'undefined'
@@ -29031,8 +29164,8 @@ const isBlob =
     : function isBlob(b) {
         return false
       }
-const AbortController = globalThis.AbortController || (__webpack_require__(6953).AbortController)
-const { FunctionPrototypeCall } = __webpack_require__(521)
+const AbortController = globalThis.AbortController || (__webpack_require__(5565).AbortController)
+const { FunctionPrototypeCall } = __webpack_require__(3173)
 
 // This is needed for pre node 17.
 class Duplexify extends Duplex {
@@ -29374,7 +29507,7 @@ function _duplexify(pair) {
 
 /***/ }),
 
-/***/ 1757:
+/***/ 2913:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Ported from https://github.com/mafintosh/end-of-stream with
@@ -29384,15 +29517,15 @@ function _duplexify(pair) {
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 
-const { AbortError, codes } = __webpack_require__(7046)
+const { AbortError, codes } = __webpack_require__(6858)
 const { ERR_INVALID_ARG_TYPE, ERR_STREAM_PREMATURE_CLOSE } = codes
-const { kEmptyObject, once } = __webpack_require__(3993)
-const { validateAbortSignal, validateFunction, validateObject, validateBoolean } = __webpack_require__(7592)
-const { Promise, PromisePrototypeThen, SymbolDispose } = __webpack_require__(521)
+const { kEmptyObject, once } = __webpack_require__(3733)
+const { validateAbortSignal, validateFunction, validateObject, validateBoolean } = __webpack_require__(2300)
+const { Promise, PromisePrototypeThen, SymbolDispose } = __webpack_require__(3173)
 const {
   isClosed,
   isReadable,
@@ -29408,7 +29541,7 @@ const {
   isNodeStream,
   willEmitClose: _willEmitClose,
   kIsClosedPromise
-} = __webpack_require__(3504)
+} = __webpack_require__(2476)
 let addAbortListener
 function isRequest(stream) {
   return stream.setHeader && typeof stream.abort === 'function'
@@ -29594,7 +29727,7 @@ function eos(stream, options, callback) {
     if (options.signal.aborted) {
       process.nextTick(abort)
     } else {
-      addAbortListener = addAbortListener || (__webpack_require__(3993).addAbortListener)
+      addAbortListener = addAbortListener || (__webpack_require__(3733).addAbortListener)
       const disposable = addAbortListener(options.signal, abort)
       const originalCallback = callback
       callback = once((...args) => {
@@ -29621,7 +29754,7 @@ function eosWeb(stream, options, callback) {
     if (options.signal.aborted) {
       process.nextTick(abort)
     } else {
-      addAbortListener = addAbortListener || (__webpack_require__(3993).addAbortListener)
+      addAbortListener = addAbortListener || (__webpack_require__(3733).addAbortListener)
       const disposable = addAbortListener(options.signal, abort)
       const originalCallback = callback
       callback = once((...args) => {
@@ -29667,20 +29800,20 @@ module.exports.finished = finished
 
 /***/ }),
 
-/***/ 3109:
+/***/ 2425:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 
-const { PromisePrototypeThen, SymbolAsyncIterator, SymbolIterator } = __webpack_require__(521)
+const { PromisePrototypeThen, SymbolAsyncIterator, SymbolIterator } = __webpack_require__(3173)
 const { Buffer } = __webpack_require__(181)
-const { ERR_INVALID_ARG_TYPE, ERR_STREAM_NULL_VALUES } = (__webpack_require__(7046).codes)
+const { ERR_INVALID_ARG_TYPE, ERR_STREAM_NULL_VALUES } = (__webpack_require__(6858).codes)
 function from(Readable, iterable, opts) {
   let iterator
   if (typeof iterable === 'string' || iterable instanceof Buffer) {
@@ -29772,12 +29905,12 @@ module.exports = from
 
 /***/ }),
 
-/***/ 7078:
+/***/ 7274:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { ArrayIsArray, ObjectSetPrototypeOf } = __webpack_require__(521)
+const { ArrayIsArray, ObjectSetPrototypeOf } = __webpack_require__(3173)
 const { EventEmitter: EE } = __webpack_require__(4434)
 function Stream(opts) {
   EE.call(this, opts)
@@ -29868,24 +30001,24 @@ module.exports = {
 
 /***/ }),
 
-/***/ 1148:
+/***/ 4544:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const AbortController = globalThis.AbortController || (__webpack_require__(6953).AbortController)
+const AbortController = globalThis.AbortController || (__webpack_require__(5565).AbortController)
 const {
   codes: { ERR_INVALID_ARG_VALUE, ERR_INVALID_ARG_TYPE, ERR_MISSING_ARGS, ERR_OUT_OF_RANGE },
   AbortError
-} = __webpack_require__(7046)
-const { validateAbortSignal, validateInteger, validateObject } = __webpack_require__(7592)
-const kWeakHandler = (__webpack_require__(521).Symbol)('kWeak')
-const kResistStopPropagation = (__webpack_require__(521).Symbol)('kResistStopPropagation')
-const { finished } = __webpack_require__(1757)
-const staticCompose = __webpack_require__(7041)
-const { addAbortSignalNoValidate } = __webpack_require__(3010)
-const { isWritable, isNodeStream } = __webpack_require__(3504)
-const { deprecate } = __webpack_require__(3993)
+} = __webpack_require__(6858)
+const { validateAbortSignal, validateInteger, validateObject } = __webpack_require__(2300)
+const kWeakHandler = (__webpack_require__(3173).Symbol)('kWeak')
+const kResistStopPropagation = (__webpack_require__(3173).Symbol)('kResistStopPropagation')
+const { finished } = __webpack_require__(2913)
+const staticCompose = __webpack_require__(8885)
+const { addAbortSignalNoValidate } = __webpack_require__(1750)
+const { isWritable, isNodeStream } = __webpack_require__(2476)
+const { deprecate } = __webpack_require__(3733)
 const {
   ArrayPrototypePush,
   Boolean,
@@ -29897,7 +30030,7 @@ const {
   PromiseResolve,
   PromisePrototypeThen,
   Symbol
-} = __webpack_require__(521)
+} = __webpack_require__(3173)
 const kEmpty = Symbol('kEmpty')
 const kEof = Symbol('kEof')
 function compose(stream, options) {
@@ -29939,7 +30072,7 @@ function map(fn, options) {
   validateInteger(highWaterMark, 'options.highWaterMark', 0)
   highWaterMark += concurrency
   return async function* map() {
-    const signal = (__webpack_require__(3993).AbortSignalAny)(
+    const signal = (__webpack_require__(3733).AbortSignalAny)(
       [options === null || options === undefined ? undefined : options.signal].filter(Boolean)
     )
     const stream = this
@@ -30332,7 +30465,7 @@ module.exports.promiseReturningOperators = {
 
 /***/ }),
 
-/***/ 8883:
+/***/ 3991:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -30362,9 +30495,9 @@ module.exports.promiseReturningOperators = {
 
 
 
-const { ObjectSetPrototypeOf } = __webpack_require__(521)
+const { ObjectSetPrototypeOf } = __webpack_require__(3173)
 module.exports = PassThrough
-const Transform = __webpack_require__(7009)
+const Transform = __webpack_require__(6589)
 ObjectSetPrototypeOf(PassThrough.prototype, Transform.prototype)
 ObjectSetPrototypeOf(PassThrough, Transform)
 function PassThrough(options) {
@@ -30378,23 +30511,23 @@ PassThrough.prototype._transform = function (chunk, encoding, cb) {
 
 /***/ }),
 
-/***/ 5943:
+/***/ 7891:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 // Ported from https://github.com/mafintosh/pump with
 // permission from the author, Mathias Buus (@mafintosh).
 
 ;('use strict')
-const { ArrayIsArray, Promise, SymbolAsyncIterator, SymbolDispose } = __webpack_require__(521)
-const eos = __webpack_require__(1757)
-const { once } = __webpack_require__(3993)
-const destroyImpl = __webpack_require__(887)
-const Duplex = __webpack_require__(991)
+const { ArrayIsArray, Promise, SymbolAsyncIterator, SymbolDispose } = __webpack_require__(3173)
+const eos = __webpack_require__(2913)
+const { once } = __webpack_require__(3733)
+const destroyImpl = __webpack_require__(9963)
+const Duplex = __webpack_require__(2427)
 const {
   aggregateTwoErrors,
   codes: {
@@ -30405,8 +30538,8 @@ const {
     ERR_STREAM_PREMATURE_CLOSE
   },
   AbortError
-} = __webpack_require__(7046)
-const { validateFunction, validateAbortSignal } = __webpack_require__(7592)
+} = __webpack_require__(6858)
+const { validateFunction, validateAbortSignal } = __webpack_require__(2300)
 const {
   isIterable,
   isReadable,
@@ -30416,8 +30549,8 @@ const {
   isWebStream,
   isReadableStream,
   isReadableFinished
-} = __webpack_require__(3504)
-const AbortController = globalThis.AbortController || (__webpack_require__(6953).AbortController)
+} = __webpack_require__(2476)
+const AbortController = globalThis.AbortController || (__webpack_require__(5565).AbortController)
 let PassThrough
 let Readable
 let addAbortListener
@@ -30463,7 +30596,7 @@ function makeAsyncIterable(val) {
 }
 async function* fromReadable(val) {
   if (!Readable) {
-    Readable = __webpack_require__(781)
+    Readable = __webpack_require__(6153)
   }
   yield* Readable.prototype[SymbolAsyncIterator].call(val)
 }
@@ -30569,7 +30702,7 @@ function pipelineImpl(streams, callback, opts) {
   function abort() {
     finishImpl(new AbortError())
   }
-  addAbortListener = addAbortListener || (__webpack_require__(3993).addAbortListener)
+  addAbortListener = addAbortListener || (__webpack_require__(3733).addAbortListener)
   let disposable
   if (outerSignal) {
     disposable = addAbortListener(outerSignal, abort)
@@ -30660,7 +30793,7 @@ function pipelineImpl(streams, callback, opts) {
       } else {
         var _ret2
         if (!PassThrough) {
-          PassThrough = __webpack_require__(8883)
+          PassThrough = __webpack_require__(3991)
         }
 
         // If the last argument to pipeline is not a stream
@@ -30856,7 +30989,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 781:
+/***/ 6153:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -30884,7 +31017,7 @@ module.exports = {
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 
@@ -30901,20 +31034,20 @@ const {
   SymbolAsyncDispose,
   SymbolAsyncIterator,
   Symbol
-} = __webpack_require__(521)
+} = __webpack_require__(3173)
 module.exports = Readable
 Readable.ReadableState = ReadableState
 const { EventEmitter: EE } = __webpack_require__(4434)
-const { Stream, prependListener } = __webpack_require__(7078)
+const { Stream, prependListener } = __webpack_require__(7274)
 const { Buffer } = __webpack_require__(181)
-const { addAbortSignal } = __webpack_require__(3010)
-const eos = __webpack_require__(1757)
-let debug = (__webpack_require__(3993).debuglog)('stream', (fn) => {
+const { addAbortSignal } = __webpack_require__(1750)
+const eos = __webpack_require__(2913)
+let debug = (__webpack_require__(3733).debuglog)('stream', (fn) => {
   debug = fn
 })
-const BufferList = __webpack_require__(9882)
-const destroyImpl = __webpack_require__(887)
-const { getHighWaterMark, getDefaultHighWaterMark } = __webpack_require__(2440)
+const BufferList = __webpack_require__(422)
+const destroyImpl = __webpack_require__(9963)
+const { getHighWaterMark, getDefaultHighWaterMark } = __webpack_require__(9444)
 const {
   aggregateTwoErrors,
   codes: {
@@ -30925,11 +31058,11 @@ const {
     ERR_STREAM_UNSHIFT_AFTER_END_EVENT
   },
   AbortError
-} = __webpack_require__(7046)
-const { validateObject } = __webpack_require__(7592)
+} = __webpack_require__(6858)
+const { validateObject } = __webpack_require__(2300)
 const kPaused = Symbol('kPaused')
-const { StringDecoder } = __webpack_require__(2190)
-const from = __webpack_require__(3109)
+const { StringDecoder } = __webpack_require__(8666)
+const from = __webpack_require__(2425)
 ObjectSetPrototypeOf(Readable.prototype, Stream.prototype)
 ObjectSetPrototypeOf(Readable, Stream)
 const nop = () => {}
@@ -31010,7 +31143,7 @@ function ReadableState(options, stream, isDuplex) {
   // However, some cases require setting options to different
   // values for the readable and the writable sides of the duplex stream.
   // These options can be provided separately as readableXXX and writableXXX.
-  if (typeof isDuplex !== 'boolean') isDuplex = stream instanceof __webpack_require__(991)
+  if (typeof isDuplex !== 'boolean') isDuplex = stream instanceof __webpack_require__(2427)
 
   // Bit map field to store ReadableState more effciently with 1 bit per field
   // instead of a V8 slot per field.
@@ -31067,7 +31200,7 @@ function Readable(options) {
 
   // Checking for a Stream.Duplex instance is faster here instead of inside
   // the ReadableState constructor, at least with V8 6.5.
-  const isDuplex = this instanceof __webpack_require__(991)
+  const isDuplex = this instanceof __webpack_require__(2427)
   this._readableState = new ReadableState(options, this, isDuplex)
   if (options) {
     if (typeof options.read === 'function') this._read = options.read
@@ -32153,14 +32286,14 @@ Readable.wrap = function (src, options) {
 
 /***/ }),
 
-/***/ 2440:
+/***/ 9444:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { MathFloor, NumberIsInteger } = __webpack_require__(521)
-const { validateInteger } = __webpack_require__(7592)
-const { ERR_INVALID_ARG_VALUE } = (__webpack_require__(7046).codes)
+const { MathFloor, NumberIsInteger } = __webpack_require__(3173)
+const { validateInteger } = __webpack_require__(2300)
+const { ERR_INVALID_ARG_VALUE } = (__webpack_require__(6858).codes)
 let defaultHighWaterMarkBytes = 16 * 1024
 let defaultHighWaterMarkObjectMode = 16
 function highWaterMarkFrom(options, isDuplex, duplexKey) {
@@ -32199,7 +32332,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 7009:
+/***/ 6589:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -32267,11 +32400,11 @@ module.exports = {
 
 
 
-const { ObjectSetPrototypeOf, Symbol } = __webpack_require__(521)
+const { ObjectSetPrototypeOf, Symbol } = __webpack_require__(3173)
 module.exports = Transform
-const { ERR_METHOD_NOT_IMPLEMENTED } = (__webpack_require__(7046).codes)
-const Duplex = __webpack_require__(991)
-const { getHighWaterMark } = __webpack_require__(2440)
+const { ERR_METHOD_NOT_IMPLEMENTED } = (__webpack_require__(6858).codes)
+const Duplex = __webpack_require__(2427)
+const { getHighWaterMark } = __webpack_require__(9444)
 ObjectSetPrototypeOf(Transform.prototype, Duplex.prototype)
 ObjectSetPrototypeOf(Transform, Duplex)
 const kCallback = Symbol('kCallback')
@@ -32386,12 +32519,12 @@ Transform.prototype._read = function () {
 
 /***/ }),
 
-/***/ 3504:
+/***/ 2476:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { SymbolAsyncIterator, SymbolIterator, SymbolFor } = __webpack_require__(521)
+const { SymbolAsyncIterator, SymbolIterator, SymbolFor } = __webpack_require__(3173)
 
 // We need to use SymbolFor to make these globally available
 // for interopt with readable-stream, i.e. readable-stream
@@ -32720,7 +32853,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 2685:
+/***/ 8505:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -32752,7 +32885,7 @@ module.exports = {
 
 /* replacement start */
 
-const process = __webpack_require__(3411)
+const process = __webpack_require__(7351)
 
 /* replacement end */
 
@@ -32766,15 +32899,15 @@ const {
   StringPrototypeToLowerCase,
   Symbol,
   SymbolHasInstance
-} = __webpack_require__(521)
+} = __webpack_require__(3173)
 module.exports = Writable
 Writable.WritableState = WritableState
 const { EventEmitter: EE } = __webpack_require__(4434)
-const Stream = (__webpack_require__(7078).Stream)
+const Stream = (__webpack_require__(7274).Stream)
 const { Buffer } = __webpack_require__(181)
-const destroyImpl = __webpack_require__(887)
-const { addAbortSignal } = __webpack_require__(3010)
-const { getHighWaterMark, getDefaultHighWaterMark } = __webpack_require__(2440)
+const destroyImpl = __webpack_require__(9963)
+const { addAbortSignal } = __webpack_require__(1750)
+const { getHighWaterMark, getDefaultHighWaterMark } = __webpack_require__(9444)
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_METHOD_NOT_IMPLEMENTED,
@@ -32785,7 +32918,7 @@ const {
   ERR_STREAM_NULL_VALUES,
   ERR_STREAM_WRITE_AFTER_END,
   ERR_UNKNOWN_ENCODING
-} = (__webpack_require__(7046).codes)
+} = (__webpack_require__(6858).codes)
 const { errorOrDestroy } = destroyImpl
 ObjectSetPrototypeOf(Writable.prototype, Stream.prototype)
 ObjectSetPrototypeOf(Writable, Stream)
@@ -32797,7 +32930,7 @@ function WritableState(options, stream, isDuplex) {
   // However, some cases require setting options to different
   // values for the readable and the writable sides of the duplex stream,
   // e.g. options.readableObjectMode vs. options.writableObjectMode, etc.
-  if (typeof isDuplex !== 'boolean') isDuplex = stream instanceof __webpack_require__(991)
+  if (typeof isDuplex !== 'boolean') isDuplex = stream instanceof __webpack_require__(2427)
 
   // Object stream flag to indicate whether or not this stream
   // contains buffers or objects.
@@ -32935,7 +33068,7 @@ function Writable(options) {
 
   // Checking for a Stream.Duplex instance is faster here instead of inside
   // the WritableState constructor, at least with V8 6.5.
-  const isDuplex = this instanceof __webpack_require__(991)
+  const isDuplex = this instanceof __webpack_require__(2427)
   if (!isDuplex && !FunctionPrototypeSymbolHasInstance(Writable, this)) return new Writable(options)
   this._writableState = new WritableState(options, this, isDuplex)
   if (options) {
@@ -33546,7 +33679,7 @@ Writable.toWeb = function (streamWritable) {
 
 /***/ }),
 
-/***/ 7592:
+/***/ 2300:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /* eslint jsdoc/require-jsdoc: "error" */
@@ -33568,13 +33701,13 @@ const {
   String,
   StringPrototypeToUpperCase,
   StringPrototypeTrim
-} = __webpack_require__(521)
+} = __webpack_require__(3173)
 const {
   hideStackFrames,
   codes: { ERR_SOCKET_BAD_PORT, ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE, ERR_OUT_OF_RANGE, ERR_UNKNOWN_SIGNAL }
-} = __webpack_require__(7046)
-const { normalizeEncoding } = __webpack_require__(3993)
-const { isAsyncFunction, isArrayBufferView } = (__webpack_require__(3993).types)
+} = __webpack_require__(6858)
+const { normalizeEncoding } = __webpack_require__(3733)
+const { isAsyncFunction, isArrayBufferView } = (__webpack_require__(3733).types)
 const signals = {}
 
 /**
@@ -34083,13 +34216,13 @@ module.exports = {
 
 /***/ }),
 
-/***/ 7046:
+/***/ 6858:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { format, inspect } = __webpack_require__(1982)
-const { AggregateError: CustomAggregateError } = __webpack_require__(521)
+const { format, inspect } = __webpack_require__(3530)
+const { AggregateError: CustomAggregateError } = __webpack_require__(3173)
 
 /*
   This file is a reduced and adapted version of the main lib/internal/errors.js file defined at
@@ -34433,12 +34566,12 @@ module.exports = {
 
 /***/ }),
 
-/***/ 7409:
+/***/ 9989:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const Stream = __webpack_require__(4584)
+const Stream = __webpack_require__(2203)
 if (Stream && process.env.READABLE_STREAM === 'disable') {
   const promises = Stream.promises
 
@@ -34467,8 +34600,8 @@ if (Stream && process.env.READABLE_STREAM === 'disable') {
   })
   module.exports.Stream = Stream.Stream
 } else {
-  const CustomStream = __webpack_require__(2033)
-  const promises = __webpack_require__(3346)
+  const CustomStream = __webpack_require__(5453)
+  const promises = __webpack_require__(7366)
   const originalDestroy = CustomStream.Readable.destroy
   module.exports = CustomStream.Readable
 
@@ -34505,7 +34638,7 @@ module.exports["default"] = module.exports
 
 /***/ }),
 
-/***/ 521:
+/***/ 3173:
 /***/ ((module) => {
 
 
@@ -34636,19 +34769,19 @@ module.exports = {
 
 /***/ }),
 
-/***/ 3993:
+/***/ 3733:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
 const bufferModule = __webpack_require__(181)
-const { format, inspect } = __webpack_require__(1982)
+const { format, inspect } = __webpack_require__(3530)
 const {
   codes: { ERR_INVALID_ARG_TYPE }
-} = __webpack_require__(7046)
-const { kResistStopPropagation, AggregateError, SymbolDispose } = __webpack_require__(521)
-const AbortSignal = globalThis.AbortSignal || (__webpack_require__(6953).AbortSignal)
-const AbortController = globalThis.AbortController || (__webpack_require__(6953).AbortController)
+} = __webpack_require__(6858)
+const { kResistStopPropagation, AggregateError, SymbolDispose } = __webpack_require__(3173)
+const AbortSignal = globalThis.AbortSignal || (__webpack_require__(5565).AbortSignal)
+const AbortController = globalThis.AbortController || (__webpack_require__(5565).AbortController)
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const Blob = globalThis.Blob || bufferModule.Blob
 /* eslint-disable indent */
@@ -34791,7 +34924,7 @@ module.exports.promisify.custom = Symbol.for('nodejs.util.promisify.custom')
 
 /***/ }),
 
-/***/ 1982:
+/***/ 3530:
 /***/ ((module) => {
 
 
@@ -34853,7 +34986,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 2033:
+/***/ 5453:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -34885,29 +35018,29 @@ const { Buffer } = __webpack_require__(181)
 
 /* replacement end */
 
-const { ObjectDefineProperty, ObjectKeys, ReflectApply } = __webpack_require__(521)
+const { ObjectDefineProperty, ObjectKeys, ReflectApply } = __webpack_require__(3173)
 const {
   promisify: { custom: customPromisify }
-} = __webpack_require__(3993)
-const { streamReturningOperators, promiseReturningOperators } = __webpack_require__(1148)
+} = __webpack_require__(3733)
+const { streamReturningOperators, promiseReturningOperators } = __webpack_require__(4544)
 const {
   codes: { ERR_ILLEGAL_CONSTRUCTOR }
-} = __webpack_require__(7046)
-const compose = __webpack_require__(7041)
-const { setDefaultHighWaterMark, getDefaultHighWaterMark } = __webpack_require__(2440)
-const { pipeline } = __webpack_require__(5943)
-const { destroyer } = __webpack_require__(887)
-const eos = __webpack_require__(1757)
+} = __webpack_require__(6858)
+const compose = __webpack_require__(8885)
+const { setDefaultHighWaterMark, getDefaultHighWaterMark } = __webpack_require__(9444)
+const { pipeline } = __webpack_require__(7891)
+const { destroyer } = __webpack_require__(9963)
+const eos = __webpack_require__(2913)
 const internalBuffer = {}
-const promises = __webpack_require__(3346)
-const utils = __webpack_require__(3504)
-const Stream = (module.exports = __webpack_require__(7078).Stream)
+const promises = __webpack_require__(7366)
+const utils = __webpack_require__(2476)
+const Stream = (module.exports = __webpack_require__(7274).Stream)
 Stream.isDestroyed = utils.isDestroyed
 Stream.isDisturbed = utils.isDisturbed
 Stream.isErrored = utils.isErrored
 Stream.isReadable = utils.isReadable
 Stream.isWritable = utils.isWritable
-Stream.Readable = __webpack_require__(781)
+Stream.Readable = __webpack_require__(6153)
 for (const key of ObjectKeys(streamReturningOperators)) {
   const op = streamReturningOperators[key]
   function fn(...args) {
@@ -34956,12 +35089,12 @@ for (const key of ObjectKeys(promiseReturningOperators)) {
     writable: true
   })
 }
-Stream.Writable = __webpack_require__(2685)
-Stream.Duplex = __webpack_require__(991)
-Stream.Transform = __webpack_require__(7009)
-Stream.PassThrough = __webpack_require__(8883)
+Stream.Writable = __webpack_require__(8505)
+Stream.Duplex = __webpack_require__(2427)
+Stream.Transform = __webpack_require__(6589)
+Stream.PassThrough = __webpack_require__(3991)
 Stream.pipeline = pipeline
-const { addAbortSignal } = __webpack_require__(3010)
+const { addAbortSignal } = __webpack_require__(1750)
 Stream.addAbortSignal = addAbortSignal
 Stream.finished = eos
 Stream.destroy = destroyer
@@ -35003,16 +35136,16 @@ Stream._uint8ArrayToBuffer = function _uint8ArrayToBuffer(chunk) {
 
 /***/ }),
 
-/***/ 3346:
+/***/ 7366:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-const { ArrayPrototypePop, Promise } = __webpack_require__(521)
-const { isIterable, isNodeStream, isWebStream } = __webpack_require__(3504)
-const { pipelineImpl: pl } = __webpack_require__(5943)
-const { finished } = __webpack_require__(1757)
-__webpack_require__(2033)
+const { ArrayPrototypePop, Promise } = __webpack_require__(3173)
+const { isIterable, isNodeStream, isWebStream } = __webpack_require__(2476)
+const { pipelineImpl: pl } = __webpack_require__(7891)
+const { finished } = __webpack_require__(2913)
+__webpack_require__(5453)
 function pipeline(...streams) {
   return new Promise((resolve, reject) => {
     let signal
@@ -35053,14 +35186,14 @@ module.exports = {
 
 /***/ }),
 
-/***/ 1529:
+/***/ 3421:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 module.exports = readdirGlob;
 
 const fs = __webpack_require__(9896);
 const { EventEmitter } = __webpack_require__(4434);
-const { Minimatch } = __webpack_require__(1061);
+const { Minimatch } = __webpack_require__(2329);
 const { resolve } = __webpack_require__(6928);
 
 function readdir(dir, strict) {
@@ -35302,7 +35435,7 @@ readdirGlob.ReaddirGlob = ReaddirGlob;
 
 /***/ }),
 
-/***/ 3202:
+/***/ 2510:
 /***/ ((module, exports, __webpack_require__) => {
 
 /* eslint-disable node/no-deprecated-api */
@@ -35371,7 +35504,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
 
 /***/ }),
 
-/***/ 5062:
+/***/ 4642:
 /***/ ((module, exports, __webpack_require__) => {
 
 /*! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource> */
@@ -35443,14 +35576,14 @@ SafeBuffer.allocUnsafeSlow = function (size) {
 
 /***/ }),
 
-/***/ 2092:
+/***/ 440:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const { EventEmitter } = __webpack_require__(5865)
-const FIFO = __webpack_require__(5614)
-const TextDecoder = __webpack_require__(4456)
+const { EventEmitter } = __webpack_require__(4789)
+const FIFO = __webpack_require__(5250)
+const TextDecoder = __webpack_require__(6244)
 
-const StreamError = __webpack_require__(3081)
+const StreamError = __webpack_require__(4341)
 
 // if we do a future major, expect queue microtask to be there always, for now a bit defensive
 const qmt =
@@ -36764,7 +36897,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 3081:
+/***/ 4341:
 /***/ ((module) => {
 
 module.exports = class StreamError extends Error {
@@ -36818,7 +36951,7 @@ module.exports = class StreamError extends Error {
 
 /***/ }),
 
-/***/ 2909:
+/***/ 6009:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -36846,7 +36979,7 @@ module.exports = class StreamError extends Error {
 
 /*<replacement>*/
 
-var Buffer = (__webpack_require__(3202).Buffer);
+var Buffer = (__webpack_require__(2510).Buffer);
 /*</replacement>*/
 
 var isEncoding = Buffer.isEncoding || function (encoding) {
@@ -37120,7 +37253,7 @@ function simpleEnd(buf) {
 
 /***/ }),
 
-/***/ 2190:
+/***/ 8666:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 // Copyright Joyent, Inc. and other Node contributors.
@@ -37148,7 +37281,7 @@ function simpleEnd(buf) {
 
 /*<replacement>*/
 
-var Buffer = (__webpack_require__(5062).Buffer);
+var Buffer = (__webpack_require__(4642).Buffer);
 /*</replacement>*/
 
 var isEncoding = Buffer.isEncoding || function (encoding) {
@@ -37422,28 +37555,37 @@ function simpleEnd(buf) {
 
 /***/ }),
 
-/***/ 2172:
+/***/ 1187:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 const os = __webpack_require__(857);
-const hasFlag = __webpack_require__(3569);
+const tty = __webpack_require__(2018);
+const hasFlag = __webpack_require__(1076);
 
-const env = process.env;
+const {env} = process;
 
 let forceColor;
 if (hasFlag('no-color') ||
 	hasFlag('no-colors') ||
-	hasFlag('color=false')) {
-	forceColor = false;
+	hasFlag('color=false') ||
+	hasFlag('color=never')) {
+	forceColor = 0;
 } else if (hasFlag('color') ||
 	hasFlag('colors') ||
 	hasFlag('color=true') ||
 	hasFlag('color=always')) {
-	forceColor = true;
+	forceColor = 1;
 }
+
 if ('FORCE_COLOR' in env) {
-	forceColor = env.FORCE_COLOR.length === 0 || parseInt(env.FORCE_COLOR, 10) !== 0;
+	if (env.FORCE_COLOR === 'true') {
+		forceColor = 1;
+	} else if (env.FORCE_COLOR === 'false') {
+		forceColor = 0;
+	} else {
+		forceColor = env.FORCE_COLOR.length === 0 ? 1 : Math.min(parseInt(env.FORCE_COLOR, 10), 3);
+	}
 }
 
 function translateLevel(level) {
@@ -37459,8 +37601,8 @@ function translateLevel(level) {
 	};
 }
 
-function supportsColor(stream) {
-	if (forceColor === false) {
+function supportsColor(haveStream, streamIsTTY) {
+	if (forceColor === 0) {
 		return 0;
 	}
 
@@ -37474,22 +37616,21 @@ function supportsColor(stream) {
 		return 2;
 	}
 
-	if (stream && !stream.isTTY && forceColor !== true) {
+	if (haveStream && !streamIsTTY && forceColor === undefined) {
 		return 0;
 	}
 
-	const min = forceColor ? 1 : 0;
+	const min = forceColor || 0;
+
+	if (env.TERM === 'dumb') {
+		return min;
+	}
 
 	if (process.platform === 'win32') {
-		// Node.js 7.5.0 is the first version of Node.js to include a patch to
-		// libuv that enables 256 color output on Windows. Anything earlier and it
-		// won't work. However, here we target Node.js 8 at minimum as it is an LTS
-		// release, and Node.js 7 is not. Windows 10 build 10586 is the first Windows
-		// release that supports 256 colors. Windows 10 build 14931 is the first release
-		// that supports 16m/TrueColor.
+		// Windows 10 build 10586 is the first Windows release that supports 256 colors.
+		// Windows 10 build 14931 is the first release that supports 16m/TrueColor.
 		const osRelease = os.release().split('.');
 		if (
-			Number(process.versions.node.split('.')[0]) >= 8 &&
 			Number(osRelease[0]) >= 10 &&
 			Number(osRelease[2]) >= 10586
 		) {
@@ -37500,7 +37641,7 @@ function supportsColor(stream) {
 	}
 
 	if ('CI' in env) {
-		if (['TRAVIS', 'CIRCLECI', 'APPVEYOR', 'GITLAB_CI'].some(sign => sign in env) || env.CI_NAME === 'codeship') {
+		if (['TRAVIS', 'CIRCLECI', 'APPVEYOR', 'GITLAB_CI', 'GITHUB_ACTIONS', 'BUILDKITE'].some(sign => sign in env) || env.CI_NAME === 'codeship') {
 			return 1;
 		}
 
@@ -37539,28 +37680,24 @@ function supportsColor(stream) {
 		return 1;
 	}
 
-	if (env.TERM === 'dumb') {
-		return min;
-	}
-
 	return min;
 }
 
 function getSupportLevel(stream) {
-	const level = supportsColor(stream);
+	const level = supportsColor(stream, stream && stream.isTTY);
 	return translateLevel(level);
 }
 
 module.exports = {
 	supportsColor: getSupportLevel,
-	stdout: getSupportLevel(process.stdout),
-	stderr: getSupportLevel(process.stderr)
+	stdout: translateLevel(supportsColor(true, tty.isatty(1))),
+	stderr: translateLevel(supportsColor(true, tty.isatty(2)))
 };
 
 
 /***/ }),
 
-/***/ 5418:
+/***/ 1550:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 const constants = { // just for envs without fs
@@ -37581,13 +37718,13 @@ try {
 
 /***/ }),
 
-/***/ 1870:
+/***/ 7618:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const { Writable, Readable, getStreamError } = __webpack_require__(2092)
-const FIFO = __webpack_require__(5614)
-const b4a = __webpack_require__(3662)
-const headers = __webpack_require__(7945)
+const { Writable, Readable, getStreamError } = __webpack_require__(440)
+const FIFO = __webpack_require__(5250)
+const b4a = __webpack_require__(5314)
+const headers = __webpack_require__(8877)
 
 const EMPTY = b4a.alloc(0)
 const MAX_HEADER_SIZE = 4 * 1024 * 1024 // arbitrary big number
@@ -38006,10 +38143,10 @@ function overflow (size) {
 
 /***/ }),
 
-/***/ 7945:
+/***/ 8877:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
-const b4a = __webpack_require__(3662)
+const b4a = __webpack_require__(5314)
 
 const ZEROS = '0000000000000000000'
 const SEVENS = '7777777777777777777'
@@ -38335,23 +38472,23 @@ function addLength (str) {
 
 /***/ }),
 
-/***/ 8391:
+/***/ 5083:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
-exports.extract = __webpack_require__(1870)
-exports.pack = __webpack_require__(376)
+exports.extract = __webpack_require__(7618)
+exports.pack = __webpack_require__(8738)
 
 
 /***/ }),
 
-/***/ 376:
+/***/ 8738:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const { Readable, Writable, getStreamError } = __webpack_require__(2092)
-const b4a = __webpack_require__(3662)
+const { Readable, Writable, getStreamError } = __webpack_require__(440)
+const b4a = __webpack_require__(5314)
 
-const constants = __webpack_require__(5418)
-const headers = __webpack_require__(7945)
+const constants = __webpack_require__(1550)
+const headers = __webpack_require__(8877)
 
 const DMODE = 0o755
 const FMODE = 0o644
@@ -38638,11 +38775,11 @@ function mapWritable (buf) {
 
 /***/ }),
 
-/***/ 4456:
+/***/ 6244:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const PassThroughDecoder = __webpack_require__(4114)
-const UTF8Decoder = __webpack_require__(4352)
+const PassThroughDecoder = __webpack_require__(2582)
+const UTF8Decoder = __webpack_require__(1396)
 
 module.exports = class TextDecoder {
   constructor(encoding = 'utf8') {
@@ -38709,10 +38846,10 @@ function normalizeEncoding(encoding) {
 
 /***/ }),
 
-/***/ 4114:
+/***/ 2582:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const b4a = __webpack_require__(3662)
+const b4a = __webpack_require__(5314)
 
 module.exports = class PassThroughDecoder {
   constructor(encoding) {
@@ -38735,10 +38872,10 @@ module.exports = class PassThroughDecoder {
 
 /***/ }),
 
-/***/ 4352:
+/***/ 1396:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-const b4a = __webpack_require__(3662)
+const b4a = __webpack_require__(5314)
 
 /**
  * https://encoding.spec.whatwg.org/#utf-8-decoder
@@ -38927,7 +39064,7 @@ function trailingBytesSeen(data) {
 
 /***/ }),
 
-/***/ 4750:
+/***/ 5372:
 /***/ ((module) => {
 
 module.exports = Traverse;
@@ -39256,12 +39393,12 @@ function copy (src) {
 
 /***/ }),
 
-/***/ 9069:
+/***/ 9193:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-var stream = __webpack_require__(4584);
+var stream = __webpack_require__(2203);
 var inherits = (__webpack_require__(9023).inherits);
 
 function Entry() {
@@ -39286,15 +39423,15 @@ module.exports = Entry;
 
 /***/ }),
 
-/***/ 4980:
+/***/ 5600:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 var fs = __webpack_require__(9896);
 var path = __webpack_require__(6928);
 var util = __webpack_require__(9023);
-var mkdirp = __webpack_require__(850);
-var Transform = (__webpack_require__(4584).Transform);
-var UnzipStream = __webpack_require__(6748);
+var mkdirp = __webpack_require__(809);
+var Transform = (__webpack_require__(2203).Transform);
+var UnzipStream = __webpack_require__(6776);
 
 function Extract (opts) {
     if (!(this instanceof Extract))
@@ -39389,10 +39526,10 @@ module.exports = Extract;
 
 /***/ }),
 
-/***/ 6460:
+/***/ 9952:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Transform = (__webpack_require__(4584).Transform);
+var Transform = (__webpack_require__(2203).Transform);
 var util = __webpack_require__(9023);
 
 function MatcherStream(patternDesc, matchFn) {
@@ -39489,12 +39626,12 @@ module.exports = MatcherStream;
 
 /***/ }),
 
-/***/ 1015:
+/***/ 4275:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
-var Transform = (__webpack_require__(4584).Transform);
+var Transform = (__webpack_require__(2203).Transform);
 var util = __webpack_require__(9023);
-var UnzipStream = __webpack_require__(6748);
+var UnzipStream = __webpack_require__(6776);
 
 function ParserStream(opts) {
     if (!(this instanceof ParserStream)) {
@@ -39547,17 +39684,17 @@ module.exports = ParserStream;
 
 /***/ }),
 
-/***/ 6748:
+/***/ 6776:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
 
-var binary = __webpack_require__(6101);
-var stream = __webpack_require__(4584);
+var binary = __webpack_require__(25);
+var stream = __webpack_require__(2203);
 var util = __webpack_require__(9023);
 var zlib = __webpack_require__(3106);
-var MatcherStream = __webpack_require__(6460);
-var Entry = __webpack_require__(9069);
+var MatcherStream = __webpack_require__(9952);
+var Entry = __webpack_require__(9193);
 
 const states = {
     STREAM_START:                         0,
@@ -40294,17 +40431,17 @@ module.exports = UnzipStream;
 
 /***/ }),
 
-/***/ 7799:
+/***/ 9579:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 
-exports.Parse = __webpack_require__(1015);
-exports.Extract = __webpack_require__(4980);
+exports.Parse = __webpack_require__(4275);
+exports.Extract = __webpack_require__(5600);
 
 /***/ }),
 
-/***/ 9597:
+/***/ 5569:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 
@@ -40317,7 +40454,7 @@ module.exports = __webpack_require__(9023).deprecate;
 
 /***/ }),
 
-/***/ 649:
+/***/ 8037:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 /**
@@ -40329,10 +40466,10 @@ module.exports = __webpack_require__(9023).deprecate;
  */
 var inherits = (__webpack_require__(9023).inherits);
 
-var ZipArchiveOutputStream = (__webpack_require__(1085).ZipArchiveOutputStream);
-var ZipArchiveEntry = (__webpack_require__(1085).ZipArchiveEntry);
+var ZipArchiveOutputStream = (__webpack_require__(4449).ZipArchiveOutputStream);
+var ZipArchiveEntry = (__webpack_require__(4449).ZipArchiveEntry);
 
-var util = __webpack_require__(8501);
+var util = __webpack_require__(3601);
 
 /**
  * @constructor
@@ -40511,7 +40648,7 @@ ZipStream.prototype.finalize = function() {
 
 /***/ }),
 
-/***/ 8961:
+/***/ 3934:
 /***/ ((__unused_webpack_module, exports) => {
 
 var __webpack_unused_export__;
@@ -40530,7 +40667,7 @@ exports.w = {
 
 /***/ }),
 
-/***/ 9583:
+/***/ 2386:
 /***/ ((__unused_webpack_module, exports) => {
 
 var __webpack_unused_export__;
@@ -40547,21 +40684,21 @@ exports.w = void 0;
 exports.w = {
     instrumenterImplementation: undefined,
 };
-//# sourceMappingURL=state-cjs.cjs.map
+//# sourceMappingURL=state-cjs.js.map
 
 /***/ }),
 
-/***/ 9203:
+/***/ 3855:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Glob = void 0;
-const minimatch_1 = __webpack_require__(8213);
+const minimatch_1 = __webpack_require__(8937);
 const node_url_1 = __webpack_require__(3136);
-const path_scurry_1 = __webpack_require__(7451);
-const pattern_js_1 = __webpack_require__(7355);
-const walker_js_1 = __webpack_require__(5675);
+const path_scurry_1 = __webpack_require__(2903);
+const pattern_js_1 = __webpack_require__(6903);
+const walker_js_1 = __webpack_require__(1175);
 // if no process global, just call it linux.
 // so we default to case-sensitive, / separators
 const defaultPlatform = (typeof process === 'object' &&
@@ -40804,13 +40941,13 @@ exports.Glob = Glob;
 
 /***/ }),
 
-/***/ 6663:
+/***/ 5483:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.hasMagic = void 0;
-const minimatch_1 = __webpack_require__(8213);
+const minimatch_1 = __webpack_require__(8937);
 /**
  * Return true if the patterns provided contain any magic glob characters,
  * given the options provided.
@@ -40837,7 +40974,7 @@ exports.hasMagic = hasMagic;
 
 /***/ }),
 
-/***/ 959:
+/***/ 4723:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
@@ -40847,8 +40984,8 @@ exports.hasMagic = hasMagic;
 // Ignores are always parsed in dot:true mode
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Ignore = void 0;
-const minimatch_1 = __webpack_require__(8213);
-const pattern_js_1 = __webpack_require__(7355);
+const minimatch_1 = __webpack_require__(8937);
+const pattern_js_1 = __webpack_require__(6903);
 const defaultPlatform = (typeof process === 'object' &&
     process &&
     typeof process.platform === 'string') ?
@@ -40962,7 +41099,7 @@ exports.Ignore = Ignore;
 
 /***/ }),
 
-/***/ 2085:
+/***/ 3257:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
@@ -40973,17 +41110,17 @@ exports.globStream = globStream;
 exports.globSync = globSync;
 exports.globIterateSync = globIterateSync;
 exports.globIterate = globIterate;
-const minimatch_1 = __webpack_require__(8213);
-const glob_js_1 = __webpack_require__(9203);
-const has_magic_js_1 = __webpack_require__(6663);
-var minimatch_2 = __webpack_require__(8213);
+const minimatch_1 = __webpack_require__(8937);
+const glob_js_1 = __webpack_require__(3855);
+const has_magic_js_1 = __webpack_require__(5483);
+var minimatch_2 = __webpack_require__(8937);
 Object.defineProperty(exports, "escape", ({ enumerable: true, get: function () { return minimatch_2.escape; } }));
 Object.defineProperty(exports, "unescape", ({ enumerable: true, get: function () { return minimatch_2.unescape; } }));
-var glob_js_2 = __webpack_require__(9203);
+var glob_js_2 = __webpack_require__(3855);
 Object.defineProperty(exports, "Glob", ({ enumerable: true, get: function () { return glob_js_2.Glob; } }));
-var has_magic_js_2 = __webpack_require__(6663);
+var has_magic_js_2 = __webpack_require__(5483);
 Object.defineProperty(exports, "hasMagic", ({ enumerable: true, get: function () { return has_magic_js_2.hasMagic; } }));
-var ignore_js_1 = __webpack_require__(959);
+var ignore_js_1 = __webpack_require__(4723);
 Object.defineProperty(exports, "Ignore", ({ enumerable: true, get: function () { return ignore_js_1.Ignore; } }));
 function globStreamSync(pattern, options = {}) {
     return new glob_js_1.Glob(pattern, options).streamSync();
@@ -41036,14 +41173,14 @@ exports.glob.glob = exports.glob;
 
 /***/ }),
 
-/***/ 7355:
+/***/ 6903:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 // this is just a very light wrapper around 2 arrays with an offset index
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Pattern = void 0;
-const minimatch_1 = __webpack_require__(8213);
+const minimatch_1 = __webpack_require__(8937);
 const isPatternList = (pl) => pl.length >= 1;
 const isGlobList = (gl) => gl.length >= 1;
 /**
@@ -41261,14 +41398,14 @@ exports.Pattern = Pattern;
 
 /***/ }),
 
-/***/ 2453:
+/***/ 8710:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 // synchronous utility for filtering entries and calculating subwalks
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Processor = exports.SubWalks = exports.MatchRecord = exports.HasWalkedCache = void 0;
-const minimatch_1 = __webpack_require__(8213);
+const minimatch_1 = __webpack_require__(8937);
 /**
  * A cache of which patterns have been processed for a given Path
  */
@@ -41568,7 +41705,7 @@ exports.Processor = Processor;
 
 /***/ }),
 
-/***/ 5675:
+/***/ 1175:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
@@ -41580,9 +41717,9 @@ exports.GlobStream = exports.GlobWalker = exports.GlobUtil = void 0;
  *
  * @module
  */
-const minipass_1 = __webpack_require__(6282);
-const ignore_js_1 = __webpack_require__(959);
-const processor_js_1 = __webpack_require__(2453);
+const minipass_1 = __webpack_require__(5766);
+const ignore_js_1 = __webpack_require__(4723);
+const processor_js_1 = __webpack_require__(8710);
 const makeIgnore = (ignore, opts) => typeof ignore === 'string' ? new ignore_js_1.Ignore([ignore], opts)
     : Array.isArray(ignore) ? new ignore_js_1.Ignore(ignore, opts)
         : ignore;
@@ -41961,7 +42098,7 @@ exports.GlobStream = GlobStream;
 
 /***/ }),
 
-/***/ 9535:
+/***/ 8963:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -43513,7 +43650,7 @@ exports.LRUCache = LRUCache;
 
 /***/ }),
 
-/***/ 3195:
+/***/ 9399:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -43533,7 +43670,7 @@ exports.assertValidPattern = assertValidPattern;
 
 /***/ }),
 
-/***/ 6621:
+/***/ 4769:
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
@@ -43541,8 +43678,8 @@ exports.assertValidPattern = assertValidPattern;
 var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AST = void 0;
-const brace_expressions_js_1 = __webpack_require__(5396);
-const unescape_js_1 = __webpack_require__(9657);
+const brace_expressions_js_1 = __webpack_require__(7008);
+const unescape_js_1 = __webpack_require__(5869);
 const types = new Set(['!', '?', '+', '*', '@']);
 const isExtglobType = (c) => types.has(c);
 const isExtglobAST = (c) => isExtglobType(c.type);
@@ -44286,7 +44423,7 @@ _a = AST;
 
 /***/ }),
 
-/***/ 5396:
+/***/ 7008:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -44444,7 +44581,7 @@ exports.parseClass = parseClass;
 
 /***/ }),
 
-/***/ 6874:
+/***/ 6670:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -44472,7 +44609,7 @@ exports.escape = escape;
 
 /***/ }),
 
-/***/ 8213:
+/***/ 8937:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -44481,11 +44618,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.unescape = exports.escape = exports.AST = exports.Minimatch = exports.match = exports.makeRe = exports.braceExpand = exports.defaults = exports.filter = exports.GLOBSTAR = exports.sep = exports.minimatch = void 0;
-const brace_expansion_1 = __importDefault(__webpack_require__(996));
-const assert_valid_pattern_js_1 = __webpack_require__(3195);
-const ast_js_1 = __webpack_require__(6621);
-const escape_js_1 = __webpack_require__(6874);
-const unescape_js_1 = __webpack_require__(9657);
+const brace_expansion_1 = __importDefault(__webpack_require__(2681));
+const assert_valid_pattern_js_1 = __webpack_require__(9399);
+const ast_js_1 = __webpack_require__(4769);
+const escape_js_1 = __webpack_require__(6670);
+const unescape_js_1 = __webpack_require__(5869);
 const minimatch = (p, pattern, options = {}) => {
     (0, assert_valid_pattern_js_1.assertValidPattern)(pattern);
     // shortcut: comments match nothing.
@@ -45486,11 +45623,11 @@ class Minimatch {
 }
 exports.Minimatch = Minimatch;
 /* c8 ignore start */
-var ast_js_2 = __webpack_require__(6621);
+var ast_js_2 = __webpack_require__(4769);
 Object.defineProperty(exports, "AST", ({ enumerable: true, get: function () { return ast_js_2.AST; } }));
-var escape_js_2 = __webpack_require__(6874);
+var escape_js_2 = __webpack_require__(6670);
 Object.defineProperty(exports, "escape", ({ enumerable: true, get: function () { return escape_js_2.escape; } }));
-var unescape_js_2 = __webpack_require__(9657);
+var unescape_js_2 = __webpack_require__(5869);
 Object.defineProperty(exports, "unescape", ({ enumerable: true, get: function () { return unescape_js_2.unescape; } }));
 /* c8 ignore stop */
 exports.minimatch.AST = ast_js_1.AST;
@@ -45501,7 +45638,7 @@ exports.minimatch.unescape = unescape_js_1.unescape;
 
 /***/ }),
 
-/***/ 9657:
+/***/ 5869:
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -45531,7 +45668,7 @@ exports.unescape = unescape;
 
 /***/ }),
 
-/***/ 6282:
+/***/ 5766:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -46575,7 +46712,7 @@ exports.Minipass = Minipass;
 
 /***/ }),
 
-/***/ 7451:
+/***/ 2903:
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -46604,7 +46741,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PathScurry = exports.Path = exports.PathScurryDarwin = exports.PathScurryPosix = exports.PathScurryWin32 = exports.PathScurryBase = exports.PathPosix = exports.PathWin32 = exports.PathBase = exports.ChildrenCache = exports.ResolveCache = void 0;
-const lru_cache_1 = __webpack_require__(9535);
+const lru_cache_1 = __webpack_require__(8963);
 const node_path_1 = __webpack_require__(6760);
 const node_url_1 = __webpack_require__(3136);
 const fs_1 = __webpack_require__(9896);
@@ -46613,7 +46750,7 @@ const realpathSync = fs_1.realpathSync.native;
 // TODO: test perf of fs/promises realpath vs realpathCB,
 // since the promises one uses realpath.native
 const promises_1 = __webpack_require__(1455);
-const minipass_1 = __webpack_require__(6282);
+const minipass_1 = __webpack_require__(5766);
 const defaultFS = {
     lstatSync: fs_1.lstatSync,
     readdir: fs_1.readdir,
@@ -48595,7 +48732,7 @@ exports.PathScurry = process.platform === 'win32' ? PathScurryWin32
 
 /***/ }),
 
-/***/ 8767:
+/***/ 5817:
 /***/ ((module, __unused_webpack_exports, __webpack_require__) => {
 
 // This file exists as a CommonJS module to read the version from package.json.
@@ -48603,13 +48740,13 @@ exports.PathScurry = process.platform === 'win32' ? PathScurryWin32
 // ESLint rules and doesn't work reliably across all Node.js versions.
 // By keeping this as a .cjs file, we can use require() naturally and export
 // the version for the ESM modules to import.
-const packageJson = __webpack_require__(1860)
+const packageJson = __webpack_require__(8407)
 module.exports = { version: packageJson.version }
 
 
 /***/ }),
 
-/***/ 3107:
+/***/ 1631:
 /***/ ((module) => {
 
 
@@ -48922,7 +49059,7 @@ module.exports = index;
 
 /***/ }),
 
-/***/ 4713:
+/***/ 1498:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
 
 // ESM COMPAT FLAG
@@ -48940,7 +49077,7 @@ __webpack_require__.d(__webpack_exports__, {
   "default": () => (/* binding */ artifact)
 });
 
-// NAMESPACE OBJECT: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/mappers.js
+// NAMESPACE OBJECT: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/mappers.js
 var mappers_namespaceObject = {};
 __webpack_require__.r(mappers_namespaceObject);
 __webpack_require__.d(mappers_namespaceObject, {
@@ -49125,11 +49262,11 @@ __webpack_require__.d(mappers_namespaceObject, {
   UserDelegationKey: () => (UserDelegationKey)
 });
 
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@actions+core@3.0.1/node_modules/@actions/core/lib/core.js + 13 modules
-var core = __webpack_require__(5429);
+// EXTERNAL MODULE: ./node_modules/.pnpm/@actions+core@3.0.1/node_modules/@actions/core/lib/core.js + 13 modules
+var core = __webpack_require__(873);
 // EXTERNAL MODULE: external "os"
 var external_os_ = __webpack_require__(857);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/shared/config.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/shared/config.js
 
 
 // Used for controlling the highWaterMark value of the zip that is being streamed
@@ -49217,9 +49354,9 @@ function getMaxArtifactListCount() {
 var external_fs_ = __webpack_require__(9896);
 // EXTERNAL MODULE: external "path"
 var external_path_ = __webpack_require__(6928);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@protobuf-ts+runtime@2.11.1/node_modules/@protobuf-ts/runtime/build/commonjs/index.js
-var commonjs = __webpack_require__(2675);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/generated/google/protobuf/timestamp.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@protobuf-ts+runtime@2.11.1/node_modules/@protobuf-ts/runtime/build/commonjs/index.js
+var commonjs = __webpack_require__(5471);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/generated/google/protobuf/timestamp.js
 
 
 
@@ -49353,7 +49490,7 @@ class Timestamp$Type extends commonjs.MessageType {
  */
 const Timestamp = new Timestamp$Type();
 //# sourceMappingURL=timestamp.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/generated/google/protobuf/wrappers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/generated/google/protobuf/wrappers.js
 // @generated by protobuf-ts 2.9.1 with parameter long_type_string,client_none,generate_dependencies
 // @generated from protobuf file "google/protobuf/wrappers.proto" (package "google.protobuf", syntax proto3)
 // tslint:disable
@@ -49960,9 +50097,9 @@ class BytesValue$Type extends commonjs.MessageType {
  */
 const BytesValue = new BytesValue$Type();
 //# sourceMappingURL=wrappers.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@protobuf-ts+runtime-rpc@2.11.1/node_modules/@protobuf-ts/runtime-rpc/build/commonjs/index.js
-var build_commonjs = __webpack_require__(8259);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/generated/results/api/v1/artifact.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@protobuf-ts+runtime-rpc@2.11.1/node_modules/@protobuf-ts/runtime-rpc/build/commonjs/index.js
+var build_commonjs = __webpack_require__(5535);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/generated/results/api/v1/artifact.js
 // @generated by protobuf-ts 2.9.1 with parameter long_type_string,client_none,generate_dependencies
 // @generated from protobuf file "results/api/v1/artifact.proto" (package "github.actions.results.api.v1", syntax proto3)
 // tslint:disable
@@ -50678,7 +50815,7 @@ const ArtifactService = new build_commonjs/* ServiceType */.C0("github.actions.r
     { name: "DeleteArtifact", options: {}, I: artifact_DeleteArtifactRequest, O: artifact_DeleteArtifactResponse }
 ]);
 //# sourceMappingURL=artifact.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/generated/results/api/v1/artifact.twirp-client.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/generated/results/api/v1/artifact.twirp-client.js
 
 class ArtifactServiceClientJSON {
     constructor(rpc) {
@@ -50774,13 +50911,13 @@ class ArtifactServiceClientProtobuf {
     }
 }
 //# sourceMappingURL=artifact.twirp-client.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/generated/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/generated/index.js
 
 
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/retention.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/retention.js
 
 
 function getExpiration(retentionDays) {
@@ -50808,7 +50945,7 @@ function getRetentionDays() {
     return days;
 }
 //# sourceMappingURL=retention.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/path-and-artifact-name-validation.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/path-and-artifact-name-validation.js
 
 /**
  * Invalid characters that cannot be in the artifact name or an uploaded file. Will be rejected
@@ -50871,13 +51008,13 @@ The following characters are not allowed in files that are uploaded due to limit
     }
 }
 //# sourceMappingURL=path-and-artifact-name-validation.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@actions+http-client@4.0.1/node_modules/@actions/http-client/lib/index.js + 1 modules
-var lib = __webpack_require__(6356);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@actions+http-client@4.0.1/node_modules/@actions/http-client/lib/auth.js
-var auth = __webpack_require__(1896);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/shared/package-version.cjs
-var package_version = __webpack_require__(8767);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/shared/user-agent.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@actions+http-client@4.0.1/node_modules/@actions/http-client/lib/index.js + 1 modules
+var lib = __webpack_require__(7024);
+// EXTERNAL MODULE: ./node_modules/.pnpm/@actions+http-client@4.0.1/node_modules/@actions/http-client/lib/auth.js
+var auth = __webpack_require__(300);
+// EXTERNAL MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/shared/package-version.cjs
+var package_version = __webpack_require__(5817);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/shared/user-agent.js
 
 /**
  * Ensure that this User Agent String is used in all HTTP calls so that we can monitor telemetry between different versions of this package
@@ -50886,7 +51023,7 @@ function getUserAgentString() {
     return `@actions/artifact-${package_version.version}`;
 }
 //# sourceMappingURL=user-agent.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/shared/errors.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/shared/errors.js
 class FilesNotFoundError extends Error {
     constructor(files = []) {
         let message = 'No files were found to upload';
@@ -50948,7 +51085,7 @@ UsageError.isUsageErrorMessage = (msg) => {
     return msg.includes('insufficient usage');
 };
 //# sourceMappingURL=errors.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/jwt-decode@4.0.0/node_modules/jwt-decode/build/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/jwt-decode@4.0.0/node_modules/jwt-decode/build/esm/index.js
 class InvalidTokenError extends Error {
 }
 InvalidTokenError.prototype.name = "InvalidTokenError";
@@ -51007,7 +51144,7 @@ function jwtDecode(token, options) {
     }
 }
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/shared/util.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/shared/util.js
 
 
 
@@ -51126,7 +51263,7 @@ function maskSecretUrls(body) {
     }
 }
 //# sourceMappingURL=util.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/shared/artifact-twirp-client.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/shared/artifact-twirp-client.js
 var __awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -51277,7 +51414,7 @@ function internalArtifactTwirpClient(options) {
     return new ArtifactServiceClientJSON(client);
 }
 //# sourceMappingURL=artifact-twirp-client.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/upload-zip-specification.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/upload-zip-specification.js
 
 
 
@@ -51366,7 +51503,7 @@ function getUploadZipSpecification(filesToZip, rootDirectory) {
     return specification;
 }
 //# sourceMappingURL=upload-zip-specification.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/abort-controller/AbortError.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/abort-controller/AbortError.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -51411,7 +51548,7 @@ var external_node_os_ = __webpack_require__(8161);
 var external_node_util_ = __webpack_require__(7975);
 // EXTERNAL MODULE: external "node:process"
 var external_node_process_ = __webpack_require__(1708);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/logger/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/logger/log.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -51421,7 +51558,7 @@ function log(message, ...args) {
     external_node_process_.stderr.write(`${external_node_util_.format(message, ...args)}${external_node_os_.EOL}`);
 }
 //# sourceMappingURL=log.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/env.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/env.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -51470,7 +51607,7 @@ const isNodeRuntime = !isBun && !isDeno;
  */
 const isReactNative = false;
 //# sourceMappingURL=env.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/logger/debug.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/logger/debug.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -51657,7 +51794,7 @@ function extend(namespace) {
 }
 /* harmony default export */ const debug = (debugObj);
 //# sourceMappingURL=debug.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/logger/logger.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/logger/logger.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -51783,7 +51920,7 @@ function createClientLogger(namespace) {
     return context.createClientLogger(namespace);
 }
 //# sourceMappingURL=logger.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/httpHeaders.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/httpHeaders.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 function normalizeName(name) {
@@ -51883,7 +52020,7 @@ function httpHeaders_createHttpHeaders(rawHeaders) {
     return new HttpHeadersImpl(rawHeaders);
 }
 //# sourceMappingURL=httpHeaders.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/uuidUtils.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/uuidUtils.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -51892,10 +52029,10 @@ function httpHeaders_createHttpHeaders(rawHeaders) {
  * @returns RFC4122 v4 UUID.
  */
 function randomUUID() {
-    return crypto.randomUUID();
+    return globalThis.crypto.randomUUID();
 }
 //# sourceMappingURL=uuidUtils.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/pipelineRequest.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/pipelineRequest.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -51951,7 +52088,7 @@ function pipelineRequest_createPipelineRequest(options) {
     return new PipelineRequestImpl(options);
 }
 //# sourceMappingURL=pipelineRequest.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/pipeline.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/pipeline.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 const ValidPhaseNames = new Set(["Deserialize", "Serialize", "Retry", "Sign"]);
@@ -52214,7 +52351,7 @@ function pipeline_createEmptyPipeline() {
     return HttpPipeline.create();
 }
 //# sourceMappingURL=pipeline.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/object.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/object.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -52229,7 +52366,7 @@ function isObject(input) {
         !(input instanceof Date));
 }
 //# sourceMappingURL=object.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/error.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/error.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52246,13 +52383,13 @@ function isError(e) {
     return false;
 }
 //# sourceMappingURL=error.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/inspect.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/inspect.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 const custom = external_node_util_.inspect.custom;
 //# sourceMappingURL=inspect.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/sanitizer.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/sanitizer.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52408,7 +52545,7 @@ class Sanitizer {
     }
 }
 //# sourceMappingURL=sanitizer.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/restError.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/restError.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52506,13 +52643,13 @@ var external_node_https_ = __webpack_require__(4708);
 var external_node_zlib_ = __webpack_require__(8522);
 // EXTERNAL MODULE: external "node:stream"
 var external_node_stream_ = __webpack_require__(7075);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/log.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 const log_logger = createClientLogger("ts-http-runtime");
 //# sourceMappingURL=log.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/nodeHttpClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/nodeHttpClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52862,7 +52999,7 @@ function createNodeHttpClient() {
     return new NodeHttpClient();
 }
 //# sourceMappingURL=nodeHttpClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/defaultHttpClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/defaultHttpClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52873,7 +53010,7 @@ function defaultHttpClient_createDefaultHttpClient() {
     return createNodeHttpClient();
 }
 //# sourceMappingURL=defaultHttpClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/logPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/logPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52901,13 +53038,13 @@ function logPolicy_logPolicy(options = {}) {
             logger(`Request: ${sanitizer.sanitize(request)}`);
             const response = await next(request);
             logger(`Response status code: ${response.status}`);
-            logger(`Headers: ${sanitizer.sanitize(response.headers)}`);
+            logger(`Headers: ${sanitizer.sanitize({ headers: response.headers })}`);
             return response;
         },
     };
 }
 //# sourceMappingURL=logPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/userAgentPlatform.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/userAgentPlatform.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52936,7 +53073,7 @@ async function userAgentPlatform_setPlatformSpecificData(map) {
     }
 }
 //# sourceMappingURL=userAgentPlatform.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/userAgent.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/userAgent.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52968,7 +53105,7 @@ async function userAgent_getUserAgentValue(prefix) {
     return userAgentValue;
 }
 //# sourceMappingURL=userAgent.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/userAgentPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/userAgentPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -52995,7 +53132,7 @@ function userAgentPolicy_userAgentPolicy(options = {}) {
     };
 }
 //# sourceMappingURL=userAgentPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/random.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/random.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -53006,7 +53143,7 @@ function userAgentPolicy_userAgentPolicy(options = {}) {
  * @param min - The smallest integer value allowed.
  * @param max - The largest integer value allowed.
  */
-function random_getRandomIntegerInclusive(min, max) {
+function getRandomIntegerInclusive(min, max) {
     // Make sure inputs are integers.
     min = Math.ceil(min);
     max = Math.floor(max);
@@ -53017,7 +53154,7 @@ function random_getRandomIntegerInclusive(min, max) {
     return offset + min;
 }
 //# sourceMappingURL=random.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/delay.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/delay.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53034,11 +53171,11 @@ function calculateRetryDelay(retryAttempt, config) {
     const clampedDelay = Math.min(config.maxRetryDelayInMs, exponentialDelay);
     // Allow the final value to have some "jitter" (within 50% of the delay size) so
     // that retries across multiple clients don't occur simultaneously.
-    const retryAfterInMs = clampedDelay / 2 + random_getRandomIntegerInclusive(0, clampedDelay / 2);
+    const retryAfterInMs = clampedDelay / 2 + getRandomIntegerInclusive(0, clampedDelay / 2);
     return { retryAfterInMs };
 }
 //# sourceMappingURL=delay.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/helpers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/helpers.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53097,7 +53234,7 @@ function parseHeaderValueAsNumber(response, headerName) {
     return valueAsNum;
 }
 //# sourceMappingURL=helpers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/retryStrategies/throttlingRetryStrategy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/retryStrategies/throttlingRetryStrategy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53172,7 +53309,7 @@ function throttlingRetryStrategy_throttlingRetryStrategy() {
     };
 }
 //# sourceMappingURL=throttlingRetryStrategy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/retryStrategies/exponentialRetryStrategy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/retryStrategies/exponentialRetryStrategy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53236,13 +53373,13 @@ function isSystemError(err) {
         err.code === "ENOTFOUND");
 }
 //# sourceMappingURL=exponentialRetryStrategy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/constants.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/constants.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-const constants_SDK_VERSION = "0.3.6";
+const constants_SDK_VERSION = "0.3.8";
 const constants_DEFAULT_RETRY_POLICY_COUNT = 3;
 //# sourceMappingURL=constants.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/retryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/retryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53348,7 +53485,7 @@ function retryPolicy_retryPolicy(strategies, options = { maxRetries: constants_D
     };
 }
 //# sourceMappingURL=retryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/defaultRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/defaultRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53374,7 +53511,7 @@ function defaultRetryPolicy_defaultRetryPolicy(options = {}) {
     };
 }
 //# sourceMappingURL=defaultRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/bytesEncoding.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/bytesEncoding.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -53396,7 +53533,7 @@ function bytesEncoding_stringToUint8Array(value, format) {
     return Buffer.from(value, format);
 }
 //# sourceMappingURL=bytesEncoding.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/formData.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/formData.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -53423,7 +53560,7 @@ function convertBodyToFormDataMap(body) {
     return undefined;
 }
 //# sourceMappingURL=formData.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/formDataPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/formDataPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53513,11 +53650,11 @@ async function prepareFormData(formData, request) {
     request.multipartBody = { parts };
 }
 //# sourceMappingURL=formDataPolicy.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/https-proxy-agent@7.0.6/node_modules/https-proxy-agent/dist/index.js
-var dist = __webpack_require__(7350);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/http-proxy-agent@7.0.2/node_modules/http-proxy-agent/dist/index.js
-var http_proxy_agent_dist = __webpack_require__(1632);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/proxyPolicy.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/https-proxy-agent@7.0.6_supports-color@7.2.0/node_modules/https-proxy-agent/dist/index.js
+var dist = __webpack_require__(4328);
+// EXTERNAL MODULE: ./node_modules/.pnpm/http-proxy-agent@7.0.2_supports-color@7.2.0/node_modules/http-proxy-agent/dist/index.js
+var http_proxy_agent_dist = __webpack_require__(5336);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/proxyPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53707,7 +53844,7 @@ function proxyPolicy_proxyPolicy(proxySettings, options) {
     };
 }
 //# sourceMappingURL=proxyPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/redirectPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/redirectPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53769,7 +53906,7 @@ async function handleRedirect(next, response, maxRetries, allowCrossOriginRedire
     return response;
 }
 //# sourceMappingURL=redirectPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/platformPolicies.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/platformPolicies.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53801,8 +53938,8 @@ function platformPolicies_addPlatformPolicies(pipeline, options) {
 }
 //# sourceMappingURL=platformPolicies.js.map
 // EXTERNAL MODULE: external "stream"
-var external_stream_ = __webpack_require__(4584);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/typeGuards-node.js
+var external_stream_ = __webpack_require__(2203);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/typeGuards-node.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53823,7 +53960,7 @@ function typeGuards_node_isWebReadableStream(x) {
     return x instanceof ReadableStream;
 }
 //# sourceMappingURL=typeGuards-node.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/typeGuards.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/typeGuards.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53842,7 +53979,7 @@ function typeGuards_isBlob(x) {
     return x instanceof Blob;
 }
 //# sourceMappingURL=typeGuards.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/concat.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/concat.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -53912,7 +54049,7 @@ async function concat(sources) {
     };
 }
 //# sourceMappingURL=concat.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/multipartPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/multipartPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54028,7 +54165,7 @@ function multipartPolicy_multipartPolicy() {
     };
 }
 //# sourceMappingURL=multipartPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/createPipelineFromOptions.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/createPipelineFromOptions.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54056,7 +54193,7 @@ function createPipelineFromOptions_createPipelineFromOptions(options) {
     return pipeline;
 }
 //# sourceMappingURL=createPipelineFromOptions.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/checkInsecureConnection.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/checkInsecureConnection.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54108,7 +54245,7 @@ function checkInsecureConnection_ensureSecureConnection(request, options) {
     }
 }
 //# sourceMappingURL=checkInsecureConnection.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/apiKeyAuthenticationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/apiKeyAuthenticationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54139,7 +54276,7 @@ function apiKeyAuthenticationPolicy_apiKeyAuthenticationPolicy(options) {
     };
 }
 //# sourceMappingURL=apiKeyAuthenticationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/basicAuthenticationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/basicAuthenticationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54170,7 +54307,7 @@ function basicAuthenticationPolicy_basicAuthenticationPolicy(options) {
     };
 }
 //# sourceMappingURL=basicAuthenticationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/bearerAuthenticationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/bearerAuthenticationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54201,7 +54338,7 @@ function bearerAuthenticationPolicy_bearerAuthenticationPolicy(options) {
     };
 }
 //# sourceMappingURL=bearerAuthenticationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/oauth2AuthenticationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/auth/oauth2AuthenticationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54232,7 +54369,7 @@ function oauth2AuthenticationPolicy_oauth2AuthenticationPolicy(options) {
     };
 }
 //# sourceMappingURL=oauth2AuthenticationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/client/clientHelpers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/client/clientHelpers.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54274,7 +54411,7 @@ function clientHelpers_getCachedDefaultHttpsClient() {
     return cachedHttpClient;
 }
 //# sourceMappingURL=clientHelpers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/client/multipart.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/client/multipart.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54395,7 +54532,7 @@ function multipart_buildMultipartBody(parts) {
     return { parts: parts.map(buildBodyPart) };
 }
 //# sourceMappingURL=multipart.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/client/sendRequest.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/client/sendRequest.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54489,14 +54626,17 @@ function getContentType(body) {
 function buildPipelineRequest(method, url, options = {}) {
     const requestContentType = getRequestContentType(options);
     const { body, multipartBody } = getRequestBody(options.body, requestContentType);
+    const accept = options.accept ??
+        options.headers?.accept ??
+        (options.noDefaultAcceptHeader ? undefined : "application/json");
     const headers = createHttpHeaders({
         ...(options.headers ? options.headers : {}),
-        accept: options.accept ?? options.headers?.accept ?? "application/json",
+        ...(accept !== undefined && { accept }),
         ...(requestContentType && {
             "content-type": requestContentType,
         }),
     });
-    const { allowInsecureConnection, abortSignal, onUploadProgress, onDownloadProgress, timeout, responseAsStream, url: _url, method: _method, body: _body, multipartBody: _multiBody, headers: _headers, ...rest } = options;
+    const { allowInsecureConnection, abortSignal, onUploadProgress, onDownloadProgress, timeout, responseAsStream, noDefaultAcceptHeader: _noDefaultAcceptHeader, url: _url, method: _method, body: _body, multipartBody: _multiBody, headers: _headers, ...rest } = options;
     const request = createPipelineRequest({
         url,
         method,
@@ -54593,7 +54733,7 @@ function createParseError(response, err) {
     });
 }
 //# sourceMappingURL=sendRequest.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/client/getClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/client/getClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54603,8 +54743,7 @@ function createParseError(response, err) {
 /**
  * Creates a client with a default pipeline
  * @param endpoint - Base endpoint for the client
- * @param credentials - Credentials to authenticate the requests
- * @param options - Client options
+ * @param clientOptions - Client options
  */
 function getClient(endpoint, clientOptions = {}) {
     const pipeline = clientOptions.pipeline ?? createDefaultPipeline(clientOptions);
@@ -54618,34 +54757,35 @@ function getClient(endpoint, clientOptions = {}) {
             });
         }
     }
+    const noDefaultAcceptHeader = clientOptions.internal?.noDefaultAcceptHeader ?? false;
     const { allowInsecureConnection, httpClient } = clientOptions;
     const endpointUrl = clientOptions.endpoint ?? endpoint;
     const client = (path, ...args) => {
         const getUrl = (requestOptions) => buildRequestUrl(endpointUrl, path, args, { allowInsecureConnection, ...requestOptions });
         return {
             get: (requestOptions = {}) => {
-                return buildOperation("GET", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("GET", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             post: (requestOptions = {}) => {
-                return buildOperation("POST", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("POST", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             put: (requestOptions = {}) => {
-                return buildOperation("PUT", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("PUT", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             patch: (requestOptions = {}) => {
-                return buildOperation("PATCH", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("PATCH", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             delete: (requestOptions = {}) => {
-                return buildOperation("DELETE", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("DELETE", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             head: (requestOptions = {}) => {
-                return buildOperation("HEAD", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("HEAD", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             options: (requestOptions = {}) => {
-                return buildOperation("OPTIONS", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("OPTIONS", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
             trace: (requestOptions = {}) => {
-                return buildOperation("TRACE", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient);
+                return buildOperation("TRACE", getUrl(requestOptions), pipeline, requestOptions, allowInsecureConnection, httpClient, noDefaultAcceptHeader);
             },
         };
     };
@@ -54655,23 +54795,23 @@ function getClient(endpoint, clientOptions = {}) {
         pipeline,
     };
 }
-function buildOperation(method, url, pipeline, options, allowInsecureConnection, httpClient) {
+function buildOperation(method, url, pipeline, options, allowInsecureConnection, httpClient, noDefaultAcceptHeader = false) {
     allowInsecureConnection = options.allowInsecureConnection ?? allowInsecureConnection;
     return {
         then: function (onFulfilled, onrejected) {
-            return sendRequest(method, url, pipeline, { ...options, allowInsecureConnection }, httpClient).then(onFulfilled, onrejected);
+            return sendRequest(method, url, pipeline, { ...options, allowInsecureConnection, noDefaultAcceptHeader }, httpClient).then(onFulfilled, onrejected);
         },
         async asBrowserStream() {
             if (isNodeLike) {
                 throw new Error("`asBrowserStream` is supported only in the browser environment. Use `asNodeStream` instead to obtain the response body stream. If you require a Web stream of the response in Node, consider using `Readable.toWeb` on the result of `asNodeStream`.");
             }
             else {
-                return sendRequest(method, url, pipeline, { ...options, allowInsecureConnection, responseAsStream: true }, httpClient);
+                return sendRequest(method, url, pipeline, { ...options, allowInsecureConnection, noDefaultAcceptHeader, responseAsStream: true }, httpClient);
             }
         },
         async asNodeStream() {
             if (isNodeLike) {
-                return sendRequest(method, url, pipeline, { ...options, allowInsecureConnection, responseAsStream: true }, httpClient);
+                return sendRequest(method, url, pipeline, { ...options, allowInsecureConnection, noDefaultAcceptHeader, responseAsStream: true }, httpClient);
             }
             else {
                 throw new Error("`isNodeStream` is not supported in the browser environment. Use `asBrowserStream` to obtain the response body stream.");
@@ -54680,7 +54820,7 @@ function buildOperation(method, url, pipeline, options, allowInsecureConnection,
     };
 }
 //# sourceMappingURL=getClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/client/restError.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/client/restError.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54711,7 +54851,7 @@ function statusCodeToNumber(statusCode) {
     return Number.isNaN(status) ? undefined : status;
 }
 //# sourceMappingURL=restError.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54726,7 +54866,7 @@ function statusCodeToNumber(statusCode) {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/pipeline.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/pipeline.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54738,12 +54878,12 @@ function esm_pipeline_createEmptyPipeline() {
     return pipeline_createEmptyPipeline();
 }
 //# sourceMappingURL=pipeline.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/logger/internal.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/logger/internal.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 //# sourceMappingURL=internal.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+logger@1.3.0/node_modules/@azure/logger/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+logger@1.4.0_supports-color@7.2.0/node_modules/@azure/logger/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54784,13 +54924,13 @@ function esm_createClientLogger(namespace) {
     return esm_context.createClientLogger(namespace);
 }
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/log.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 const esm_log_logger = esm_createClientLogger("core-rest-pipeline");
 //# sourceMappingURL=log.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/agentPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/agentPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -54813,7 +54953,7 @@ function agentPolicy_agentPolicy(agent) {
     };
 }
 //# sourceMappingURL=agentPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/decompressResponsePolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/decompressResponsePolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -54837,7 +54977,7 @@ function decompressResponsePolicy_decompressResponsePolicy() {
     };
 }
 //# sourceMappingURL=decompressResponsePolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/exponentialRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/exponentialRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54862,7 +55002,7 @@ function exponentialRetryPolicy(options = {}) {
     });
 }
 //# sourceMappingURL=exponentialRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/systemErrorRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/systemErrorRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54892,7 +55032,7 @@ function systemErrorRetryPolicy(options = {}) {
     };
 }
 //# sourceMappingURL=systemErrorRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/throttlingRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/throttlingRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54921,7 +55061,7 @@ function throttlingRetryPolicy(options = {}) {
     };
 }
 //# sourceMappingURL=throttlingRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/tlsPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/tlsPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -54944,7 +55084,7 @@ function tlsPolicy_tlsPolicy(tlsSettings) {
     };
 }
 //# sourceMappingURL=tlsPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/policies/internal.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/policies/internal.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54962,7 +55102,7 @@ function tlsPolicy_tlsPolicy(tlsSettings) {
 
 
 //# sourceMappingURL=internal.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/logPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/logPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -54982,7 +55122,7 @@ function policies_logPolicy_logPolicy(options = {}) {
     });
 }
 //# sourceMappingURL=logPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/redirectPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/redirectPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55000,7 +55140,7 @@ function policies_redirectPolicy_redirectPolicy(options = {}) {
     return redirectPolicy_redirectPolicy(options);
 }
 //# sourceMappingURL=redirectPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/userAgentPlatform.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/userAgentPlatform.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55029,13 +55169,13 @@ async function util_userAgentPlatform_setPlatformSpecificData(map) {
     }
 }
 //# sourceMappingURL=userAgentPlatform.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/constants.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/constants.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-const esm_constants_SDK_VERSION = "1.24.0";
+const esm_constants_SDK_VERSION = "1.25.0";
 const esm_constants_DEFAULT_RETRY_POLICY_COUNT = 3;
 //# sourceMappingURL=constants.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/userAgent.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/userAgent.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55066,7 +55206,7 @@ async function util_userAgent_getUserAgentValue(prefix) {
     return userAgentValue;
 }
 //# sourceMappingURL=userAgent.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/userAgentPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/userAgentPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55093,7 +55233,7 @@ function policies_userAgentPolicy_userAgentPolicy(options = {}) {
     };
 }
 //# sourceMappingURL=userAgentPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/createFile.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/createFile.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55113,7 +55253,7 @@ function createFile(content, name, options = {}) {
     return createRawFile(content, name, options);
 }
 //# sourceMappingURL=createFile.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/file.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/file.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 function file_isNodeReadableStream(x) {
@@ -55239,7 +55379,7 @@ function toArrayBuffer(source) {
     return source.map((x) => x);
 }
 //# sourceMappingURL=file.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/multipartPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/multipartPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55268,7 +55408,7 @@ function policies_multipartPolicy_multipartPolicy() {
     };
 }
 //# sourceMappingURL=multipartPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/decompressResponsePolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/decompressResponsePolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55284,7 +55424,7 @@ function policies_decompressResponsePolicy_decompressResponsePolicy() {
     return decompressResponsePolicy_decompressResponsePolicy();
 }
 //# sourceMappingURL=decompressResponsePolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/defaultRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/defaultRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55302,7 +55442,7 @@ function policies_defaultRetryPolicy_defaultRetryPolicy(options = {}) {
     return defaultRetryPolicy_defaultRetryPolicy(options);
 }
 //# sourceMappingURL=defaultRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/formDataPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/formDataPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55318,8 +55458,8 @@ function policies_formDataPolicy_formDataPolicy() {
 }
 //# sourceMappingURL=formDataPolicy.js.map
 // EXTERNAL MODULE: external "node:crypto"
-var external_node_crypto_ = __webpack_require__(5217);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/sha256.js
+var external_node_crypto_ = __webpack_require__(7598);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/sha256.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55342,7 +55482,7 @@ async function computeSha256Hash(content, encoding) {
     return createHash("sha256").update(content).digest(encoding);
 }
 //# sourceMappingURL=sha256.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@typespec+ts-http-runtime@0.3.6/node_modules/@typespec/ts-http-runtime/dist/esm/util/internal.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@typespec+ts-http-runtime@0.3.8_supports-color@7.2.0/node_modules/@typespec/ts-http-runtime/dist/esm/util/internal.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55355,22 +55495,32 @@ async function computeSha256Hash(content, encoding) {
 
 
 //# sourceMappingURL=internal.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+abort-controller@2.1.2/node_modules/@azure/abort-controller/dist/esm/AbortError.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+abort-controller@2.2.0/node_modules/@azure/abort-controller/dist/esm/AbortError.js
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 /**
  * This error is thrown when an asynchronous operation has been aborted.
  * Check for this error by testing the `name` that the name property of the
  * error matches `"AbortError"`.
  *
  * @example
- * ```ts
+ * ```ts snippet:AbortErrorSample
+ * import { AbortError } from "@azure/abort-controller";
+ *
+ * async function doAsyncWork(options: { abortSignal: AbortSignal }): Promise<void> {
+ *   if (options.abortSignal.aborted) {
+ *     throw new AbortError();
+ *   }
+ *
+ *   // do async work
+ * }
+ *
  * const controller = new AbortController();
  * controller.abort();
  * try {
- *   doAsyncWork(controller.signal)
+ *   doAsyncWork({ abortSignal: controller.signal });
  * } catch (e) {
- *   if (e.name === 'AbortError') {
+ *   if (e instanceof Error && e.name === "AbortError") {
  *     // handle abort error here.
  *   }
  * }
@@ -55383,12 +55533,12 @@ class AbortError_AbortError extends Error {
     }
 }
 //# sourceMappingURL=AbortError.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+abort-controller@2.1.2/node_modules/@azure/abort-controller/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+abort-controller@2.2.0/node_modules/@azure/abort-controller/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-util@1.13.1/node_modules/@azure/core-util/dist/esm/createAbortablePromise.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-util@1.14.0_supports-color@7.2.0/node_modules/@azure/core-util/dist/esm/createAbortablePromise.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55431,10 +55581,9 @@ function createAbortablePromise(buildPromise, options) {
     });
 }
 //# sourceMappingURL=createAbortablePromise.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-util@1.13.1/node_modules/@azure/core-util/dist/esm/delay.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-util@1.14.0_supports-color@7.2.0/node_modules/@azure/core-util/dist/esm/delay.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-
 
 const delay_StandardAbortMessage = "The delay was aborted.";
 /**
@@ -55454,24 +55603,8 @@ function delay_delay(timeInMs, options) {
         abortErrorMsg: abortErrorMsg ?? delay_StandardAbortMessage,
     });
 }
-/**
- * Calculates the delay interval for retry attempts using exponential delay with jitter.
- * @param retryAttempt - The current retry attempt number.
- * @param config - The exponential retry configuration.
- * @returns An object containing the calculated retry delay.
- */
-function delay_calculateRetryDelay(retryAttempt, config) {
-    // Exponentially increase the delay each time
-    const exponentialDelay = config.retryDelayInMs * Math.pow(2, retryAttempt);
-    // Don't let the delay exceed the maximum
-    const clampedDelay = Math.min(config.maxRetryDelayInMs, exponentialDelay);
-    // Allow the final value to have some "jitter" (within 50% of the delay size) so
-    // that retries across multiple clients don't occur simultaneously.
-    const retryAfterInMs = clampedDelay / 2 + getRandomIntegerInclusive(0, clampedDelay / 2);
-    return { retryAfterInMs };
-}
 //# sourceMappingURL=delay.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-util@1.13.1/node_modules/@azure/core-util/dist/esm/error.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-util@1.14.0_supports-color@7.2.0/node_modules/@azure/core-util/dist/esm/error.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55502,7 +55635,7 @@ function getErrorMessage(e) {
     }
 }
 //# sourceMappingURL=error.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-util@1.13.1/node_modules/@azure/core-util/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-util@1.14.0_supports-color@7.2.0/node_modules/@azure/core-util/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55634,7 +55767,7 @@ function esm_stringToUint8Array(value, format) {
     return bytesEncoding_stringToUint8Array(value, format);
 }
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/proxyPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/proxyPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55663,7 +55796,7 @@ function policies_proxyPolicy_proxyPolicy(proxySettings, options) {
     return proxyPolicy_proxyPolicy(proxySettings, options);
 }
 //# sourceMappingURL=proxyPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/setClientRequestIdPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/setClientRequestIdPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -55688,7 +55821,7 @@ function setClientRequestIdPolicy(requestIdHeaderName = "x-ms-client-request-id"
     };
 }
 //# sourceMappingURL=setClientRequestIdPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/agentPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/agentPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55703,7 +55836,7 @@ function policies_agentPolicy_agentPolicy(agent) {
     return agentPolicy_agentPolicy(agent);
 }
 //# sourceMappingURL=agentPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/tlsPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/tlsPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55718,7 +55851,7 @@ function policies_tlsPolicy_tlsPolicy(tlsSettings) {
     return tlsPolicy_tlsPolicy(tlsSettings);
 }
 //# sourceMappingURL=tlsPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-tracing@1.3.1/node_modules/@azure/core-tracing/dist/esm/tracingContext.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-tracing@1.4.0/node_modules/@azure/core-tracing/dist/esm/tracingContext.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /** @internal */
@@ -55767,9 +55900,9 @@ class TracingContextImpl {
     }
 }
 //# sourceMappingURL=tracingContext.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@azure+core-tracing@1.3.1/node_modules/@azure/core-tracing/dist/commonjs/state.js
-var commonjs_state = __webpack_require__(9583);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-tracing@1.3.1/node_modules/@azure/core-tracing/dist/esm/state.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@azure+core-tracing@1.4.0/node_modules/@azure/core-tracing/dist/commonjs/state-cjs.js
+var state_cjs = __webpack_require__(2386);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-tracing@1.4.0/node_modules/@azure/core-tracing/dist/esm/state.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 // @ts-expect-error The recommended approach to sharing module state between ESM and CJS.
@@ -55778,9 +55911,9 @@ var commonjs_state = __webpack_require__(9583);
 /**
  * Defines the shared state between CJS and ESM by re-exporting the CJS state.
  */
-const state_state = commonjs_state/* state */.w;
+const state_state = state_cjs/* state */.w;
 //# sourceMappingURL=state.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-tracing@1.3.1/node_modules/@azure/core-tracing/dist/esm/instrumenter.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-tracing@1.4.0/node_modules/@azure/core-tracing/dist/esm/instrumenter.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55844,7 +55977,7 @@ function getInstrumenter() {
     return state_state.instrumenterImplementation;
 }
 //# sourceMappingURL=instrumenter.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-tracing@1.3.1/node_modules/@azure/core-tracing/dist/esm/tracingClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-tracing@1.4.0/node_modules/@azure/core-tracing/dist/esm/tracingClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55860,8 +55993,8 @@ function createTracingClient(options) {
     function startSpan(name, operationOptions, spanOptions) {
         const startSpanResult = getInstrumenter().startSpan(name, {
             ...spanOptions,
-            packageName: packageName,
-            packageVersion: packageVersion,
+            packageName,
+            packageVersion,
             tracingContext: operationOptions?.tracingOptions?.tracingContext,
         });
         let tracingContext = startSpanResult.tracingContext;
@@ -55881,7 +56014,7 @@ function createTracingClient(options) {
     async function withSpan(name, operationOptions, callback, spanOptions) {
         const { span, updatedOptions } = startSpan(name, operationOptions, spanOptions);
         try {
-            const result = await withContext(updatedOptions.tracingOptions.tracingContext, () => Promise.resolve(callback(updatedOptions, span)));
+            const result = await withContext(updatedOptions.tracingOptions.tracingContext, () => callback(updatedOptions, span));
             span.setStatus({ status: "success" });
             return result;
         }
@@ -55923,13 +56056,13 @@ function createTracingClient(options) {
     };
 }
 //# sourceMappingURL=tracingClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-tracing@1.3.1/node_modules/@azure/core-tracing/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-tracing@1.4.0/node_modules/@azure/core-tracing/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/restError.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/restError.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -55946,7 +56079,7 @@ function esm_restError_isRestError(e) {
     return restError_isRestError(e);
 }
 //# sourceMappingURL=restError.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/tracingPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/tracingPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56078,7 +56211,7 @@ function tryProcessResponse(span, response) {
     }
 }
 //# sourceMappingURL=tracingPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/wrapAbortSignal.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/wrapAbortSignal.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -56112,7 +56245,7 @@ function wrapAbortSignalLike(abortSignalLike) {
     return { abortSignal: controller.signal, cleanup };
 }
 //# sourceMappingURL=wrapAbortSignal.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/wrapAbortSignalLikePolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/wrapAbortSignalLikePolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56142,7 +56275,7 @@ function wrapAbortSignalLikePolicy() {
     };
 }
 //# sourceMappingURL=wrapAbortSignalLikePolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/createPipelineFromOptions.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/createPipelineFromOptions.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56197,7 +56330,7 @@ function esm_createPipelineFromOptions_createPipelineFromOptions(options) {
     return pipeline;
 }
 //# sourceMappingURL=createPipelineFromOptions.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/defaultHttpClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/defaultHttpClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56225,7 +56358,7 @@ function esm_defaultHttpClient_createDefaultHttpClient() {
     };
 }
 //# sourceMappingURL=defaultHttpClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/httpHeaders.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/httpHeaders.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56237,7 +56370,7 @@ function esm_httpHeaders_createHttpHeaders(rawHeaders) {
     return httpHeaders_createHttpHeaders(rawHeaders);
 }
 //# sourceMappingURL=httpHeaders.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/pipelineRequest.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/pipelineRequest.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56253,7 +56386,7 @@ function esm_pipelineRequest_createPipelineRequest(options) {
     return pipelineRequest_createPipelineRequest(options);
 }
 //# sourceMappingURL=pipelineRequest.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/exponentialRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/exponentialRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56269,7 +56402,7 @@ function exponentialRetryPolicy_exponentialRetryPolicy(options = {}) {
     return tspExponentialRetryPolicy(options);
 }
 //# sourceMappingURL=exponentialRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/systemErrorRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/systemErrorRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56287,7 +56420,7 @@ function systemErrorRetryPolicy_systemErrorRetryPolicy(options = {}) {
     return tspSystemErrorRetryPolicy(options);
 }
 //# sourceMappingURL=systemErrorRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/throttlingRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/throttlingRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56309,7 +56442,7 @@ function throttlingRetryPolicy_throttlingRetryPolicy(options = {}) {
     return tspThrottlingRetryPolicy(options);
 }
 //# sourceMappingURL=throttlingRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/retryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/retryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56329,7 +56462,7 @@ function policies_retryPolicy_retryPolicy(strategies, options = { maxRetries: DE
     });
 }
 //# sourceMappingURL=retryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/tokenCycler.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/util/tokenCycler.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56496,7 +56629,7 @@ function tokenCycler_createTokenCycler(credential, tokenCyclerOptions) {
     };
 }
 //# sourceMappingURL=tokenCycler.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/bearerTokenAuthenticationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/bearerTokenAuthenticationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56732,7 +56865,7 @@ function getCaeChallengeClaims(challenges) {
     return parsedChallenges.find((x) => x.scheme === "Bearer" && x.params.claims && x.params.error === "insufficient_claims")?.params.claims;
 }
 //# sourceMappingURL=bearerTokenAuthenticationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/auxiliaryAuthenticationHeaderPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/policies/auxiliaryAuthenticationHeaderPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56795,7 +56928,7 @@ function auxiliaryAuthenticationHeaderPolicy(options) {
     };
 }
 //# sourceMappingURL=auxiliaryAuthenticationHeaderPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-rest-pipeline/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-rest-pipeline@1.25.0_supports-color@7.2.0/node_modules/@azure/core-rest-pipeline/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56825,7 +56958,7 @@ function auxiliaryAuthenticationHeaderPolicy(options) {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-auth@1.10.1/node_modules/@azure/core-auth/dist/esm/keyCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-auth@1.11.0_supports-color@7.2.0/node_modules/@azure/core-auth/dist/esm/keyCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56838,7 +56971,7 @@ function isKeyCredential(credential) {
     return isObjectWithProperties(credential, ["key"]) && typeof credential.key === "string";
 }
 //# sourceMappingURL=keyCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-auth@1.10.1/node_modules/@azure/core-auth/dist/esm/azureNamedKeyCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-auth@1.11.0_supports-color@7.2.0/node_modules/@azure/core-auth/dist/esm/azureNamedKeyCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56903,7 +57036,7 @@ function isNamedKeyCredential(credential) {
         typeof credential.name === "string");
 }
 //# sourceMappingURL=azureNamedKeyCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-auth@1.10.1/node_modules/@azure/core-auth/dist/esm/azureSASCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-auth@1.11.0_supports-color@7.2.0/node_modules/@azure/core-auth/dist/esm/azureSASCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -56955,25 +57088,9 @@ function isSASCredential(credential) {
     return (isObjectWithProperties(credential, ["signature"]) && typeof credential.signature === "string");
 }
 //# sourceMappingURL=azureSASCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-auth@1.10.1/node_modules/@azure/core-auth/dist/esm/tokenCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-auth@1.11.0_supports-color@7.2.0/node_modules/@azure/core-auth/dist/esm/tokenCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-/**
- * @internal
- * @param accessToken - Access token
- * @returns Whether a token is bearer type or not
- */
-function isBearerToken(accessToken) {
-    return !accessToken.tokenType || accessToken.tokenType === "Bearer";
-}
-/**
- * @internal
- * @param accessToken - Access token
- * @returns Whether a token is Pop token or not
- */
-function isPopToken(accessToken) {
-    return accessToken.tokenType === "pop";
-}
 /**
  * Tests an object to determine whether it implements TokenCredential.
  *
@@ -56991,21 +57108,21 @@ function isTokenCredential(credential) {
         (castCredential.signRequest === undefined || castCredential.getToken.length > 0));
 }
 //# sourceMappingURL=tokenCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-auth@1.10.1/node_modules/@azure/core-auth/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-auth@1.11.0_supports-color@7.2.0/node_modules/@azure/core-auth/dist/esm/index.js
 
 
 
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/policies/disableKeepAlivePolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/policies/disableKeepAlivePolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 const disableKeepAlivePolicyName = "DisableKeepAlivePolicy";
 function createDisableKeepAlivePolicy() {
     return {
         name: disableKeepAlivePolicyName,
-        async sendRequest(request, next) {
+        sendRequest(request, next) {
             request.disableKeepAlive = true;
             return next(request);
         },
@@ -57018,7 +57135,7 @@ function pipelineContainsDisableKeepAlivePolicy(pipeline) {
     return pipeline.getOrderedPolicies().some((policy) => policy.name === disableKeepAlivePolicyName);
 }
 //# sourceMappingURL=disableKeepAlivePolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/base64.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/base64.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -57055,7 +57172,7 @@ function base64_decodeStringToString(value) {
     return uint8ArrayToString(stringToUint8Array(value, "base64"), "utf-8");
 }
 //# sourceMappingURL=base64.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/interfaces.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/interfaces.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -57067,7 +57184,7 @@ const XML_ATTRKEY = "$";
  */
 const XML_CHARKEY = "_";
 //# sourceMappingURL=interfaces.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/utils.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/utils.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -57196,7 +57313,7 @@ function flattenResponse(fullResponse, responseSpec) {
     });
 }
 //# sourceMappingURL=utils.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/serializer.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/serializer.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58139,9 +58256,9 @@ const MapperTypeNames = {
     UnixTime: "UnixTime",
 };
 //# sourceMappingURL=serializer.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/commonjs/state-cjs.js
-var state_cjs = __webpack_require__(8961);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/state.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/commonjs/state-cjs.js
+var commonjs_state_cjs = __webpack_require__(3934);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/state.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 // @ts-expect-error The recommended approach to sharing module state between ESM and CJS.
@@ -58150,9 +58267,9 @@ var state_cjs = __webpack_require__(8961);
 /**
  * Defines the shared state between CJS and ESM by re-exporting the CJS state.
  */
-const esm_state_state = state_cjs/* state */.w;
+const esm_state_state = commonjs_state_cjs/* state */.w;
 //# sourceMappingURL=state.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/operationHelpers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/operationHelpers.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58251,7 +58368,7 @@ function getOperationRequestInfo(request) {
     return info;
 }
 //# sourceMappingURL=operationHelpers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/deserializationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/deserializationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58482,7 +58599,7 @@ async function parse(jsonContentTypes, xmlContentTypes, operationResponse, opts,
     return operationResponse;
 }
 //# sourceMappingURL=deserializationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/interfaceHelpers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/interfaceHelpers.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58521,7 +58638,7 @@ function getPathStringFromParameter(parameter) {
     return result;
 }
 //# sourceMappingURL=interfaceHelpers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/serializationPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/serializationPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58673,7 +58790,7 @@ function prepareXMLRootList(obj, elementName, xmlNamespaceKey, xmlNamespace) {
     return result;
 }
 //# sourceMappingURL=serializationPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/pipeline.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/pipeline.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58700,7 +58817,7 @@ function createClientPipeline(options = {}) {
     return pipeline;
 }
 //# sourceMappingURL=pipeline.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/httpClientCache.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/httpClientCache.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58712,7 +58829,7 @@ function getCachedDefaultHttpClient() {
     return httpClientCache_cachedHttpClient;
 }
 //# sourceMappingURL=httpClientCache.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/urlHelpers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/urlHelpers.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -58947,13 +59064,13 @@ function appendQueryParams(url, queryParams, sequenceParams, noOverwrite = false
     return parsedUrl.toString();
 }
 //# sourceMappingURL=urlHelpers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/log.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 const dist_esm_log_logger = esm_createClientLogger("core-client");
 //# sourceMappingURL=log.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/serviceClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/serviceClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59126,7 +59243,7 @@ function getCredentialScopes(options) {
     return undefined;
 }
 //# sourceMappingURL=serviceClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/authorizeRequestOnClaimChallenge.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/authorizeRequestOnClaimChallenge.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59199,7 +59316,7 @@ async function authorizeRequestOnClaimChallenge(onChallengeOptions) {
     return true;
 }
 //# sourceMappingURL=authorizeRequestOnClaimChallenge.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/authorizeRequestOnTenantChallenge.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/authorizeRequestOnTenantChallenge.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -59315,7 +59432,7 @@ function requestToOptions(request) {
     };
 }
 //# sourceMappingURL=authorizeRequestOnTenantChallenge.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-client@1.10.2/node_modules/@azure/core-client/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-client@1.11.0_supports-color@7.2.0/node_modules/@azure/core-client/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59327,7 +59444,7 @@ function requestToOptions(request) {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/util.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/util.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59339,6 +59456,22 @@ const util_originalRequestSymbol = Symbol("Original PipelineRequest");
 // cloned but we need to retrieve the OperationSpec and OperationArguments from the
 // original request.
 const originalClientRequestSymbol = Symbol.for("@azure/core-client original request");
+const passThroughProps = new Set([
+    "url",
+    "method",
+    "withCredentials",
+    "timeout",
+    "requestId",
+    "abortSignal",
+    "body",
+    "formData",
+    "onDownloadProgress",
+    "onUploadProgress",
+    "proxySettings",
+    "streamResponseStatusCodes",
+    "agent",
+    "requestOverrides",
+]);
 function toPipelineRequest(webResource, options = {}) {
     const compatWebResource = webResource;
     const request = compatWebResource[util_originalRequestSymbol];
@@ -59422,23 +59555,7 @@ function toWebResourceLike(request, options) {
                 if (prop === "keepAlive") {
                     request.disableKeepAlive = !value;
                 }
-                const passThroughProps = [
-                    "url",
-                    "method",
-                    "withCredentials",
-                    "timeout",
-                    "requestId",
-                    "abortSignal",
-                    "body",
-                    "formData",
-                    "onDownloadProgress",
-                    "onUploadProgress",
-                    "proxySettings",
-                    "streamResponseStatusCodes",
-                    "agent",
-                    "requestOverrides",
-                ];
-                if (typeof prop === "string" && passThroughProps.includes(prop)) {
+                if (typeof prop === "string" && passThroughProps.has(prop)) {
                     request[prop] = value;
                 }
                 return Reflect.set(target, prop, value, receiver);
@@ -59590,7 +59707,7 @@ class HttpHeaders {
     }
 }
 //# sourceMappingURL=util.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/response.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/response.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59658,7 +59775,7 @@ function response_toPipelineResponse(compatResponse) {
     }
 }
 //# sourceMappingURL=response.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/extendedClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/extendedClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59711,7 +59828,7 @@ class ExtendedServiceClient extends ServiceClient {
     }
 }
 //# sourceMappingURL=extendedClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/policies/requestPolicyFactoryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/policies/requestPolicyFactoryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59763,7 +59880,7 @@ function createRequestPolicyFactoryPolicy(factories) {
     };
 }
 //# sourceMappingURL=requestPolicyFactoryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/httpClientAdapter.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/httpClientAdapter.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -59782,7 +59899,7 @@ function convertHttpClient(requestPolicyClient) {
     };
 }
 //# sourceMappingURL=httpClientAdapter.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-http-compat@2.4.0_@azure+core-client@1.10.2_@azure+core-rest-pipeline@1.24.0/node_modules/@azure/core-http-compat/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-http-compat@2.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__@azure+co_d787bc7df786cb651d567e8aaf5a6964/node_modules/@azure/core-http-compat/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -59797,7 +59914,7 @@ function convertHttpClient(requestPolicyClient) {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/path-expression-matcher@1.6.1/node_modules/path-expression-matcher/src/Expression.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/path-expression-matcher@1.6.2/node_modules/path-expression-matcher/src/Expression.js
 /**
  * Expression - Parses and stores a tag pattern expression
  * 
@@ -60030,7 +60147,7 @@ class Expression {
     return this.pattern;
   }
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/path-expression-matcher@1.6.1/node_modules/path-expression-matcher/src/Matcher.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/path-expression-matcher@1.6.2/node_modules/path-expression-matcher/src/Matcher.js
 
 
 /**
@@ -60260,26 +60377,29 @@ class Matcher {
 
     // Get or create sibling tracking for current level
     const currentLevel = this.path.length;
-    if (!this.siblingStacks[currentLevel]) {
-      this.siblingStacks[currentLevel] = new Map();
+    let level = this.siblingStacks[currentLevel];
+    if (!level) {
+      // `counts` tells same-name siblings apart (the "counter" — nth <item>
+      // among other <item>s). `total` is every child seen at this level so
+      // far, kept as a running number instead of re-added from `counts` on
+      // every push — a parent with many differently-named children would
+      // otherwise cost more per child the more distinct names it has.
+      level = { counts: new Map(), total: 0 };
+      this.siblingStacks[currentLevel] = level;
     }
-
-    const siblings = this.siblingStacks[currentLevel];
 
     // Create a unique key for sibling tracking that includes namespace
     const siblingKey = namespace ? `${namespace}:${tagName}` : tagName;
 
     // Calculate counter (how many times this tag appeared at this level)
-    const counter = siblings.get(siblingKey) || 0;
+    const counter = level.counts.get(siblingKey) || 0;
 
-    // Calculate position (total children at this level so far)
-    let position = 0;
-    for (const count of siblings.values()) {
-      position += count;
-    }
+    // Position = total children at this level seen before this one.
+    const position = level.total;
 
-    // Update sibling count for this tag
-    siblings.set(siblingKey, counter + 1);
+    // Update sibling count for this tag, and the level's running total.
+    level.counts.set(siblingKey, counter + 1);
+    level.total++;
 
     // Create new node
     const node = {
@@ -60655,7 +60775,7 @@ class Matcher {
   snapshot() {
     return {
       path: this.path.map(node => ({ ...node })),
-      siblingStacks: this.siblingStacks.map(map => new Map(map)),
+      siblingStacks: this.siblingStacks.map(level => level ? { counts: new Map(level.counts), total: level.total } : level),
       keptAttrs: this._keptAttrs.map(entry => ({ ...entry }))
     };
   }
@@ -60667,7 +60787,7 @@ class Matcher {
   restore(snapshot) {
     this._pathStringCache = null;
     this.path = snapshot.path.map(node => ({ ...node }));
-    this.siblingStacks = snapshot.siblingStacks.map(map => new Map(map));
+    this.siblingStacks = snapshot.siblingStacks.map(level => level ? { counts: new Map(level.counts), total: level.total } : level);
     this._keptAttrs = (snapshot.keptAttrs || []).map(entry => ({ ...entry }));
   }
 
@@ -60692,24 +60812,31 @@ class Matcher {
   }
 }
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-builder@1.2.0/node_modules/fast-xml-builder/src/util.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-builder@1.3.1/node_modules/fast-xml-builder/src/util.js
 
+
+// String(val)/val.toString() drop the sign of -0 (e.g. String(-0) === '0'), silently
+// corrupting a round-tripped negative-zero value. XML has no separate int/float syntax,
+// so this is the single place every raw value gets turned into text.
+function valToStr(val) {
+  return typeof val === 'number' && Object.is(val, -0) ? '-0' : String(val)
+}
 
 function safeComment(val) {
-  return String(val)
+  return valToStr(val)
     .replace(/--/g, '- -')   // -- is illegal anywhere in comment content
     .replace(/--/g, '- -')   // handle the scenario when 2 consiucative dashes appears 
     .replace(/-$/, '- ');    // trailing - would form -- with the closing -->
 }
 
 function safeCdata(val) {
-  return String(val).replace(/\]\]>/g, ']]]]><![CDATA[>')
+  return valToStr(val).replace(/\]\]>/g, ']]]]><![CDATA[>')
 }
 
 function escapeAttribute(val) {
-  return String(val).replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+  return valToStr(val).replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/xml-naming@0.1.0/node_modules/xml-naming/src/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/xml-naming@0.3.0/node_modules/xml-naming/src/index.js
 /**
  * xml-naming
  * Validates XML Name productions as defined in the XML 1.0 and 1.1 specifications.
@@ -60822,8 +60949,36 @@ const buildRegexes = (startChar, char, flags = '') => {
 const regexes10 = buildRegexes(nameStartChar10, nameChar10);       // no /u — BMP only
 const regexes11 = buildRegexes(nameStartChar11, nameChar11, 'u');  // /u — enables \u{10000}-\u{EFFFF}
 
-const getRegexes = (xmlVersion = '1.0') =>
-  xmlVersion === '1.1' ? regexes11 : regexes10;
+// ---------------------------------------------------------------------------
+// ASCII-only fast path (opt-in, off by default)
+//
+// The XML 1.0 vs 1.1 NameStartChar/NameChar productions differ *only* in
+// their non-ASCII ranges (merged vs split Latin-1 ranges, \u0487, and
+// supplementary planes). Restricted to ASCII, both versions collapse to the
+// same character classes, so a single regex pair covers both xmlVersion
+// values — no /u flag needed.
+//
+// Rationale: unicode-aware regexes (the /u flag, required for XML 1.1's
+// supplementary-plane range) are measurably slower in V8 than plain
+// non-unicode regexes on the same input, even when the input is pure ASCII.
+// For the common case — HTML/SVG ids, XML tags — names are ASCII, so callers
+// who know this can opt in to skip the unicode-aware matching path entirely.
+// This is a real but *conditional* win: mainly for XML 1.1 input (avoids /u),
+// or at scale where the larger unicode character classes add engine
+// overhead. It also changes behaviour (rejects legitimate non-ASCII XML
+// 1.0/1.1 names), so it must never be silently enabled — hence off by
+// default.
+// ---------------------------------------------------------------------------
+
+const nameStartCharAscii = ':A-Za-z_';
+const nameCharAscii = nameStartCharAscii + '\\-\\.\\d';
+
+const regexesAscii = buildRegexes(nameStartCharAscii, nameCharAscii); // no /u — ASCII only
+
+const getRegexes = (xmlVersion = '1.0', asciiOnly = false) => {
+  if (asciiOnly) return regexesAscii;
+  return xmlVersion === '1.1' ? regexes11 : regexes10;
+};
 
 // ---------------------------------------------------------------------------
 // Boolean validators
@@ -60833,57 +60988,131 @@ const getRegexes = (xmlVersion = '1.0') =>
  * Returns true if the string is a valid XML Name.
  * Colons are allowed anywhere (Name production).
  * Used for: DOCTYPE entity names, notation names, DTD element declarations.
+ *
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
+ *   asciiOnly: skip unicode-aware matching, ASCII names only (default false).
  */
-const src_name = (str, { xmlVersion = '1.0' } = {}) =>
-  getRegexes(xmlVersion).name.test(str);
+const src_name = (str, { xmlVersion = '1.0', asciiOnly = false } = {}) =>
+  getRegexes(xmlVersion, asciiOnly).name.test(str);
 
 /**
  * Returns true if the string is a valid NCName (Non-Colonized Name).
  * Colons are not permitted.
  * Used for: namespace prefixes, local names, SVG id attributes.
+ *
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
+ *   asciiOnly: skip unicode-aware matching, ASCII names only (default false).
  */
-const ncName = (str, { xmlVersion = '1.0' } = {}) =>
-  getRegexes(xmlVersion).ncName.test(str);
+const ncName = (str, { xmlVersion = '1.0', asciiOnly = false } = {}) =>
+  getRegexes(xmlVersion, asciiOnly).ncName.test(str);
 
 /**
  * Returns true if the string is a valid QName (Qualified Name).
  * Allows exactly one colon as a prefix separator: prefix:localName.
  * Used for: element and attribute names in namespace-aware XML/SVG.
+ *
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
+ *   asciiOnly: skip unicode-aware matching, ASCII names only (default false).
  */
-const qName = (str, { xmlVersion = '1.0' } = {}) =>
-  getRegexes(xmlVersion).qName.test(str);
+const qName = (str, { xmlVersion = '1.0', asciiOnly = false } = {}) =>
+  getRegexes(xmlVersion, asciiOnly).qName.test(str);
 
 /**
  * Returns true if the string is a valid NMToken.
  * Like Name but no restriction on the first character.
  * Used for: DTD NMTOKEN attribute values.
+ *
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
+ *   asciiOnly: skip unicode-aware matching, ASCII names only (default false).
  */
-const nmToken = (str, { xmlVersion = '1.0' } = {}) =>
-  getRegexes(xmlVersion).nmToken.test(str);
+const nmToken = (str, { xmlVersion = '1.0', asciiOnly = false } = {}) =>
+  getRegexes(xmlVersion, asciiOnly).nmToken.test(str);
 
 /**
  * Returns true if the string is a valid NMTokens value.
  * A whitespace-separated list of NMToken values.
  * Used for: DTD NMTOKENS attribute values.
+ *
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
+ *   asciiOnly: skip unicode-aware matching, ASCII names only (default false).
  */
-const nmTokens = (str, { xmlVersion = '1.0' } = {}) =>
-  getRegexes(xmlVersion).nmTokens.test(str);
+const nmTokens = (str, { xmlVersion = '1.0', asciiOnly = false } = {}) =>
+  getRegexes(xmlVersion, asciiOnly).nmTokens.test(str);
+
+// ---------------------------------------------------------------------------
+// Memoized validator factory
+//
+// Real documents reuse a small vocabulary of tag/attribute names across many
+// siblings (e.g. `id`, `class`, `href` repeated across hundreds of elements).
+// The plain boolean validators above re-run the regex on every call
+// regardless of repeats. `createValidator` returns a closure with a private
+// string -> boolean cache, so repeated names after the first become O(1)
+// lookups instead of regex tests.
+//
+// - opts (xmlVersion, asciiOnly) are fixed at creation time, so the regex is
+//   resolved once, not on every call.
+// - The cache is private to the returned closure — no shared/global state,
+//   no cross-caller pollution.
+// - `maxCacheSize` bounds memory: once the cache reaches this many entries,
+//   it stops accepting new ones (existing entries keep serving hits; new
+//   misses just fall through to the regex, uncached). This avoids unbounded
+//   growth against adversarial/high-cardinality input (e.g. validating
+//   attacker-supplied names with no repeats) without the cost/complexity of
+//   a full LRU, and without the perf cliff of reset-and-refill thrashing.
+// - Call `.reset()` on the returned function to clear the cache manually
+//   (e.g. between unrelated parse calls).
+// ---------------------------------------------------------------------------
+
+const PRODUCTIONS = ['name', 'ncName', 'qName', 'nmToken', 'nmTokens'];
+
+/**
+ * Returns a memoized boolean validator function for a single production,
+ * with opts fixed at creation time.
+ *
+ * @param {'name'|'ncName'|'qName'|'nmToken'|'nmTokens'} production
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean, maxCacheSize?: number }} [opts]
+ *   maxCacheSize: max number of distinct strings to cache (default 2048).
+ *   Once reached, new strings are validated but not cached; existing cached
+ *   entries keep being served.
+ * @returns {((str: string) => boolean) & { reset: () => void }}
+ */
+const createValidator = (production, { xmlVersion = '1.0', asciiOnly = false, maxCacheSize = 2048 } = {}) => {
+  if (!PRODUCTIONS.includes(production)) {
+    throw new TypeError(
+      `Unknown production "${production}". Must be one of: ${PRODUCTIONS.join(', ')}`
+    );
+  }
+
+  const regex = getRegexes(xmlVersion, asciiOnly)[production];
+  let cache = new Map();
+
+  const validator = (str) => {
+    const cached = cache.get(str);
+    if (cached !== undefined) return cached;
+
+    const result = regex.test(str);
+    if (cache.size < maxCacheSize) cache.set(str, result);
+    return result;
+  };
+
+  validator.reset = () => { cache = new Map(); };
+
+  return validator;
+};
 
 // ---------------------------------------------------------------------------
 // Diagnostic validator
 // ---------------------------------------------------------------------------
-
-const PRODUCTIONS = (/* unused pure expression or super */ null && (['name', 'ncName', 'qName', 'nmToken', 'nmTokens']));
 
 /**
  * Validates a string against a named production and returns a detailed result.
  *
  * @param {string} str
  * @param {'name'|'ncName'|'qName'|'nmToken'|'nmTokens'} production
- * @param {{ xmlVersion?: '1.0'|'1.1' }} [opts]
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
  * @returns {{ valid: boolean, production: string, input: string, reason?: string, position?: number }}
  */
-const validate = (str, production, { xmlVersion = '1.0' } = {}) => {
+const validate = (str, production, { xmlVersion = '1.0', asciiOnly = false } = {}) => {
   if (!PRODUCTIONS.includes(production)) {
     throw new TypeError(
       `Unknown production "${production}". Must be one of: ${PRODUCTIONS.join(', ')}`
@@ -60891,12 +61120,19 @@ const validate = (str, production, { xmlVersion = '1.0' } = {}) => {
   }
 
   const validators = { name: src_name, ncName, qName, nmToken, nmTokens };
-  const isValid = validators[production](str, { xmlVersion });
+  const isValid = validators[production](str, { xmlVersion, asciiOnly });
 
   if (isValid) return { valid: true, production, input: str };
 
   let reason = 'Does not match the production rules';
   let position;
+
+  // Diagnostic fallback char checks must mirror the same character set the
+  // boolean validator above used, or the reported reason/position could
+  // contradict the `valid: false` result (e.g. flagging a char as illegal
+  // that the unicode-aware check would have accepted).
+  const startCharPattern = asciiOnly ? /^[:A-Za-z_]/ : /^[:A-Za-z_\u00C0-\uFFFD]/;
+  const namePattern = asciiOnly ? /[\w\-\\.:]/ : /[\w\-\\.:\u00B7\u00C0-\uFFFD]/;
 
   if (str.length === 0) {
     reason = 'Input is empty';
@@ -60914,13 +61150,13 @@ const validate = (str, production, { xmlVersion = '1.0' } = {}) => {
     position = str.lastIndexOf(':');
   } else if (
     ['name', 'ncName', 'qName'].includes(production) &&
-    !/^[:A-Za-z_\u00C0-\uFFFD]/.test(str[0])
+    !startCharPattern.test(str[0])
   ) {
     reason = `First character "${str[0]}" is not a valid NameStartChar`;
     position = 0;
   } else {
     for (let i = 0; i < str.length; i++) {
-      if (!/[\w\-\\.:\u00B7\u00C0-\uFFFD]/.test(str[i])) {
+      if (!namePattern.test(str[i])) {
         reason = `Character "${str[i]}" at position ${i} is not a valid NameChar`;
         position = i;
         break;
@@ -60940,7 +61176,7 @@ const validate = (str, production, { xmlVersion = '1.0' } = {}) => {
  *
  * @param {string[]} strings
  * @param {'name'|'ncName'|'qName'|'nmToken'|'nmTokens'} production
- * @param {{ xmlVersion?: '1.0'|'1.1' }} [opts]
+ * @param {{ xmlVersion?: '1.0'|'1.1', asciiOnly?: boolean }} [opts]
  * @returns {Array<{ valid: boolean, production: string, input: string, reason?: string, position?: number }>}
  */
 const validateAll = (strings, production, opts = {}) =>
@@ -60955,10 +61191,12 @@ const validateAll = (strings, production, opts = {}) =>
  *
  * @param {string} str
  * @param {'name'|'ncName'|'qName'|'nmToken'|'nmTokens'} production
- * @param {{ replacement?: string }} [opts]
+ * @param {{ replacement?: string, asciiOnly?: boolean }} [opts]
+ *   asciiOnly: also replace any non-ASCII character, not just XML-illegal
+ *   ones (default false).
  * @returns {string}
  */
-const sanitize = (str, production = 'name', { replacement = '_' } = {}) => {
+const sanitize = (str, production = 'name', { replacement = '_', asciiOnly = false } = {}) => {
   if (!str) return replacement;
 
   let result = str;
@@ -60969,7 +61207,8 @@ const sanitize = (str, production = 'name', { replacement = '_' } = {}) => {
   }
 
   // Replace illegal characters
-  result = result.replace(/[^\w\-\.:\u00B7\u00C0-\uFFFD]/g, replacement);
+  const allowedCharPattern = asciiOnly ? /[^\w\-\.:]/g : /[^\w\-\.:\u00B7\u00C0-\uFFFD]/g;
+  result = result.replace(allowedCharPattern, replacement);
 
   // Fix invalid start character for Name / NCName / QName
   if (production !== 'nmToken' && production !== 'nmTokens') {
@@ -60980,7 +61219,7 @@ const sanitize = (str, production = 'name', { replacement = '_' } = {}) => {
 
   return result || replacement;
 };
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-builder@1.2.0/node_modules/fast-xml-builder/src/orderedJs2Xml.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-builder@1.3.1/node_modules/fast-xml-builder/src/orderedJs2Xml.js
 
 
 
@@ -61019,11 +61258,11 @@ function detectXmlVersionFromArray(jArray, options) {
  * @param {boolean} isAttribute - true when resolving an attribute name
  * @param {object}  options
  * @param {Matcher} matcher     - current matcher state (readonly from callback perspective)
- * @param {string}  xmlVersion  - '1.0' or '1.1', forwarded to xml-naming
+ * @param {function} qNameValidator - function to validate tag names
  */
-function resolveTagName(name, isAttribute, options, matcher, xmlVersion) {
+function resolveTagName(name, isAttribute, options, matcher, qNameValidator) {
     if (!options.sanitizeName) return name;
-    if (qName(name, { xmlVersion })) return name;
+    if (qNameValidator(name)) return name;
     return options.sanitizeName(name, { isAttribute, matcher: matcher.readOnly() });
 }
 
@@ -61053,14 +61292,14 @@ function toXml(jArray, options) {
 
     // Detect XML version for use in name validation
     const xmlVersion = detectXmlVersionFromArray(jArray, options);
-
+    const qNameValidator = createValidator('qName', { xmlVersion });
     // Initialize matcher for path tracking
     const matcher = new Matcher();
 
-    return arrToStr(jArray, options, indentation, matcher, stopNodeExpressions, xmlVersion);
+    return arrToStr(jArray, options, indentation, matcher, stopNodeExpressions, qNameValidator);
 }
 
-function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVersion) {
+function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, qNameValidator) {
     let xmlStr = "";
     let isPreviousElementTag = false;
 
@@ -61071,7 +61310,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVe
     if (!Array.isArray(arr)) {
         // Non-array values (e.g. string tag values) should be treated as text content
         if (arr !== undefined && arr !== null) {
-            let text = arr.toString();
+            let text = valToStr(arr);
             text = replaceEntitiesValue(text, options);
             return text;
         }
@@ -61093,7 +61332,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVe
         // Resolve tag name (may transform it; may throw for invalid names)
         const tagName = isSpecialName
             ? rawTagName
-            : resolveTagName(rawTagName, false, options, matcher, xmlVersion);
+            : resolveTagName(rawTagName, false, options, matcher, qNameValidator);
 
         // Extract attributes from ":@" property
         const attrValues = extractAttributeValues(tagObj[":@"], options);
@@ -61110,6 +61349,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVe
                 tagText = options.tagValueProcessor(tagName, tagText);
                 tagText = replaceEntitiesValue(tagText, options);
             }
+            tagText = valToStr(tagText);
             if (isPreviousElementTag) {
                 xmlStr += indentation;
             }
@@ -61135,7 +61375,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVe
             matcher.pop();
             continue;
         } else if (tagName[0] === "?") {
-            const attStr = attr_to_str(tagObj[":@"], options, isStopNode, matcher, xmlVersion);
+            const attStr = attr_to_str(tagObj[":@"], options, isStopNode, matcher, qNameValidator);
             const tempInd = tagName === "?xml" ? "" : indentation;
             // Text node content on PI/XML declaration tags is intentionally ignored.
             // Only attributes are valid on these tags per the XML spec.
@@ -61151,7 +61391,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVe
         }
 
         // Pass isStopNode to attr_to_str so attributes are also not processed for stopNodes
-        const attStr = attr_to_str(tagObj[":@"], options, isStopNode, matcher, xmlVersion);
+        const attStr = attr_to_str(tagObj[":@"], options, isStopNode, matcher, qNameValidator);
         const tagStart = indentation + `<${tagName}${attStr}`;
 
         // If this is a stopNode, get raw content without processing
@@ -61159,7 +61399,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, xmlVe
         if (isStopNode) {
             tagValue = orderedJs2Xml_getRawContent(tagObj[rawTagName], options);
         } else {
-            tagValue = arrToStr(tagObj[rawTagName], options, newIdentation, matcher, stopNodeExpressions, xmlVersion);
+            tagValue = arrToStr(tagObj[rawTagName], options, newIdentation, matcher, stopNodeExpressions, qNameValidator);
         }
 
         if (options.unpairedTags.indexOf(tagName) !== -1) {
@@ -61218,7 +61458,7 @@ function orderedJs2Xml_getRawContent(arr, options) {
     if (!Array.isArray(arr)) {
         // Non-array values return as-is
         if (arr !== undefined && arr !== null) {
-            return arr.toString();
+            return valToStr(arr);
         }
         return "";
     }
@@ -61230,7 +61470,7 @@ function orderedJs2Xml_getRawContent(arr, options) {
 
         if (tagName === options.textNodeName) {
             // Raw text content - NO processing, NO entity replacement
-            content += item[tagName];
+            content += valToStr(item[tagName]);
         } else if (tagName === options.cdataPropName) {
             // CDATA content
             content += item[tagName][0][options.textNodeName];
@@ -61288,7 +61528,7 @@ function propName(obj) {
  * Build attribute string, resolving attribute names through sanitizeName when configured.
  * Accepts matcher so the callback has path context.
  */
-function attr_to_str(attrMap, options, isStopNode, matcher, xmlVersion) {
+function attr_to_str(attrMap, options, isStopNode, matcher, qNameValidator) {
     let attrStr = "";
     if (attrMap && !options.ignoreAttributes) {
         for (let attr in attrMap) {
@@ -61298,7 +61538,7 @@ function attr_to_str(attrMap, options, isStopNode, matcher, xmlVersion) {
             const cleanAttrName = attr.substr(options.attributeNamePrefix.length);
             const resolvedAttrName = isStopNode
                 ? cleanAttrName  // stopNodes are raw — skip sanitizeName for attr names too
-                : resolveTagName(cleanAttrName, true, options, matcher, xmlVersion);
+                : resolveTagName(cleanAttrName, true, options, matcher, qNameValidator);
 
             let attrVal;
             if (isStopNode) {
@@ -61340,7 +61580,7 @@ function replaceEntitiesValue(textValue, options) {
     }
     return textValue;
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-builder@1.2.0/node_modules/fast-xml-builder/src/ignoreAttributes.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-builder@1.3.1/node_modules/fast-xml-builder/src/ignoreAttributes.js
 function getIgnoreAttributesFn(ignoreAttributes) {
     if (typeof ignoreAttributes === 'function') {
         return ignoreAttributes
@@ -61359,7 +61599,7 @@ function getIgnoreAttributesFn(ignoreAttributes) {
     }
     return () => false
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-builder@1.2.0/node_modules/fast-xml-builder/src/fxb.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-builder@1.3.1/node_modules/fast-xml-builder/src/fxb.js
 
 //parse Empty Node as self closing node
 
@@ -61492,11 +61732,11 @@ function detectXmlVersionFromObj(jObj, options) {
  * @param {boolean} isAttribute - true when resolving an attribute name
  * @param {object}  options
  * @param {Matcher} matcher     - current matcher state (readonly from callback perspective)
- * @param {string}  xmlVersion  - '1.0' or '1.1', forwarded to xml-naming
+ * @param {function} qNameValidator - function to validate tag names
  */
-function fxb_resolveTagName(name, isAttribute, options, matcher, xmlVersion) {
+function fxb_resolveTagName(name, isAttribute, options, matcher, qNameValidator) {
   if (!options.sanitizeName) return name;
-  if (qName(name, { xmlVersion })) return name;
+  if (qNameValidator(name)) return name;
   return options.sanitizeName(name, { isAttribute, matcher: matcher.readOnly() });
 }
 
@@ -61512,11 +61752,12 @@ Builder.prototype.build = function (jObj) {
     // Initialize matcher for path tracking
     const matcher = new Matcher();
     const xmlVersion = detectXmlVersionFromObj(jObj, this.options);
-    return this.j2x(jObj, 0, matcher, xmlVersion).val;
+    const qNameValidator = createValidator('qName', { xmlVersion });
+    return this.j2x(jObj, 0, matcher, qNameValidator).val;
   }
 };
 
-Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
+Builder.prototype.j2x = function (jObj, level, matcher, qNameValidator) {
   let attrStr = '';
   let val = '';
   if (this.options.maxNestedTags && matcher.getDepth() >= this.options.maxNestedTags) {
@@ -61544,7 +61785,7 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
 
     const resolvedKey = isSpecialKey
       ? key
-      : fxb_resolveTagName(key, false, this.options, matcher, xmlVersion);
+      : fxb_resolveTagName(key, false, this.options, matcher, qNameValidator);
 
     if (typeof jObj[key] === 'undefined') {
       // supress undefined node only if it is not an attribute
@@ -61569,12 +61810,12 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
       const attr = this.isAttribute(key);
       if (attr && !this.ignoreAttributesFn(attr, jPath)) {
         // Resolve the attribute name through sanitizeName
-        const resolvedAttr = fxb_resolveTagName(attr, true, this.options, matcher, xmlVersion);
-        attrStr += this.buildAttrPairStr(resolvedAttr, '' + jObj[key], isCurrentStopNode);
+        const resolvedAttr = fxb_resolveTagName(attr, true, this.options, matcher, qNameValidator);
+        attrStr += this.buildAttrPairStr(resolvedAttr, valToStr(jObj[key]), isCurrentStopNode);
       } else if (!attr) {
         //tag value
         if (key === this.options.textNodeName) {
-          let newval = this.options.tagValueProcessor(key, '' + jObj[key]);
+          let newval = this.options.tagValueProcessor(key, valToStr(jObj[key]));
           val += this.replaceEntitiesValue(newval);
         } else {
           // Check if this is a stopNode before building
@@ -61584,7 +61825,7 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
 
           if (isStopNode) {
             // Build as raw content without encoding
-            const textValue = '' + jObj[key];
+            const textValue = valToStr(jObj[key]);
             if (textValue === '') {
               val += this.indentate(level) + '<' + resolvedKey + this.closeTag(resolvedKey) + this.tagEndChar;
             } else {
@@ -61611,7 +61852,7 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
           if (this.options.oneListGroup) {
             // Push tag to matcher before recursive call
             matcher.push(resolvedKey);
-            const result = this.j2x(item, level + 1, matcher, xmlVersion);
+            const result = this.j2x(item, level + 1, matcher, qNameValidator);
             // Pop tag from matcher after recursive call
             matcher.pop();
 
@@ -61620,12 +61861,13 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
               listTagAttr += result.attrStr
             }
           } else {
-            listTagVal += this.processTextOrObjNode(item, resolvedKey, level, matcher, xmlVersion)
+            listTagVal += this.processTextOrObjNode(item, resolvedKey, level, matcher, qNameValidator)
           }
         } else {
           if (this.options.oneListGroup) {
             let textValue = this.options.tagValueProcessor(resolvedKey, item);
             textValue = this.replaceEntitiesValue(textValue);
+            textValue = valToStr(textValue);
             listTagVal += textValue;
           } else {
             // Check if this is a stopNode before building
@@ -61635,7 +61877,7 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
 
             if (isStopNode) {
               // Build as raw content without encoding
-              const textValue = '' + item;
+              const textValue = valToStr(item);
               if (textValue === '') {
                 listTagVal += this.indentate(level) + '<' + resolvedKey + this.closeTag(resolvedKey) + this.tagEndChar;
               } else {
@@ -61658,11 +61900,11 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
         const L = Ks.length;
         for (let j = 0; j < L; j++) {
           // Resolve attribute names inside attributesGroupName
-          const resolvedAttr = fxb_resolveTagName(Ks[j], true, this.options, matcher, xmlVersion);
-          attrStr += this.buildAttrPairStr(resolvedAttr, '' + jObj[key][Ks[j]], isCurrentStopNode);
+          const resolvedAttr = fxb_resolveTagName(Ks[j], true, this.options, matcher, qNameValidator);
+          attrStr += this.buildAttrPairStr(resolvedAttr, valToStr(jObj[key][Ks[j]]), isCurrentStopNode);
         }
       } else {
-        val += this.processTextOrObjNode(jObj[key], resolvedKey, level, matcher, xmlVersion)
+        val += this.processTextOrObjNode(jObj[key], resolvedKey, level, matcher, qNameValidator)
       }
     }
   }
@@ -61671,7 +61913,7 @@ Builder.prototype.j2x = function (jObj, level, matcher, xmlVersion) {
 
 Builder.prototype.buildAttrPairStr = function (attrName, val, isStopNode) {
   if (!isStopNode) {
-    val = this.options.attributeValueProcessor(attrName, '' + val);
+    val = this.options.attributeValueProcessor(attrName, valToStr(val));
     val = this.replaceEntitiesValue(val);
   }
   if (this.options.suppressBooleanAttributes && val === "true") {
@@ -61679,7 +61921,7 @@ Builder.prototype.buildAttrPairStr = function (attrName, val, isStopNode) {
   } else return ' ' + attrName + '="' + escapeAttribute(val) + '"';
 }
 
-function processTextOrObjNode(object, key, level, matcher, xmlVersion) {
+function processTextOrObjNode(object, key, level, matcher, qNameValidator) {
   // Extract attributes to pass to matcher
   const attrValues = this.extractAttributes(object);
 
@@ -61697,7 +61939,7 @@ function processTextOrObjNode(object, key, level, matcher, xmlVersion) {
     return this.buildObjectNode(rawContent, key, attrStr, level);
   }
 
-  const result = this.j2x(object, level + 1, matcher, xmlVersion);
+  const result = this.j2x(object, level + 1, matcher, qNameValidator);
   // Pop tag from matcher after recursion
   matcher.pop();
 
@@ -61826,7 +62068,9 @@ Builder.prototype.buildAttributesForStopNode = function (obj) {
       if (val === true && this.options.suppressBooleanAttributes) {
         attrStr += ' ' + cleanKey;
       } else {
-        attrStr += ' ' + cleanKey + '="' + val + '"'; // No encoding for stopNode
+        // stopNode content is raw, but the quote delimiter is always escaped
+        // so a quote in the value cannot break out of the attribute (see orderedJs2Xml attr_to_str)
+        attrStr += ' ' + cleanKey + '="' + escapeAttribute(val) + '"';
       }
     }
   } else {
@@ -61839,7 +62083,9 @@ Builder.prototype.buildAttributesForStopNode = function (obj) {
         if (val === true && this.options.suppressBooleanAttributes) {
           attrStr += ' ' + attr;
         } else {
-          attrStr += ' ' + attr + '="' + val + '"'; // No encoding for stopNode
+          // stopNode content is raw, but the quote delimiter is always escaped
+          // so a quote in the value cannot break out of the attribute (see orderedJs2Xml attr_to_str)
+          attrStr += ' ' + attr + '="' + escapeAttribute(val) + '"';
         }
       }
     }
@@ -61870,7 +62116,7 @@ Builder.prototype.buildObjectNode = function (val, key, attrStr, level) {
     if ((attrStr || attrStr === '') && val.indexOf('<') === -1) {
       return (this.indentate(level) + '<' + key + attrStr + piClosingChar + '>' + val + tagEndExp);
     } else if (this.options.commentPropName !== false && key === this.options.commentPropName && piClosingChar.length === 0) {
-      return this.indentate(level) + `<!--${val}-->` + this.newLine;
+      return this.indentate(level) + `<!--${safeComment(val)}-->` + this.newLine;
     } else {
       return (
         this.indentate(level) + '<' + key + attrStr + piClosingChar + this.tagEndChar +
@@ -61927,6 +62173,10 @@ Builder.prototype.buildTextValNode = function (val, key, attrStr, level, matcher
     // Normal processing: apply tagValueProcessor and entity replacement
     let textValue = this.options.tagValueProcessor(key, val);
     textValue = this.replaceEntitiesValue(textValue);
+    // tagValueProcessor may return the raw value unchanged (default is identity), and
+    // replaceEntitiesValue no-ops on non-strings, so a plain number can still reach here;
+    // stringify it now, sign-preserving, before it's implicitly ToString'd below.
+    textValue = valToStr(textValue);
 
     if (textValue === '') {
       return this.indentate(level) + '<' + key + attrStr + this.closeTag(key) + this.tagEndChar;
@@ -61959,14 +62209,14 @@ function isAttribute(name /*, options*/) {
     return false;
   }
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlbuilder/json2xml.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlbuilder/json2xml.js
 // Re-export from fast-xml-builder for backward compatibility
 
 /* harmony default export */ const json2xml = (Builder);
 
 // If there are any named exports you also want to re-export:
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/util.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/util.js
 
 
 const nameStartChar = ':A-Za-z_\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD';
@@ -62028,7 +62278,7 @@ const DANGEROUS_PROPERTY_NAMES = [
 ];
 
 const criticalProperties = ["__proto__", "constructor", "prototype"];
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/validator.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/validator.js
 
 
 
@@ -62455,7 +62705,7 @@ function getPositionFromMatch(match) {
   return match.startIndex + match[1].length;
 }
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/fxp.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/fxp.js
 
 
 
@@ -62466,7 +62716,7 @@ const XMLValidator = {
   validate: validator_validate
 }
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlparser/OptionsBuilder.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlparser/OptionsBuilder.js
 
 
 
@@ -62631,7 +62881,7 @@ const buildOptions = function (options) {
   //console.debug(built.processEntities)
   return built;
 };
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlparser/xmlNode.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlparser/xmlNode.js
 
 
 let METADATA_SYMBOL;
@@ -62661,10 +62911,24 @@ class XmlNode {
       this.child.push({ [node.tagname]: node.child });
     }
     // if requested, add the startIndex
+    this.addStartIndex(startIndex);
+  }
+
+  addStartIndex(startIndex) {
     if (startIndex !== undefined) {
       // Note: for now we just overwrite the metadata. If we had more complex metadata,
       // we might need to do an object append here:  metadata = { ...metadata, startIndex }
       this.child[this.child.length - 1][METADATA_SYMBOL] = { startIndex };
+    }
+  }
+
+  addEndIndex(endIndex) {
+    const lastChild = this.child[this.child.length - 1];
+    // endIndex is write-once: when updateTag drops a node, the last child is a
+    // previously completed sibling whose endIndex must not be overwritten
+    if (lastChild !== undefined && lastChild[METADATA_SYMBOL] !== undefined
+      && lastChild[METADATA_SYMBOL].endIndex === undefined) {
+      lastChild[METADATA_SYMBOL].endIndex = endIndex;
     }
   }
   /** symbol used for metadata */
@@ -62673,7 +62937,7 @@ class XmlNode {
   }
 }
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlparser/DocTypeReader.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlparser/DocTypeReader.js
 
 
 class DocTypeReader {
@@ -62699,8 +62963,23 @@ class DocTypeReader {
             i = i + 9;
             let angleBracketsCount = 1;
             let hasBody = false, comment = false;
+            let quoteChar = null; // tracks an open SYSTEM/PUBLIC literal before the '[' body
             let exp = "";
             for (; i < xmlData.length; i++) {
+                // Inside a quoted external-identifier literal — XML allows '<'
+                // and '>' as plain data here, so they must not be interpreted
+                // as DOCTYPE structure until the matching quote closes.
+                if (quoteChar !== null) {
+                    if (xmlData[i] === quoteChar) quoteChar = null;
+                    exp += xmlData[i];
+                    continue;
+                }
+                if (!hasBody && !comment && (xmlData[i] === '"' || xmlData[i] === "'")) {
+                    quoteChar = xmlData[i];
+                    exp += xmlData[i];
+                    continue;
+                }
+
                 if (xmlData[i] === '<' && !comment) { //Determine the tag type
                     if (hasBody && hasSeq(xmlData, "!ENTITY", i)) {
                         i += 7;
@@ -62755,7 +63034,7 @@ class DocTypeReader {
                     exp += xmlData[i];
                 }
             }
-            if (angleBracketsCount !== 0) {
+            if (quoteChar !== null || angleBracketsCount !== 0) {
                 throw new Error(`Unclosed DOCTYPE`);
             }
         } else {
@@ -63085,7 +63364,7 @@ function validateEntityName(name, xmlVersion) {
     else
         throw new Error(`Invalid entity name ${name}`);
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/anynum@1.0.1/node_modules/anynum/digitTable.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/anynum@1.0.1/node_modules/anynum/digitTable.js
 /**
  * Flat lookup table: maps Unicode code point → ASCII digit (0-9).
  * Only decimal digit characters (Unicode category Nd) are included.
@@ -63203,7 +63482,7 @@ for (const zero of SCRIPT_ZEROS) {
 
 
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/anynum@1.0.1/node_modules/anynum/anynum.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/anynum@1.0.1/node_modules/anynum/anynum.js
 
 
 
@@ -63339,7 +63618,7 @@ function anynum(str) {
 
 
 /* harmony default export */ const anynum_anynum = (anynum);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/strnum@2.4.1/node_modules/strnum/strnum.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/strnum@2.4.2/node_modules/strnum/strnum.js
 const hexRegex = /^[-+]?0x[a-fA-F0-9]+$/;
 const binRegex = /^0b[01]+$/;
 const octRegex = /^0o[0-7]+$/;
@@ -63470,7 +63749,11 @@ function resolveEnotation(str, trimmedStr, options) {
  */
 function trimZeros(numStr) {
     if (numStr && numStr.indexOf(".") !== -1) {//float
-        numStr = numStr.replace(/0+$/, ""); //remove ending zeros
+        //remove ending zeros without the O(n^2) backtracking that /0+$/ hits
+        //when the string doesn't end in 0 but has a long internal zero-run
+        let end = numStr.length;
+        while (end > 0 && numStr.charCodeAt(end - 1) === 48 /* '0' */) end--;
+        numStr = numStr.slice(0, end);
         if (numStr === ".") numStr = "0";
         else if (numStr[0] === ".") numStr = "0" + numStr;
         else if (numStr[numStr.length - 1] === ".") numStr = numStr.substring(0, numStr.length - 1);
@@ -63511,7 +63794,7 @@ function handleInfinity(str, num, options) {
             return str; // Return original string like "1e1000"
     }
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/ignoreAttributes.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/ignoreAttributes.js
 function ignoreAttributes_getIgnoreAttributesFn(ignoreAttributes) {
     if (typeof ignoreAttributes === 'function') {
         return ignoreAttributes
@@ -63530,7 +63813,7 @@ function ignoreAttributes_getIgnoreAttributesFn(ignoreAttributes) {
     }
     return () => false
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/path-expression-matcher@1.6.1/node_modules/path-expression-matcher/src/ExpressionSet.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/path-expression-matcher@1.6.2/node_modules/path-expression-matcher/src/ExpressionSet.js
 /**
  * ExpressionSet - An indexed collection of Expressions for efficient bulk matching
  *
@@ -63757,7 +64040,7 @@ class ExpressionSet {
   }
 }
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@nodable+entities@2.2.0/node_modules/@nodable/entities/src/entities.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@nodable+entities@3.0.0/node_modules/@nodable/entities/src/entities.js
 // ---------------------------------------------------------------------------
 // Complete HTML5 named entity reference
 // Organized by logical categories for easy maintenance and selective importing
@@ -64864,26 +65147,6 @@ const MISC_SYMBOLS = {
   nVDash: '⊯',
 };
 
-/**
- * All entities combined (if you need everything)
- * @type {Record<string, string>}
- */
-const ALL_ENTITIES = {
-  ...BASIC_LATIN,
-  ...LATIN_ACCENTS,
-  ...LATIN_EXTENDED,
-  ...GREEK,
-  ...CYRILLIC,
-  ...MATH,
-  ...MATH_ADVANCED,
-  ...ARROWS,
-  ...SHAPES,
-  ...PUNCTUATION,
-  ...CURRENCY,
-  ...FRACTIONS,
-  ...MISC_SYMBOLS,
-};
-
 const XML = {
   amp: "&",
   apos: "'",
@@ -64917,7 +65180,7 @@ const COMMON_HTML = {
 // Note: NUMERIC_ENTITIES (&#NNN; / &#xHH;) are handled by the scanner directly
 // via String.fromCodePoint() without any map lookup.
 // ---------------------------------------------------------------------------
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@nodable+entities@2.2.0/node_modules/@nodable/entities/src/EntityDecoder.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@nodable+entities@3.0.0/node_modules/@nodable/entities/src/EntityDecoder.js
 // ---------------------------------------------------------------------------
 // Built-in named entity map  (name → replacement string)
 // No regex, no {regex,val} objects — just flat key/value pairs.
@@ -65562,7 +65825,153 @@ class EntityDecoder {
     return this._applyNCRAction(effective, token, cp);
   }
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/html.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/sql.js
+/**
+ * SQL context patterns — high-precision rules only.
+ *
+ * These rules have very low false-positive risk and are safe to apply to
+ * general user text (names, descriptions, search queries, etc.).
+ * All patterns are ReDoS-safe — unlike the `sql-injection` npm package
+ * which has an active CVE on its own detection regexes.
+ *
+ * For exhaustive coverage including noisier heuristics (comment sequences,
+ * hex literals, stacked queries with semicolons), use 'SQL-STRICT' instead.
+ * Apply 'SQL-STRICT' only to strings that are specifically SQL fragments,
+ * not to general free-text fields.
+ */
+
+const SQL_PATTERNS = [
+  {
+    id: 'sql-block-comment-open',
+    description: 'SQL block comment open: /* ... */ — unusual in legitimate user text',
+    pattern: /\/\*/,
+  },
+  {
+    id: 'sql-union-select',
+    description: 'UNION SELECT — most common SQL injection aggregation attack',
+    pattern: /\bUNION\s{1,20}(?:ALL\s{1,20})?SELECT\b/i,
+  },
+  {
+    id: 'sql-drop-table',
+    description: 'DROP TABLE — destructive DDL injection',
+    pattern: /\bDROP\s{1,20}TABLE\b/i,
+  },
+  {
+    id: 'sql-drop-database',
+    description: 'DROP DATABASE — destructive DDL injection',
+    pattern: /\bDROP\s{1,20}DATABASE\b/i,
+  },
+  {
+    id: 'sql-insert-into',
+    description: 'INSERT INTO — data injection',
+    pattern: /\bINSERT\s{1,20}INTO\b/i,
+  },
+  {
+    id: 'sql-delete-from',
+    description: 'DELETE FROM — data deletion injection',
+    pattern: /\bDELETE\s{1,20}FROM\b/i,
+  },
+  {
+    id: 'sql-update-set',
+    description: 'UPDATE ... SET — data modification injection',
+    // Allows arbitrary content between UPDATE and SET (table name, alias, etc.)
+    pattern: /\bUPDATE\b[\s\S]{1,60}\bSET\b/i,
+  },
+  {
+    id: 'sql-exec-xp',
+    description: 'EXEC xp_ — MSSQL extended stored procedure execution',
+    pattern: /\bEXEC(?:UTE)?\s{1,20}xp_/i,
+  },
+  {
+    id: 'sql-tautology-string',
+    description: "Classic string tautology: ' OR '1'='1 or \" OR \"1\"=\"1\"",
+    // Last quote is optional — injection may truncate it: ' OR '1'='1--
+    pattern: /'\s{0,10}OR\s{0,10}'[^']{0,20}'\s*=\s*'[^']{0,20}/i,
+  },
+  {
+    id: 'sql-tautology-numeric',
+    description: 'Numeric tautology: OR 1=1',
+    pattern: /\bOR\s{1,10}1\s*=\s*1\b/i,
+  },
+  {
+    id: 'sql-always-true-zero',
+    description: 'Numeric tautology: OR 0=0',
+    pattern: /\bOR\s{1,10}0\s*=\s*0\b/i,
+  },
+  {
+    id: 'sql-sleep-benchmark',
+    description: 'Time-based blind injection: SLEEP() or BENCHMARK()',
+    pattern: /\b(?:SLEEP|BENCHMARK)\s*\(/i,
+  },
+  {
+    id: 'sql-waitfor-delay',
+    description: 'MSSQL time-based blind injection: WAITFOR DELAY',
+    pattern: /\bWAITFOR\s{1,20}DELAY\b/i,
+  },
+  {
+    id: 'sql-char-function',
+    description: 'CHAR() function — used to obfuscate injected strings',
+    pattern: /\bCHAR\s*\(\s*\d{1,3}/i,
+  },
+  {
+    id: 'sql-information-schema',
+    description: 'INFORMATION_SCHEMA — reconnaissance query for table/column enumeration',
+    pattern: /\bINFORMATION_SCHEMA\b/i,
+  },
+];
+
+/* harmony default export */ const sql = (SQL_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/sql-strict.js
+/**
+ * SQL-STRICT context patterns.
+ *
+ * Extends the base 'SQL' context with three additional rules that are
+ * effective at detecting real injections but carry a higher false-positive
+ * risk on general free-text input.
+ *
+ * Use 'SQL-STRICT' when:
+ *   - The string is specifically a SQL fragment or database identifier
+ *   - You control the input domain (e.g. a dedicated SQL search field)
+ *   - You can tolerate occasional false positives in exchange for broader coverage
+ *
+ * Use 'SQL' (not STRICT) when:
+ *   - The field is general user text (names, descriptions, comments)
+ *   - False positives would block legitimate content (e.g. "see note -- above")
+ *
+ * Rules moved here from 'SQL' due to false-positive risk:
+ *
+ *   sql-line-comment   — "--" fires on "see note -- above", "value--", CSS var(--primary)
+ *   sql-stacked-query  — "; SELECT" fires on legitimate prose with semicolons + SQL words
+ *   sql-hex-encoding   — "0xDEAD" fires on hex values in technical docs and log output
+ */
+
+
+
+const SQL_STRICT_EXTRA = [
+  {
+    id: 'sql-line-comment',
+    description: 'SQL line comment: -- followed by whitespace or end of string',
+    pattern: /--(?:\s|$)/,
+  },
+  {
+    id: 'sql-stacked-query',
+    description: 'Stacked queries: semicolon immediately followed by a SQL keyword',
+    pattern: /;\s{0,10}(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\b/i,
+  },
+  {
+    id: 'sql-hex-encoding',
+    description: 'Hex-encoded string injection: 0x41414141 style (MySQL)',
+    pattern: /\b0x[0-9a-f]{4,}/i,
+  },
+];
+
+// SQL-STRICT = all base SQL rules + the three noisy extras
+const SQL_STRICT_PATTERNS = [...sql, ...SQL_STRICT_EXTRA];
+
+/* harmony default export */ const sql_strict = (SQL_STRICT_PATTERNS);
+
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/html.js
 /**
  * HTML context patterns.
  *
@@ -65666,7 +66075,7 @@ const HTML_PATTERNS = [
 
 /* harmony default export */ const html = (HTML_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/xml.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/xml.js
 /**
  * XML context patterns.
  *
@@ -65746,7 +66155,7 @@ const XML_PATTERNS = [
 
 /* harmony default export */ const xml = (XML_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/svg.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/svg.js
 /**
  * SVG context patterns.
  *
@@ -65829,153 +66238,7 @@ const SVG_PATTERNS = [
 
 /* harmony default export */ const svg = (SVG_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/sql.js
-/**
- * SQL context patterns — high-precision rules only.
- *
- * These rules have very low false-positive risk and are safe to apply to
- * general user text (names, descriptions, search queries, etc.).
- * All patterns are ReDoS-safe — unlike the `sql-injection` npm package
- * which has an active CVE on its own detection regexes.
- *
- * For exhaustive coverage including noisier heuristics (comment sequences,
- * hex literals, stacked queries with semicolons), use 'SQL-STRICT' instead.
- * Apply 'SQL-STRICT' only to strings that are specifically SQL fragments,
- * not to general free-text fields.
- */
-
-const SQL_PATTERNS = [
-  {
-    id: 'sql-block-comment-open',
-    description: 'SQL block comment open: /* ... */ — unusual in legitimate user text',
-    pattern: /\/\*/,
-  },
-  {
-    id: 'sql-union-select',
-    description: 'UNION SELECT — most common SQL injection aggregation attack',
-    pattern: /\bUNION\s{1,20}(?:ALL\s{1,20})?SELECT\b/i,
-  },
-  {
-    id: 'sql-drop-table',
-    description: 'DROP TABLE — destructive DDL injection',
-    pattern: /\bDROP\s{1,20}TABLE\b/i,
-  },
-  {
-    id: 'sql-drop-database',
-    description: 'DROP DATABASE — destructive DDL injection',
-    pattern: /\bDROP\s{1,20}DATABASE\b/i,
-  },
-  {
-    id: 'sql-insert-into',
-    description: 'INSERT INTO — data injection',
-    pattern: /\bINSERT\s{1,20}INTO\b/i,
-  },
-  {
-    id: 'sql-delete-from',
-    description: 'DELETE FROM — data deletion injection',
-    pattern: /\bDELETE\s{1,20}FROM\b/i,
-  },
-  {
-    id: 'sql-update-set',
-    description: 'UPDATE ... SET — data modification injection',
-    // Allows arbitrary content between UPDATE and SET (table name, alias, etc.)
-    pattern: /\bUPDATE\b[\s\S]{1,60}\bSET\b/i,
-  },
-  {
-    id: 'sql-exec-xp',
-    description: 'EXEC xp_ — MSSQL extended stored procedure execution',
-    pattern: /\bEXEC(?:UTE)?\s{1,20}xp_/i,
-  },
-  {
-    id: 'sql-tautology-string',
-    description: "Classic string tautology: ' OR '1'='1 or \" OR \"1\"=\"1\"",
-    // Last quote is optional — injection may truncate it: ' OR '1'='1--
-    pattern: /'\s{0,10}OR\s{0,10}'[^']{0,20}'\s*=\s*'[^']{0,20}/i,
-  },
-  {
-    id: 'sql-tautology-numeric',
-    description: 'Numeric tautology: OR 1=1',
-    pattern: /\bOR\s{1,10}1\s*=\s*1\b/i,
-  },
-  {
-    id: 'sql-always-true-zero',
-    description: 'Numeric tautology: OR 0=0',
-    pattern: /\bOR\s{1,10}0\s*=\s*0\b/i,
-  },
-  {
-    id: 'sql-sleep-benchmark',
-    description: 'Time-based blind injection: SLEEP() or BENCHMARK()',
-    pattern: /\b(?:SLEEP|BENCHMARK)\s*\(/i,
-  },
-  {
-    id: 'sql-waitfor-delay',
-    description: 'MSSQL time-based blind injection: WAITFOR DELAY',
-    pattern: /\bWAITFOR\s{1,20}DELAY\b/i,
-  },
-  {
-    id: 'sql-char-function',
-    description: 'CHAR() function — used to obfuscate injected strings',
-    pattern: /\bCHAR\s*\(\s*\d{1,3}/i,
-  },
-  {
-    id: 'sql-information-schema',
-    description: 'INFORMATION_SCHEMA — reconnaissance query for table/column enumeration',
-    pattern: /\bINFORMATION_SCHEMA\b/i,
-  },
-];
-
-/* harmony default export */ const sql = (SQL_PATTERNS);
-
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/sql-strict.js
-/**
- * SQL-STRICT context patterns.
- *
- * Extends the base 'SQL' context with three additional rules that are
- * effective at detecting real injections but carry a higher false-positive
- * risk on general free-text input.
- *
- * Use 'SQL-STRICT' when:
- *   - The string is specifically a SQL fragment or database identifier
- *   - You control the input domain (e.g. a dedicated SQL search field)
- *   - You can tolerate occasional false positives in exchange for broader coverage
- *
- * Use 'SQL' (not STRICT) when:
- *   - The field is general user text (names, descriptions, comments)
- *   - False positives would block legitimate content (e.g. "see note -- above")
- *
- * Rules moved here from 'SQL' due to false-positive risk:
- *
- *   sql-line-comment   — "--" fires on "see note -- above", "value--", CSS var(--primary)
- *   sql-stacked-query  — "; SELECT" fires on legitimate prose with semicolons + SQL words
- *   sql-hex-encoding   — "0xDEAD" fires on hex values in technical docs and log output
- */
-
-
-
-const SQL_STRICT_EXTRA = [
-  {
-    id: 'sql-line-comment',
-    description: 'SQL line comment: -- followed by whitespace or end of string',
-    pattern: /--(?:\s|$)/,
-  },
-  {
-    id: 'sql-stacked-query',
-    description: 'Stacked queries: semicolon immediately followed by a SQL keyword',
-    pattern: /;\s{0,10}(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC)\b/i,
-  },
-  {
-    id: 'sql-hex-encoding',
-    description: 'Hex-encoded string injection: 0x41414141 style (MySQL)',
-    pattern: /\b0x[0-9a-f]{4,}/i,
-  },
-];
-
-// SQL-STRICT = all base SQL rules + the three noisy extras
-const SQL_STRICT_PATTERNS = [...sql, ...SQL_STRICT_EXTRA];
-
-/* harmony default export */ const sql_strict = (SQL_STRICT_PATTERNS);
-
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/shell.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/shell.js
 /**
  * SHELL context patterns.
  *
@@ -66082,7 +66345,7 @@ const SHELL_PATTERNS = [
 
 /* harmony default export */ const shell = (SHELL_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/redos.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/redos.js
 /**
  * REDOS context patterns.
  *
@@ -66144,7 +66407,7 @@ const REDOS_PATTERNS = [
 
 /* harmony default export */ const redos = (REDOS_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/nosql.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/nosql.js
 /**
  * NOSQL context patterns.
  *
@@ -66260,7 +66523,7 @@ const NOSQL_PATTERNS = [
 
 /* harmony default export */ const nosql = (NOSQL_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/contexts/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/contexts/log.js
 /**
  * LOG context patterns.
  *
@@ -66360,20 +66623,22 @@ const LOG_PATTERNS = [
 
 /* harmony default export */ const contexts_log = (LOG_PATTERNS);
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/registry.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/is-unsafe@2.0.0/node_modules/is-unsafe/src/index.js
 /**
- * Context registry — maps context name strings to their pattern arrays.
+ * is-unsafe v2
  *
- * Adding a new context: create a file in ./contexts/, export a default array
- * of pattern objects, and register it here.
+ * Zero-dependency, DOM-free, pure predicate for detecting unsafe strings
+ * across HTML, XML, SVG, SQL, SQL-STRICT, SHELL, REDOS, NOSQL, and LOG contexts.
  *
- * Context name guide:
- *   SQL        — high-precision rules; safe for general text fields
- *   SQL-STRICT — SQL + three noisier rules (line comments, stacked queries, hex);
- *                use only for SQL-specific inputs
- *   REDOS      — detects ReDoS-prone patterns when string will be compiled as RegExp
+ * v2 change: contexts are imported as named pattern arrays rather than resolved
+ * via a string-keyed registry. This makes each context independently
+ * tree-shakeable — bundlers can drop any context you never import.
+ *
+ * @module is-unsafe
  */
 
+// ─── Context pattern arrays (named exports) ────────────────────────────────
+// Import only the ones you need. Each is independently tree-shakeable.
 
 
 
@@ -66384,8 +66649,40 @@ const LOG_PATTERNS = [
 
 
 
-/** @type {Record<string, Array<{id: string, description: string, pattern: RegExp}>>} */
-const registry_CONTEXT_REGISTRY = {
+// SQL-STRICT needs a quoted identifier because of the hyphen
+
+
+
+// ─── VALID_CONTEXTS convenience re-export ─────────────────────────────────
+// Importing this pulls in ALL contexts. Use it only when you need all of them
+// (e.g. for validation UI, tooling, or exhaustive audits).
+// If you only need a subset, import the named contexts directly instead.
+
+
+
+
+
+
+
+
+
+
+// ─── Attach labels to named contexts ──────────────────────────────────────
+// Each built-in PatternList carries its canonical name so matchList can read
+// list.label directly — no registry lookup needed at match time.
+// Custom PatternLists default to 'CUSTOM' unless the caller sets list.label.
+
+html.label       = 'HTML';
+xml.label        = 'XML';
+svg.label        = 'SVG';
+sql.label        = 'SQL';
+sql_strict.label = 'SQL-STRICT';
+shell.label      = 'SHELL';
+redos.label      = 'REDOS';
+nosql.label      = 'NOSQL';
+contexts_log.label        = 'LOG';
+
+const VALID_CONTEXTS = Object.freeze({
   HTML: html,
   XML: xml,
   SVG: svg,
@@ -66395,45 +66692,29 @@ const registry_CONTEXT_REGISTRY = {
   REDOS: redos,
   NOSQL: nosql,
   LOG: contexts_log,
-};
+});
 
-/* harmony default export */ const registry = (registry_CONTEXT_REGISTRY);
+// ─── Types ────────────────────────────────────────────────────────────────
 
 /**
- * Enum of valid context names — e.g. `VALID_CONTEXTS.HTML === 'HTML'`.
- * @type {Record<string, string>}
- */
-const VALID_CONTEXTS = Object.freeze(
-  Object.fromEntries(Object.keys(registry_CONTEXT_REGISTRY).map((k) => [k, k]))
-);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/is-unsafe@1.0.1/node_modules/is-unsafe/src/index.js
-/**
- * is-unsafe
- *
- * Zero-dependency, DOM-free, pure predicate for detecting unsafe strings
- * across HTML, XML, SVG, SQL, SQL-STRICT, SHELL, REDOS, NOSQL, and LOG contexts.
- *
- * @module is-unsafe
+ * @typedef {{ id: string, description: string, pattern: RegExp }} Rule
  */
 
-
-
 /**
- * @typedef {'HTML'|'XML'|'SVG'|'SQL'|'SQL-STRICT'|'SHELL'|'REDOS'|'NOSQL'|'LOG'} ContextName
+ * @typedef {Rule[]} PatternList
  */
 
 /**
  * @typedef {Object} MatchResult
- * @property {string} context   - The context in which the match was found
- * @property {string} id        - Rule identifier
+ * @property {string} context     - Label identifying which context matched ('HTML', 'CUSTOM', etc.)
+ * @property {string} id          - Rule identifier
  * @property {string} description - Human-readable description of what was matched
- * @property {RegExp} pattern   - The pattern that matched
+ * @property {RegExp} pattern     - The pattern that matched
  */
 
-// ─── Validation helpers ────────────────────────────────────────────────────
+// ─── Internal helpers ──────────────────────────────────────────────────────
 
 /**
- * Validate that `value` is a string. Throws TypeError if not.
  * @param {unknown} value
  */
 function assertString(value) {
@@ -66445,56 +66726,61 @@ function assertString(value) {
 }
 
 /**
- * Validate that `context` is a recognised context name, an array of them,
- * or a RegExp instance. Throws TypeError if not.
- * @param {ContextName|ContextName[]|RegExp} context
+ * @param {unknown} context
  */
 function assertContext(context) {
   if (context instanceof RegExp) return;
 
-  if (typeof context === 'string') {
-    if (!registry[context]) {
-      throw new TypeError(
-        `is-unsafe: unknown context "${context}". Valid contexts: ${Object.keys(VALID_CONTEXTS).join(', ')}`
-      );
-    }
-    return;
-  }
-
   if (Array.isArray(context)) {
     if (context.length === 0) {
-      throw new TypeError('is-unsafe: context array must not be empty');
+      throw new TypeError('is-unsafe: context must not be an empty array');
     }
-    for (const c of context) {
-      if (typeof c !== 'string' || !registry[c]) {
-        throw new TypeError(
-          `is-unsafe: unknown context "${c}" in array. Valid contexts: ${Object.keys(VALID_CONTEXTS).join(', ')}`
-        );
+    // Detect array-of-arrays vs flat pattern list
+    if (Array.isArray(context[0])) {
+      // Array of PatternLists
+      for (const list of context) {
+        if (!Array.isArray(list) || list.length === 0) {
+          throw new TypeError(
+            'is-unsafe: each context in the array must be a non-empty pattern array (PatternList)'
+          );
+        }
       }
     }
+    // else: flat PatternList — trust it, no deep validation needed
     return;
   }
 
   throw new TypeError(
-    `is-unsafe: second argument must be a context string, array of context strings, or RegExp. Got: ${typeof context}`
+    `is-unsafe: second argument must be a PatternList (e.g. HTML), ` +
+    `an array of PatternLists (e.g. [HTML, XML]), or a RegExp. Got: ${typeof context}`
   );
 }
 
-// ─── Core matching logic ───────────────────────────────────────────────────
+/**
+ * Normalise any valid context arg into an array of PatternLists.
+ *
+ * @param {Rule[]|Rule[][]|RegExp} context
+ * @returns {{ lists: Rule[][]|null, regex: RegExp|null }}
+ */
+function normalise(context) {
+  if (context instanceof RegExp) return { lists: null, regex: context };
+  // Distinguish PatternList (array of rule objects) from array of PatternLists
+  if (Array.isArray(context[0])) return { lists: context, regex: null };
+  return { lists: [context], regex: null };
+}
 
 /**
- * Test a single value against one named context's patterns.
- * Returns the first matching MatchResult, or null if nothing matched.
+ * Test value against a single PatternList. Returns the first MatchResult or null.
  *
  * @param {string} value
- * @param {string} contextName
+ * @param {Rule[]} list
  * @returns {MatchResult|null}
  */
-function matchContext(value, contextName) {
-  const patterns = registry[contextName];
-  for (const rule of patterns) {
+function matchList(value, list) {
+  const label = list.label ?? 'CUSTOM';
+  for (const rule of list) {
     if (rule.pattern.test(value)) {
-      return { context: contextName, id: rule.id, description: rule.description, pattern: rule.pattern };
+      return { context: label, id: rule.id, description: rule.description, pattern: rule.pattern };
     }
   }
   return null;
@@ -66505,103 +66791,95 @@ function matchContext(value, contextName) {
 /**
  * Returns `true` if `value` is unsafe in the given context(s), `false` otherwise.
  *
- * @param {string} value           - The string to test
- * @param {ContextName|ContextName[]|RegExp} context
- *   - A named context ('HTML', 'XML', 'SVG', 'SQL', 'SQL-STRICT', 'SHELL', 'REDOS', 'NOSQL', 'LOG')
- *   - An array of named contexts — returns true if unsafe in **any** of them
+ * @param {string} value - The string to test
+ * @param {PatternList | PatternList[] | RegExp} context
+ *   - A PatternList imported from is-unsafe (e.g. `HTML`, `XML`)
+ *   - An array of PatternLists — returns true if unsafe in **any** of them
  *   - A custom RegExp — returns true if the pattern matches
  * @returns {boolean}
  *
  * @example
- * isUnsafe('<script>alert(1)</script>', 'HTML')  // true
- * isUnsafe('hello world', 'HTML')                // false
- * isUnsafe('value', ['HTML', 'SQL'])             // false
- * isUnsafe('value', /my-pattern/i)               // false
+ * import { isUnsafe, HTML, SQL } from 'is-unsafe';
+ *
+ * isUnsafe('<script>alert(1)</script>', HTML)       // true
+ * isUnsafe('hello world', HTML)                     // false
+ * isUnsafe('value', [HTML, SQL])                    // false
+ * isUnsafe('value', /my-pattern/i)                  // false
  */
 function isUnsafe(value, context) {
   assertString(value);
   assertContext(context);
 
-  // Custom RegExp — caller-supplied pattern
-  if (context instanceof RegExp) {
-    return context.test(value);
-  }
+  const { lists, regex } = normalise(context);
 
-  // Single named context
-  if (typeof context === 'string') {
-    return matchContext(value, context) !== null;
-  }
+  if (regex) return regex.test(value);
 
-  // Array of named contexts — unsafe if ANY context matches
-  for (const c of context) {
-    if (matchContext(value, c) !== null) return true;
+  for (const list of lists) {
+    if (matchList(value, list) !== null) return true;
   }
   return false;
 }
 
 /**
- * Like `isUnsafe`, but instead of a boolean returns the first `MatchResult`
- * describing **why** the value was flagged, or `null` if it is safe.
- *
- * Useful for logging, error messages, or policy reporting.
+ * Like `isUnsafe`, but returns the first `MatchResult` describing **why**
+ * the value was flagged, or `null` if it is safe.
  *
  * @param {string} value
- * @param {ContextName|ContextName[]|RegExp} context
+ * @param {PatternList | PatternList[] | RegExp} context
  * @returns {MatchResult|null}
  *
  * @example
- * whyUnsafe('<script>alert(1)</script>', 'HTML')
+ * import { whyUnsafe, HTML } from 'is-unsafe';
+ *
+ * whyUnsafe('<script>alert(1)</script>', HTML)
  * // { context: 'HTML', id: 'html-script-open', description: '...', pattern: /.../ }
  */
 function whyUnsafe(value, context) {
   assertString(value);
   assertContext(context);
 
-  if (context instanceof RegExp) {
-    return context.test(value)
-      ? { context: 'CUSTOM', id: 'custom-regex', description: 'Matched caller-supplied pattern', pattern: context }
+  const { lists, regex } = normalise(context);
+
+  if (regex) {
+    return regex.test(value)
+      ? { context: 'CUSTOM', id: 'custom-regex', description: 'Matched caller-supplied pattern', pattern: regex }
       : null;
   }
 
-  if (typeof context === 'string') {
-    return matchContext(value, context);
-  }
-
-  for (const c of context) {
-    const result = matchContext(value, c);
+  for (const list of lists) {
+    const result = matchList(value, list);
     if (result !== null) return result;
   }
   return null;
 }
 
 /**
- * Returns all matching rules across the given context(s), or an empty array
- * if the value is safe. Useful for comprehensive auditing.
+ * Returns **all** matching rules across the given context(s), or an empty
+ * array if the value is safe. Useful for comprehensive auditing.
  *
  * @param {string} value
- * @param {ContextName|ContextName[]|RegExp} context
+ * @param {PatternList | PatternList[] | RegExp} context
  * @returns {MatchResult[]}
  */
 function allUnsafe(value, context) {
   assertString(value);
   assertContext(context);
 
+  const { lists, regex } = normalise(context);
   const results = [];
 
-  if (context instanceof RegExp) {
-    if (context.test(value)) {
-      results.push({ context: 'CUSTOM', id: 'custom-regex', description: 'Matched caller-supplied pattern', pattern: context });
+  if (regex) {
+    if (regex.test(value)) {
+      results.push({ context: 'CUSTOM', id: 'custom-regex', description: 'Matched caller-supplied pattern', pattern: regex });
     }
     return results;
   }
 
-  const contexts = typeof context === 'string' ? [context] : context;
-
-  for (const c of contexts) {
-    const patterns = CONTEXT_REGISTRY[c];
-    for (const rule of patterns) {
+  for (const list of lists) {
+    const label = list.label ?? 'CUSTOM';
+    for (const rule of list) {
       if (rule.pattern.test(value)) {
-        results.push({ context: c, id: rule.id, description: rule.description, pattern: rule.pattern });
+        results.push({ context: label, id: rule.id, description: rule.description, pattern: rule.pattern });
       }
     }
   }
@@ -66611,7 +66889,8 @@ function allUnsafe(value, context) {
 
 
 /* harmony default export */ const src = ((/* unused pure expression or super */ null && (isUnsafe)));
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlparser/OrderedObjParser.js
+
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlparser/OrderedObjParser.js
 
 ///@ts-check
 
@@ -66701,6 +66980,7 @@ class OrderedObjParser {
     this.ignoreAttributesFn = ignoreAttributes_getIgnoreAttributesFn(this.options.ignoreAttributes)
     this.entityExpansionCount = 0;
     this.currentExpandedLength = 0;
+    this.doctypefound = false;
     let namedEntities = { ...XML };
     if (this.options.entityDecoder) {
       this.entityDecoder = this.options.entityDecoder
@@ -66718,8 +66998,7 @@ class OrderedObjParser {
         // onExternalEntity: (name, value) => isUnsafe(value) ? 'block' : 'allow',
         onInputEntity: (name, value) =>
           //TODO: VALID_CONTEXTS.HTML should be set only if this.options.htmlEntities
-          isUnsafe(value, [VALID_CONTEXTS.HTML, VALID_CONTEXTS.XML])
-            ? ENTITY_ACTION.BLOCK : ENTITY_ACTION.ALLOW,
+          isUnsafe(value, [html, xml]) ? ENTITY_ACTION.BLOCK : ENTITY_ACTION.ALLOW,
 
         //postCheck: resolved => resolved
       });
@@ -66909,6 +67188,7 @@ const parseXml = function (xmlData) {
   // Reset entity expansion counters for this document
   this.entityExpansionCount = 0;
   this.currentExpandedLength = 0;
+  this.doctypefound = false;
   const options = this.options;
   const docTypeReader = new DocTypeReader(options.processEntities);
   const xmlLen = xmlData.length;
@@ -66949,7 +67229,12 @@ const parseXml = function (xmlData) {
         this.matcher.pop();
         this.isCurrentNodeStopNode = false; // Reset flag when closing tag
 
-        currentNode = this.tagsNodeStack.pop();//avoid recursion, set the parent tag scope
+        //a closing tag with no matching opening tag leaves the stack empty
+        currentNode = this.tagsNodeStack.pop() || xmlObj;//avoid recursion, set the parent tag scope
+
+        if (options.captureMetaData && currentNode) {
+          currentNode.addEndIndex(closeIndex + 1);
+        }
         textData = "";
         i = closeIndex;
       } else if (c1 === 63) { //'?'
@@ -66975,6 +67260,11 @@ const parseXml = function (xmlData) {
             childNode[":@"] = attsMap
           }
           this.addChild(currentNode, childNode, this.readonlyMatcher, i);
+
+          if (options.captureMetaData) {
+            // closeIndex points at '?' of the closing '?>'
+            currentNode.addEndIndex(tagData.closeIndex + 2);
+          }
         }
 
 
@@ -66993,6 +67283,8 @@ const parseXml = function (xmlData) {
         i = endIndex;
       } else if (c1 === 33
         && xmlData.charCodeAt(i + 2) === 68) { //'!D'
+        if (this.doctypefound) throw new Error("Multiple DOCTYPE declarations found.");
+        this.doctypefound = true;
         const result = docTypeReader.readDocType(xmlData, i);
         this.entityDecoder.addInputEntities(result.entities);
         i = result.i;
@@ -67137,6 +67429,10 @@ const parseXml = function (xmlData) {
           this.isCurrentNodeStopNode = false; // Reset flag
 
           this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
+
+          if (options.captureMetaData) {
+            currentNode.addEndIndex(i + 1);
+          }
         } else {
           //selfClosing tag
           if (isSelfClosing) {
@@ -67147,6 +67443,10 @@ const parseXml = function (xmlData) {
               childNode[":@"] = prefixedAttrs;
             }
             this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
+
+            if (options.captureMetaData) {
+              currentNode.addEndIndex(closeIndex + 1);
+            }
             this.matcher.pop(); // Pop self-closing tag
             this.isCurrentNodeStopNode = false; // Reset flag
           }
@@ -67156,6 +67456,10 @@ const parseXml = function (xmlData) {
               childNode[":@"] = prefixedAttrs;
             }
             this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
+
+            if (options.captureMetaData) {
+              currentNode.addEndIndex(result.closeIndex + 1);
+            }
             this.matcher.pop(); // Pop unpaired tag
             this.isCurrentNodeStopNode = false; // Reset flag
             i = result.closeIndex;
@@ -67458,7 +67762,7 @@ function sanitizeName(name, options) {
   }
   return name;
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlparser/node2json.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlparser/node2json.js
 
 
 
@@ -67636,7 +67940,7 @@ function isLeafTag(obj, options) {
 
   return false;
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/fast-xml-parser@5.9.3/node_modules/fast-xml-parser/src/xmlparser/XMLParser.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/fast-xml-parser@5.11.0/node_modules/fast-xml-parser/src/xmlparser/XMLParser.js
 
 
 
@@ -67708,7 +68012,7 @@ class XMLParser {
         return XmlNode.getMetaDataSymbol();
     }
 }
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-xml@1.5.1/node_modules/@azure/core-xml/dist/esm/xml.common.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-xml@1.6.0/node_modules/@azure/core-xml/dist/esm/xml.common.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -67720,7 +68024,7 @@ const xml_common_XML_ATTRKEY = "$";
  */
 const xml_common_XML_CHARKEY = "_";
 //# sourceMappingURL=xml.common.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-xml@1.5.1/node_modules/@azure/core-xml/dist/esm/xml.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-xml@1.6.0/node_modules/@azure/core-xml/dist/esm/xml.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -67790,7 +68094,8 @@ async function parseXML(str, opts = {}) {
         delete parsedXml["?xml"];
     }
     if (!opts.includeRoot) {
-        for (const key of Object.keys(parsedXml)) {
+        const key = Object.keys(parsedXml)[0];
+        if (key !== undefined) {
             const value = parsedXml[key];
             return typeof value === "object" ? { ...value } : value;
         }
@@ -67798,7 +68103,7 @@ async function parseXML(str, opts = {}) {
     return parsedXml;
 }
 //# sourceMappingURL=xml.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/log.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -67809,7 +68114,7 @@ const storage_blob_dist_esm_log_logger = esm_createClientLogger("storage-blob");
 //# sourceMappingURL=log.js.map
 // EXTERNAL MODULE: external "events"
 var external_events_ = __webpack_require__(4434);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/BuffersStream.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/BuffersStream.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -67909,7 +68214,7 @@ class BuffersStream extends external_node_stream_.Readable {
 //# sourceMappingURL=BuffersStream.js.map
 // EXTERNAL MODULE: external "node:buffer"
 var external_node_buffer_ = __webpack_require__(4573);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/PooledBuffer.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/PooledBuffer.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -68005,7 +68310,7 @@ class PooledBuffer {
     }
 }
 //# sourceMappingURL=PooledBuffer.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/BufferScheduler.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/BufferScheduler.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -68284,43 +68589,12 @@ class BufferScheduler {
     }
 }
 //# sourceMappingURL=BufferScheduler.js.map
-// EXTERNAL MODULE: external "node:module"
-var external_node_module_ = __webpack_require__(8995);
-// EXTERNAL MODULE: external "node:path"
-var external_node_path_ = __webpack_require__(6760);
-// EXTERNAL MODULE: external "node:url"
-var external_node_url_ = __webpack_require__(3136);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/crc64.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/crc64.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// ESM-COMPAT-START (this block is stripped from dist/commonjs by copyJSFiles.cjs)
-// In ESM under Node, `require`, `__filename`, and `__dirname` are not defined.
-// Synthesize them from `import.meta.url` so the Emscripten Node branch below works as-is.
-// Specifiers are held in variables to prevent web bundlers from statically resolving `node:*`.
-// The detection check below MUST stay byte-for-byte identical to the Emscripten-generated
-// `ENVIRONMENT_IS_NODE` check later in this file; otherwise the polyfill and the Node branch
-// can disagree and the ESM `ReferenceError: require is not defined` bug returns.
-
-
-
-const __isNode__ =
-  typeof process === "object" &&
-  typeof process.versions === "object" &&
-  typeof process.versions.node === "string";
-let crc64_require;
-let crc64_filename;
-let crc64_dirname;
-if (__isNode__) {
-  crc64_require = (0,external_node_module_.createRequire)(import.meta.url);
-  crc64_filename = (0,external_node_url_.fileURLToPath)(import.meta.url);
-  crc64_dirname = (0,external_node_path_.dirname)(crc64_filename);
-}
-// ESM-COMPAT-END
-
 var NativeCRC64 = (() => {
   var _scriptDir = typeof document !== 'undefined' && document.currentScript ? document.currentScript.src : undefined;
-  if (typeof crc64_filename !== 'undefined') _scriptDir = _scriptDir || crc64_filename;
   return (
 function(NativeCRC64) {
   NativeCRC64 = NativeCRC64 || {};
@@ -68426,52 +68700,10 @@ function logExceptionOnExit(e) {
 
 if (ENVIRONMENT_IS_NODE) {
   if (typeof process == 'undefined' || !process.release || process.release.name !== 'node') throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
-// NODE-READ-START (this block is replaced with a no-op in dist/browser and dist/react-native by copyJSFiles.cjs)
-  // `require()` is no-op in an ESM module, use `createRequire()` to construct
-  // the require()` function.  This is only necessary for multi-environment
-  // builds, `-sENVIRONMENT=node` emits a static import declaration instead.
-  // TODO: Swap all `require()`'s with `import()`'s?
-  // These modules will usually be used on Node.js. Load them eagerly to avoid
-  // the complexity of lazy-loading.
-  var fs = crc64_require('fs');
-  var nodePath = crc64_require('path');
-
-  if (ENVIRONMENT_IS_WORKER) {
-    scriptDirectory = nodePath.dirname(scriptDirectory) + '/';
-  } else {
-    scriptDirectory = crc64_dirname + '/';
-  }
-
-// include: node_shell_read.js
-
-
-read_ = (filename, binary) => {
-  // We need to re-wrap `file://` strings to URLs. Normalizing isn't
-  // necessary in that case, the path should already be absolute.
-  filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
-  return fs.readFileSync(filename, binary ? undefined : 'utf8');
-};
-
-readBinary = (filename) => {
-  var ret = read_(filename, true);
-  if (!ret.buffer) {
-    ret = new Uint8Array(ret);
-  }
-  assert(ret.buffer);
-  return ret;
-};
-
-readAsync = (filename, onload, onerror) => {
-  // See the comment in the `read_` function.
-  filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
-  fs.readFile(filename, function(err, data) {
-    if (err) onerror(err);
-    else onload(data.buffer);
-  });
-};
-
-// end include: node_shell_read.js
-// NODE-READ-END
+  // The wasm is base64-embedded (see `binaryInString`) and loaded via `getBinary()`,
+  // so the Node fs/path read hooks emitted by Emscripten are never exercised and
+  // have been removed. This keeps the file free of Node built-in imports so it can be
+  // consumed as-is by web bundlers and by ESM-to-CommonJS bundlers (see issue #39057).
   if (process['argv'].length > 1) {
     thisProgram = process['argv'][1].replace(/\\/g, '/');
   }
@@ -68508,27 +68740,7 @@ readAsync = (filename, onload, onerror) => {
 } else
 if (ENVIRONMENT_IS_SHELL) {
 
-  if ((typeof process == 'object' && typeof crc64_require === 'function') || typeof window == 'object' || typeof importScripts == 'function') throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
-
-  if (typeof read != 'undefined') {
-    read_ = function shell_read(f) {
-      return read(f);
-    };
-  }
-
-  readBinary = function readBinary(f) {
-    let data;
-    if (typeof readbuffer == 'function') {
-      return new Uint8Array(readbuffer(f));
-    }
-    data = read(f, 'binary');
-    assert(typeof data == 'object');
-    return data;
-  };
-
-  readAsync = function readAsync(f, onload, onerror) {
-    setTimeout(() => onload(readBinary(f)), 0);
-  };
+  if ((typeof process == 'object' && typeof require === 'function') || typeof window == 'object' || typeof importScripts == 'function') throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
 
   if (typeof scriptArgs != 'undefined') {
     arguments_ = scriptArgs;
@@ -68556,72 +68768,9 @@ if (ENVIRONMENT_IS_SHELL) {
 // Node.js workers are detected as a combination of ENVIRONMENT_IS_WORKER and
 // ENVIRONMENT_IS_NODE.
 if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
-  if (ENVIRONMENT_IS_WORKER) { // Check worker, not web, since window could be polyfilled
-    scriptDirectory = self.location.href;
-  } else if (typeof document != 'undefined' && document.currentScript) { // web
-    scriptDirectory = document.currentScript.src;
-  }
-  // When MODULARIZE, this JS may be executed later, after document.currentScript
-  // is gone, so we saved it, and we use it here instead of any other info.
-  if (_scriptDir) {
-    scriptDirectory = _scriptDir;
-  }
-  // blob urls look like blob:http://site.com/etc/etc and we cannot infer anything from them.
-  // otherwise, slice off the final part of the url to find the script directory.
-  // if scriptDirectory does not contain a slash, lastIndexOf will return -1,
-  // and scriptDirectory will correctly be replaced with an empty string.
-  // If scriptDirectory contains a query (starting with ?) or a fragment (starting with #),
-  // they are removed because they could contain a slash.
-  if (scriptDirectory.indexOf('blob:') !== 0) {
-    scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf('/')+1);
-  } else {
-    scriptDirectory = '';
-  }
-
   if (!(typeof window == 'object' || typeof importScripts == 'function')) throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
-
-  // Differentiate the Web Worker from the Node Worker case, as reading must
-  // be done differently.
-  {
-// include: web_or_worker_shell_read.js
-
-
-  read_ = (url) => {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', url, false);
-      xhr.send(null);
-      return xhr.responseText;
-  }
-
-  if (ENVIRONMENT_IS_WORKER) {
-    readBinary = (url) => {
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', url, false);
-        xhr.responseType = 'arraybuffer';
-        xhr.send(null);
-        return new Uint8Array(/** @type{!ArrayBuffer} */(xhr.response));
-    };
-  }
-
-  readAsync = (url, onload, onerror) => {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, true);
-    xhr.responseType = 'arraybuffer';
-    xhr.onload = () => {
-      if (xhr.status == 200 || (xhr.status == 0 && xhr.response)) { // file URLs can return 0
-        onload(xhr.response);
-        return;
-      }
-      onerror();
-    };
-    xhr.onerror = onerror;
-    xhr.send(null);
-  }
-
-// end include: web_or_worker_shell_read.js
-  }
-
-  setWindowTitle = (title) => document.title = title;
+  // The XHR-based read hooks emitted by Emscripten are unused because the wasm is
+  // base64-embedded; they have been removed so the file contains no DOM/XHR I/O.
 } else
 {
   throw new Error('environment detection error');
@@ -71248,7 +71397,7 @@ Crc64Hash.prototype['OnFinal'] = Crc64Hash.prototype.OnFinal = /** @suppress {un
 /* harmony default export */ const crc64 = (NativeCRC64);
 // ESM-EXPORT-END
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StorageCRC64Calculator.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StorageCRC64Calculator.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 // @ts-expect-error the crc64 js file is auto generated
@@ -71305,7 +71454,7 @@ class StorageCRC64Calculator {
     }
 }
 //# sourceMappingURL=StorageCRC64Calculator.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/streamHelpers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/streamHelpers.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -71317,7 +71466,7 @@ function signalStreamEnd(pushData) {
     pushData(null);
 }
 //# sourceMappingURL=streamHelpers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StructuredMessageEncoding.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StructuredMessageEncoding.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -71458,7 +71607,7 @@ class StructuredMessageEncoding {
     }
 }
 //# sourceMappingURL=StructuredMessageEncoding.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StructuredMessageEncodingStream.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StructuredMessageEncodingStream.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -71639,7 +71788,7 @@ class StructuredMessageEncodingStream extends external_node_stream_.Readable {
     }
 }
 //# sourceMappingURL=StructuredMessageEncodingStream.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StructuredMessageDecoding.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StructuredMessageDecoding.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -71822,7 +71971,7 @@ class StructuredMessageDecoding {
     }
 }
 //# sourceMappingURL=StructuredMessageDecoding.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StructuredMessageDecodingStream.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StructuredMessageDecodingStream.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -71902,7 +72051,7 @@ class StructuredMessageDecodingStream extends external_node_stream_.Readable {
     }
 }
 //# sourceMappingURL=StructuredMessageDecodingStream.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/cache.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/cache.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -71914,7 +72063,28 @@ function cache_getCachedDefaultHttpClient() {
     return _defaultHttpClient;
 }
 //# sourceMappingURL=cache.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/RequestPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StorageResponseFormat.js
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+/**
+ * Specifies the format the service should use to return list results.
+ */
+const StorageResponseFormat = {
+    /**
+     * Default. Currently maps to {@link StorageResponseFormat.Xml}, but may be updated in future releases.
+     */
+    Auto: "Auto",
+    /**
+     * Use XML to return list results.
+     */
+    Xml: "Xml",
+    /**
+     * Use Apache Arrow to return list results.
+     */
+    Arrow: "Arrow",
+};
+//# sourceMappingURL=StorageResponseFormat.js.map
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/RequestPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -71957,7 +72127,7 @@ class BaseRequestPolicy {
     }
 }
 //# sourceMappingURL=RequestPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageBrowserPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageBrowserPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -71995,7 +72165,7 @@ class StorageBrowserPolicy extends BaseRequestPolicy {
     }
 }
 //# sourceMappingURL=StorageBrowserPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StorageBrowserPolicyFactory.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StorageBrowserPolicyFactory.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72015,7 +72185,7 @@ class StorageBrowserPolicyFactory {
     }
 }
 //# sourceMappingURL=StorageBrowserPolicyFactory.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/CredentialPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/CredentialPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72045,7 +72215,7 @@ class CredentialPolicy extends BaseRequestPolicy {
     }
 }
 //# sourceMappingURL=CredentialPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/AnonymousCredentialPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/AnonymousCredentialPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72066,7 +72236,7 @@ class AnonymousCredentialPolicy extends CredentialPolicy {
     }
 }
 //# sourceMappingURL=AnonymousCredentialPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/credentials/Credential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/credentials/Credential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -72085,7 +72255,7 @@ class Credential {
     }
 }
 //# sourceMappingURL=Credential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/credentials/AnonymousCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/credentials/AnonymousCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72108,10 +72278,10 @@ class AnonymousCredential extends Credential {
     }
 }
 //# sourceMappingURL=AnonymousCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/utils/constants.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/utils/constants.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
-const utils_constants_SDK_VERSION = "12.4.0";
+const utils_constants_SDK_VERSION = "12.5.0";
 const constants_URLConstants = {
     Parameters: {
         FORCE_BROWSER_NO_CACHE: "_",
@@ -72173,7 +72343,7 @@ const constants_PathStylePorts = (/* unused pure expression or super */ null && 
     "11104",
 ]));
 //# sourceMappingURL=constants.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/utils/utils.common.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/utils/utils.common.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72702,7 +72872,7 @@ function assertResponse(response) {
     throw new TypeError(`Unexpected response object ${response}`);
 }
 //# sourceMappingURL=utils.common.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/utils/SharedKeyComparator.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/utils/SharedKeyComparator.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /*
@@ -72776,7 +72946,7 @@ function isLessThan(lhs, rhs) {
     return false;
 }
 //# sourceMappingURL=SharedKeyComparator.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageSharedKeyCredentialPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageSharedKeyCredentialPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72922,7 +73092,7 @@ class StorageSharedKeyCredentialPolicy extends CredentialPolicy {
     }
 }
 //# sourceMappingURL=StorageSharedKeyCredentialPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/credentials/StorageSharedKeyCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/credentials/StorageSharedKeyCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72971,7 +73141,7 @@ class StorageSharedKeyCredential extends Credential {
     }
 }
 //# sourceMappingURL=StorageSharedKeyCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/log.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/log.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -72980,7 +73150,7 @@ class StorageSharedKeyCredential extends Credential {
  */
 const storage_common_dist_esm_log_logger = esm_createClientLogger("storage-common");
 //# sourceMappingURL=log.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageRetryPolicyType.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageRetryPolicyType.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -72998,7 +73168,7 @@ var StorageRetryPolicyType;
     StorageRetryPolicyType[StorageRetryPolicyType["FIXED"] = 1] = "FIXED";
 })(StorageRetryPolicyType || (StorageRetryPolicyType = {}));
 //# sourceMappingURL=StorageRetryPolicyType.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageRetryPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageRetryPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -73129,8 +73299,7 @@ class StorageRetryPolicy extends BaseRequestPolicy {
      */
     shouldRetry(isPrimaryRetry, attempt, response, err) {
         if (attempt >= this.retryOptions.maxTries) {
-            storage_common_dist_esm_log_logger.info(`RetryPolicy: Attempt(s) ${attempt} >= maxTries ${this.retryOptions
-                .maxTries}, no further try.`);
+            storage_common_dist_esm_log_logger.info(`RetryPolicy: Attempt(s) ${attempt} >= maxTries ${this.retryOptions.maxTries}, no further try.`);
             return false;
         }
         // Handle network failures, you may need to customize the list when you implement
@@ -73218,7 +73387,7 @@ class StorageRetryPolicy extends BaseRequestPolicy {
     }
 }
 //# sourceMappingURL=StorageRetryPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/StorageRetryPolicyFactory.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/StorageRetryPolicyFactory.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -73247,7 +73416,7 @@ class StorageRetryPolicyFactory {
     }
 }
 //# sourceMappingURL=StorageRetryPolicyFactory.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageBrowserPolicyV2.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageBrowserPolicyV2.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -73269,7 +73438,7 @@ function storageBrowserPolicy() {
     };
 }
 //# sourceMappingURL=StorageBrowserPolicyV2.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageCorrectContentLengthPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageCorrectContentLengthPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -73297,7 +73466,7 @@ function storageCorrectContentLengthPolicy() {
     };
 }
 //# sourceMappingURL=StorageCorrectContentLengthPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageRetryPolicyV2.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageRetryPolicyV2.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -73462,7 +73631,7 @@ function storageRetryPolicy(options = {}) {
     };
 }
 //# sourceMappingURL=StorageRetryPolicyV2.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageSharedKeyCredentialPolicyV2.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageSharedKeyCredentialPolicyV2.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -73595,7 +73764,7 @@ function storageSharedKeyCredentialPolicy(options) {
     };
 }
 //# sourceMappingURL=StorageSharedKeyCredentialPolicyV2.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/policies/StorageRequestFailureDetailsParserPolicy.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/policies/StorageRequestFailureDetailsParserPolicy.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -73611,6 +73780,18 @@ function storageRequestFailureDetailsParserPolicy() {
         async sendRequest(request, next) {
             try {
                 const response = await next(request);
+                if (response.status === 400 &&
+                    response.bodyAsText?.includes("<Error><Code>InvalidHeaderValue</Code>") &&
+                    response.bodyAsText.includes("<HeaderName>x-ms-version</HeaderName>")) {
+                    // replace the error message with a more user-friendly one that includes a link to documentation
+                    /* example response text:
+                    `<?xml version="1.0" encoding="utf-8"?>
+          <Error><Code>InvalidHeaderValue</Code><Message>The value for one of the HTTP headers is not in the correct format.
+          RequestId:e5ea566c-101e-001c-1ec4-acf180000000
+          Time:2026-03-05T17:24:34.6688015Z</Message><HeaderName>x-ms-version</HeaderName><HeaderValue>3025-01-01</HeaderValue></Error>`
+                    */
+                    response.bodyAsText = response.bodyAsText.replace(/<Message>.*<\/Message>/s, "<Message>The provided service version is not enabled on this storage account. Please see https://learn.microsoft.com/rest/api/storageservices/versioning-for-the-azure-storage-services for additional information.</Message>");
+                }
                 return response;
             }
             catch (err) {
@@ -73630,7 +73811,7 @@ function storageRequestFailureDetailsParserPolicy() {
     };
 }
 //# sourceMappingURL=StorageRequestFailureDetailsParserPolicy.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/credentials/UserDelegationKeyCredential.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/credentials/UserDelegationKeyCredential.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -73673,9 +73854,11 @@ class UserDelegationKeyCredential {
     }
 }
 //# sourceMappingURL=UserDelegationKeyCredential.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/indexPlatform.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/indexPlatform.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
+
+
 
 
 
@@ -73699,12 +73882,12 @@ class UserDelegationKeyCredential {
 
 
 //# sourceMappingURL=indexPlatform.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-common@12.4.1_@azure+core-client@1.10.2/node_modules/@azure/storage-common/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-common@12.5.0_@azure+core-client@1.11.0_supports-color@7.2.0__supports-color@7.2.0/node_modules/@azure/storage-common/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/constants.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/constants.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 const esm_utils_constants_SDK_VERSION = "12.33.0";
@@ -73931,7 +74114,7 @@ const utils_constants_PathStylePorts = [
     "11104",
 ];
 //# sourceMappingURL=constants.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/Pipeline.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/Pipeline.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -74203,7 +74386,7 @@ function isCoreHttpPolicyFactory(factory) {
     });
 }
 //# sourceMappingURL=Pipeline.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/index.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -74468,7 +74651,7 @@ var KnownStorageErrorCode;
     KnownStorageErrorCode["BlobAccessTierNotSupportedForAccountType"] = "BlobAccessTierNotSupportedForAccountType";
 })(KnownStorageErrorCode || (KnownStorageErrorCode = {}));
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/mappers.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/mappers.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -82898,7 +83081,7 @@ const BlockBlobGetBlockListExceptionHeaders = {
     },
 };
 //# sourceMappingURL=mappers.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/parameters.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/models/parameters.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -84645,7 +84828,7 @@ const listType = {
     },
 };
 //# sourceMappingURL=parameters.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/service.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/service.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -84970,7 +85153,7 @@ const filterBlobsOperationSpec = {
     serializer: xmlSerializer,
 };
 //# sourceMappingURL=service.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/container.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/container.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -85687,7 +85870,7 @@ const container_getAccountInfoOperationSpec = {
     serializer: container_xmlSerializer,
 };
 //# sourceMappingURL=container.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/blob.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/blob.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -86721,7 +86904,7 @@ const setTagsOperationSpec = {
     serializer: blob_xmlSerializer,
 };
 //# sourceMappingURL=blob.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/pageBlob.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/pageBlob.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -87185,7 +87368,7 @@ const copyIncrementalOperationSpec = {
     serializer: pageBlob_xmlSerializer,
 };
 //# sourceMappingURL=pageBlob.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/appendBlob.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/appendBlob.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -87414,7 +87597,7 @@ const sealOperationSpec = {
     serializer: appendBlob_xmlSerializer,
 };
 //# sourceMappingURL=appendBlob.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/blockBlob.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/blockBlob.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -87793,7 +87976,7 @@ const getBlockListOperationSpec = {
     serializer: blockBlob_xmlSerializer,
 };
 //# sourceMappingURL=blockBlob.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/operations/index.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -87808,7 +87991,7 @@ const getBlockListOperationSpec = {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/storageClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/storageClient.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -87870,7 +88053,7 @@ class StorageClient extends ExtendedServiceClient {
     blockBlob;
 }
 //# sourceMappingURL=storageClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generated/src/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generated/src/index.js
 /*
  * Copyright (c) Microsoft Corporation.
  * Licensed under the MIT License.
@@ -87882,7 +88065,7 @@ class StorageClient extends ExtendedServiceClient {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/StorageContextClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/StorageContextClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -87900,7 +88083,7 @@ class StorageContextClient extends StorageClient {
     }
 }
 //# sourceMappingURL=StorageContextClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/utils.common.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/utils.common.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -88711,7 +88894,7 @@ async function setUploadChecksumParameters(body, contentLength, parameters, uplo
     };
 }
 //# sourceMappingURL=utils.common.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/StorageClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/StorageClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -88764,7 +88947,7 @@ class StorageClient_StorageClient {
     }
 }
 //# sourceMappingURL=StorageClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/tracing.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/tracing.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -88779,7 +88962,7 @@ const tracingClient = createTracingClient({
     namespace: "Microsoft.Storage",
 });
 //# sourceMappingURL=tracing.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/BlobSASPermissions.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/BlobSASPermissions.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -88973,7 +89156,7 @@ class BlobSASPermissions {
     }
 }
 //# sourceMappingURL=BlobSASPermissions.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/ContainerSASPermissions.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/ContainerSASPermissions.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -89193,7 +89376,7 @@ class ContainerSASPermissions {
     }
 }
 //# sourceMappingURL=ContainerSASPermissions.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/SasIPRange.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/SasIPRange.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -89207,7 +89390,7 @@ function ipRangeToString(ipRange) {
     return ipRange.end ? `${ipRange.start}-${ipRange.end}` : ipRange.start;
 }
 //# sourceMappingURL=SasIPRange.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/SASQueryParameters.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/SASQueryParameters.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -89613,7 +89796,7 @@ class SASQueryParameters {
     }
 }
 //# sourceMappingURL=SASQueryParameters.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/BlobSASSignatureValues.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/BlobSASSignatureValues.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -90541,7 +90724,7 @@ function trimBlobName(blobName) {
     return internalName;
 }
 //# sourceMappingURL=BlobSASSignatureValues.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BlobLeaseClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BlobLeaseClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -90743,7 +90926,7 @@ class BlobLeaseClient {
     }
 }
 //# sourceMappingURL=BlobLeaseClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/RetriableReadableStream.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/RetriableReadableStream.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -90872,7 +91055,7 @@ class RetriableReadableStream extends external_node_stream_.Readable {
     }
 }
 //# sourceMappingURL=RetriableReadableStream.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BlobDownloadResponse.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BlobDownloadResponse.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -91345,7 +91528,7 @@ class BlobDownloadResponse {
     }
 }
 //# sourceMappingURL=BlobDownloadResponse.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroConstants.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroConstants.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 const AVRO_SYNC_MARKER_SIZE = 16;
@@ -91353,7 +91536,7 @@ const AVRO_INIT_BYTES = new Uint8Array([79, 98, 106, 1]);
 const AVRO_CODEC_KEY = "avro.codec";
 const AVRO_SCHEMA_KEY = "avro.schema";
 //# sourceMappingURL=AvroConstants.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroParser.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroParser.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 class AvroParser {
@@ -91677,7 +91860,7 @@ class AvroRecordType extends AvroType {
     }
 }
 //# sourceMappingURL=AvroParser.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/utils/utils.common.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/utils/utils.common.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 function arraysEqual(a, b) {
@@ -91694,7 +91877,7 @@ function arraysEqual(a, b) {
     return true;
 }
 //# sourceMappingURL=utils.common.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroReader.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroReader.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 // TODO: Do a review of non-interfaces
@@ -91811,7 +91994,7 @@ class AvroReader {
     }
 }
 //# sourceMappingURL=AvroReader.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroReadable.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroReadable.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 class AvroReadable {
@@ -91819,7 +92002,7 @@ class AvroReadable {
 //# sourceMappingURL=AvroReadable.js.map
 // EXTERNAL MODULE: external "buffer"
 var external_buffer_ = __webpack_require__(181);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroReadableFromStream.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/AvroReadableFromStream.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -91906,14 +92089,14 @@ class AvroReadableFromStream extends AvroReadable {
     }
 }
 //# sourceMappingURL=AvroReadableFromStream.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/internal-avro/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/BlobQuickQueryStream.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/BlobQuickQueryStream.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -92030,7 +92213,7 @@ class BlobQuickQueryStream extends external_node_stream_.Readable {
     }
 }
 //# sourceMappingURL=BlobQuickQueryStream.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BlobQueryResponse.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BlobQueryResponse.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -92400,7 +92583,7 @@ class BlobQueryResponse {
     }
 }
 //# sourceMappingURL=BlobQueryResponse.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/models.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/models.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -92516,7 +92699,7 @@ function getBlobServiceAccountAudience(storageAccountName) {
     return `https://${storageAccountName}.blob.core.windows.net/.default`;
 }
 //# sourceMappingURL=models.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/PageBlobRangeResponse.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/PageBlobRangeResponse.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -92548,7 +92731,7 @@ function rangeResponseFromModel(response) {
     };
 }
 //# sourceMappingURL=PageBlobRangeResponse.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/logger.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/logger.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -92558,7 +92741,7 @@ function rangeResponseFromModel(response) {
  */
 const logger_logger = esm_createClientLogger("core-lro");
 //# sourceMappingURL=logger.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/poller/constants.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/poller/constants.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 /**
@@ -92570,7 +92753,7 @@ const constants_POLL_INTERVAL_IN_MS = 2000;
  */
 const terminalStates = ["succeeded", "canceled", "failed"];
 //# sourceMappingURL=constants.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/poller/operation.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/poller/operation.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -92737,7 +92920,7 @@ async function operation_pollOperation(inputs) {
     }
 }
 //# sourceMappingURL=operation.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/http/operation.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/http/operation.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -93020,7 +93203,7 @@ async function pollHttpOperation(inputs) {
     });
 }
 //# sourceMappingURL=operation.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/poller/poller.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/poller/poller.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -93191,7 +93374,7 @@ function poller_buildCreatePoller(inputs) {
     };
 }
 //# sourceMappingURL=poller.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/http/poller.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/http/poller.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -93236,7 +93419,7 @@ async function createHttpPoller(lro, options) {
     });
 }
 //# sourceMappingURL=poller.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/legacy/lroEngine/operation.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/legacy/lroEngine/operation.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -93321,7 +93504,7 @@ class GenericPollOperation {
     }
 }
 //# sourceMappingURL=operation.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/legacy/poller.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/legacy/poller.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 /**
@@ -93719,7 +93902,7 @@ class Poller {
     }
 }
 //# sourceMappingURL=poller.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/legacy/lroEngine/lroEngine.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/legacy/lroEngine/lroEngine.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -93749,12 +93932,12 @@ class LroEngine extends Poller {
     }
 }
 //# sourceMappingURL=lroEngine.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/legacy/lroEngine/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/legacy/lroEngine/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+core-lro@2.7.2/node_modules/@azure/core-lro/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+core-lro@2.7.2_supports-color@7.2.0/node_modules/@azure/core-lro/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
@@ -93774,7 +93957,7 @@ class LroEngine extends Poller {
 
 
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/pollers/BlobStartCopyFromUrlPoller.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/pollers/BlobStartCopyFromUrlPoller.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -93909,7 +94092,7 @@ function makeBlobBeginCopyFromURLPollOperation(state) {
     };
 }
 //# sourceMappingURL=BlobStartCopyFromUrlPoller.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/Range.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/Range.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -93931,7 +94114,7 @@ function rangeToString(iRange) {
         : `bytes=${iRange.offset}-`;
 }
 //# sourceMappingURL=Range.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/Batch.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/Batch.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 // In browser, during webpack or browserify bundling, this module will be replaced by 'events'
@@ -94064,7 +94247,7 @@ class Batch {
 //# sourceMappingURL=Batch.js.map
 // EXTERNAL MODULE: external "node:fs"
 var external_node_fs_ = __webpack_require__(3024);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/utils.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/utils.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -94207,7 +94390,7 @@ async function readStreamToLocalFile(rs, file) {
 const fsStat = external_node_util_.promisify(external_node_fs_.stat);
 const fsCreateReadStream = external_node_fs_.createReadStream;
 //# sourceMappingURL=utils.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/Clients.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/Clients.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -97100,7 +97283,7 @@ class PageBlobClient extends BlobClient {
     }
 }
 //# sourceMappingURL=Clients.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BatchUtils.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BatchUtils.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -97116,7 +97299,7 @@ function utf8ByteLength(str) {
     return Buffer.byteLength(str);
 }
 //# sourceMappingURL=BatchUtils.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BatchResponseParser.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BatchResponseParser.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -97259,7 +97442,7 @@ class BatchResponseParser {
     }
 }
 //# sourceMappingURL=BatchResponseParser.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/utils/Mutex.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/utils/Mutex.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 var MutexLockStatus;
@@ -97325,7 +97508,7 @@ class Mutex {
     }
 }
 //# sourceMappingURL=Mutex.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BlobBatch.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BlobBatch.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -97600,7 +97783,7 @@ function batchHeaderFilterPolicy() {
     };
 }
 //# sourceMappingURL=BlobBatch.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BlobBatchClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BlobBatchClient.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -97773,7 +97956,7 @@ class BlobBatchClient {
     }
 }
 //# sourceMappingURL=BlobBatchClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/ContainerClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/ContainerClient.js
 
 
 
@@ -99069,7 +99252,7 @@ class ContainerClient extends StorageClient_StorageClient {
     }
 }
 //# sourceMappingURL=ContainerClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASPermissions.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASPermissions.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -99295,7 +99478,7 @@ class AccountSASPermissions {
     }
 }
 //# sourceMappingURL=AccountSASPermissions.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASResourceTypes.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASResourceTypes.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -99366,7 +99549,7 @@ class AccountSASResourceTypes {
     }
 }
 //# sourceMappingURL=AccountSASResourceTypes.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASServices.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASServices.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /**
@@ -99445,7 +99628,7 @@ class AccountSASServices {
     }
 }
 //# sourceMappingURL=AccountSASServices.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASSignatureValues.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/sas/AccountSASSignatureValues.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -99546,7 +99729,7 @@ function generateAccountSASQueryParametersInternal(accountSASSignatureValues, sh
     };
 }
 //# sourceMappingURL=AccountSASSignatureValues.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/BlobServiceClient.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/BlobServiceClient.js
 
 
 
@@ -100261,7 +100444,7 @@ class BlobServiceClient extends StorageClient_StorageClient {
     }
 }
 //# sourceMappingURL=BlobServiceClient.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/generatedModels.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/generatedModels.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 /** Known values of {@link EncryptionAlgorithmType} that the service accepts. */
@@ -100270,7 +100453,7 @@ var generatedModels_KnownEncryptionAlgorithmType;
     KnownEncryptionAlgorithmType["AES256"] = "AES256";
 })(generatedModels_KnownEncryptionAlgorithmType || (generatedModels_KnownEncryptionAlgorithmType = {}));
 //# sourceMappingURL=generatedModels.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@azure+storage-blob@12.33.0/node_modules/@azure/storage-blob/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@azure+storage-blob@12.33.0_supports-color@7.2.0/node_modules/@azure/storage-blob/dist/esm/index.js
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
@@ -100297,7 +100480,7 @@ var generatedModels_KnownEncryptionAlgorithmType;
 //# sourceMappingURL=index.js.map
 // EXTERNAL MODULE: external "crypto"
 var external_crypto_ = __webpack_require__(6982);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/blob-upload.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/blob-upload.js
 var blob_upload_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -100383,9 +100566,9 @@ function uploadToBlobStorage(authenticatedUploadURL, uploadStream, contentType) 
 //# sourceMappingURL=blob-upload.js.map
 // EXTERNAL MODULE: external "fs/promises"
 var promises_ = __webpack_require__(1943);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/index.js
-var archiver = __webpack_require__(2146);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/stream.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/archiver@7.0.1/node_modules/archiver/index.js
+var archiver = __webpack_require__(814);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/stream.js
 var stream_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -100438,7 +100621,7 @@ function createRawFileUploadStream(filePath) {
     });
 }
 //# sourceMappingURL=stream.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/zip.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/zip.js
 var zip_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -100516,7 +100699,7 @@ const zipEndCallback = () => {
     core/* debug */.Yz('Zip stream for upload has ended.');
 };
 //# sourceMappingURL=zip.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/types.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/types.js
 
 /**
  * Maps file extensions to MIME types
@@ -100588,7 +100771,7 @@ function getMimeType(filePath) {
     return types_mimeTypes[ext] || 'application/octet-stream';
 }
 //# sourceMappingURL=types.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/upload/upload-artifact.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/upload/upload-artifact.js
 var upload_artifact_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -100697,11 +100880,11 @@ function uploadArtifact(name, files, rootDirectory, options) {
     });
 }
 //# sourceMappingURL=upload-artifact.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@actions+github@9.1.1/node_modules/@actions/github/lib/github.js
-var lib_github = __webpack_require__(9297);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/unzip-stream@0.3.4/node_modules/unzip-stream/unzip.js
-var unzip = __webpack_require__(7799);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/download/download-artifact.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@actions+github@9.1.1/node_modules/@actions/github/lib/github.js
+var lib_github = __webpack_require__(485);
+// EXTERNAL MODULE: ./node_modules/.pnpm/unzip-stream@0.3.4/node_modules/unzip-stream/unzip.js
+var unzip = __webpack_require__(9579);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/download/download-artifact.js
 var download_artifact_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -100940,7 +101123,7 @@ function resolveOrCreateDirectory() {
     });
 }
 //# sourceMappingURL=download-artifact.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/find/retry-options.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/find/retry-options.js
 
 // Defaults for fetching artifacts
 const defaultMaxRetryNumber = 5;
@@ -100964,13 +101147,13 @@ function getRetryOptions(defaultOptions, retries = defaultMaxRetryNumber, exempt
     return [retryOptions, requestOptions];
 }
 //# sourceMappingURL=retry-options.js.map
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@actions+github@9.1.1/node_modules/@actions/github/lib/utils.js + 18 modules
-var utils = __webpack_require__(7695);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@octokit+plugin-request-log@6.0.0_@octokit+core@7.0.6/node_modules/@octokit/plugin-request-log/dist-src/version.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/@actions+github@9.1.1/node_modules/@actions/github/lib/utils.js + 19 modules
+var utils = __webpack_require__(7976);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@octokit+plugin-request-log@6.0.0_@octokit+core@7.0.6/node_modules/@octokit/plugin-request-log/dist-src/version.js
 const VERSION = "6.0.0";
 
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@octokit+plugin-request-log@6.0.0_@octokit+core@7.0.6/node_modules/@octokit/plugin-request-log/dist-src/index.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@octokit+plugin-request-log@6.0.0_@octokit+core@7.0.6/node_modules/@octokit/plugin-request-log/dist-src/index.js
 
 function requestLog(octokit) {
   octokit.hook.wrap("request", (request, options) => {
@@ -100996,11 +101179,50 @@ function requestLog(octokit) {
 requestLog.VERSION = VERSION;
 
 
-// EXTERNAL MODULE: ../../node_modules/.pnpm/bottleneck@2.19.5/node_modules/bottleneck/light.js
-var light = __webpack_require__(2821);
-// EXTERNAL MODULE: ../../node_modules/.pnpm/@octokit+request-error@7.1.0/node_modules/@octokit/request-error/dist-src/index.js
-var dist_src = __webpack_require__(8273);
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@octokit+plugin-retry@8.1.0_@octokit+core@7.0.6/node_modules/@octokit/plugin-retry/dist-bundle/index.js
+// EXTERNAL MODULE: ./node_modules/.pnpm/bottleneck@2.19.5/node_modules/bottleneck/light.js
+var light = __webpack_require__(6297);
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@octokit+request-error@7.1.1/node_modules/@octokit/request-error/dist-src/index.js
+class RequestError extends Error {
+  name;
+  /**
+   * http status code
+   */
+  status;
+  /**
+   * Request options that lead to the error.
+   */
+  request;
+  /**
+   * Response object if a response was received
+   */
+  response;
+  constructor(message, statusCode, options) {
+    super(message, { cause: options.cause });
+    this.name = "HttpError";
+    this.status = Number.parseInt(statusCode);
+    if (Number.isNaN(this.status)) {
+      this.status = 0;
+    }
+    /* v8 ignore else -- @preserve -- Bug with vitest coverage where it sees an else branch that doesn't exist */
+    if ("response" in options) {
+      this.response = options.response;
+    }
+    const requestCopy = Object.assign({}, options.request);
+    if (options.request.headers.authorization) {
+      requestCopy.headers = Object.assign({}, options.request.headers, {
+        authorization: options.request.headers.authorization.replace(
+          /(?<! ) .*$/,
+          " [REDACTED]"
+        )
+      });
+    }
+    requestCopy.url = requestCopy.url.replace(/\bclient_secret=\w+/g, "client_secret=[REDACTED]").replace(/\baccess_token=\w+/g, "access_token=[REDACTED]");
+    this.request = requestCopy;
+  }
+}
+
+
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@octokit+plugin-retry@8.1.1_@octokit+core@7.0.6/node_modules/@octokit/plugin-retry/dist-bundle/index.js
 // pkg/dist-src/version.js
 var dist_bundle_VERSION = "0.0.0-development";
 
@@ -101043,7 +101265,7 @@ async function requestWithGraphqlErrorHandling(state, octokit, request, options)
   if (response.data && response.data.errors && response.data.errors.length > 0 && /Something went wrong while executing your query/.test(
     response.data.errors[0].message
   )) {
-    const error = new dist_src/* RequestError */.G(response.data.errors[0].message, 500, {
+    const error = new RequestError(response.data.errors[0].message, 500, {
       request: options,
       response
     });
@@ -101083,7 +101305,7 @@ function retry(octokit, octokitOptions) {
 retry.VERSION = dist_bundle_VERSION;
 
 
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/find/get-artifact.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/find/get-artifact.js
 var get_artifact_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -101183,7 +101405,7 @@ function getArtifactInternal(artifactName) {
     });
 }
 //# sourceMappingURL=get-artifact.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/delete/delete-artifact.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/delete/delete-artifact.js
 var delete_artifact_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -101262,7 +101484,7 @@ function deleteArtifactInternal(artifactName) {
     });
 }
 //# sourceMappingURL=delete-artifact.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/find/list-artifacts.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/find/list-artifacts.js
 var list_artifacts_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -101406,7 +101628,7 @@ function filterLatest(artifacts) {
     return latestArtifacts;
 }
 //# sourceMappingURL=list-artifacts.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/internal/client.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/internal/client.js
 var client_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -101547,7 +101769,7 @@ If the error persists, please check whether Actions and API requests are operati
     }
 }
 //# sourceMappingURL=client.js.map
-;// CONCATENATED MODULE: ../../node_modules/.pnpm/@actions+artifact@6.2.1/node_modules/@actions/artifact/lib/artifact.js
+;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+artifact@6.2.1_supports-color@7.2.0/node_modules/@actions/artifact/lib/artifact.js
 
 
 
@@ -101558,7 +101780,7 @@ const client = new DefaultArtifactClient();
 
 /***/ }),
 
-/***/ 1860:
+/***/ 8407:
 /***/ ((module) => {
 
 module.exports = /*#__PURE__*/JSON.parse('{"name":"@actions/artifact","version":"6.2.1","preview":true,"description":"Actions artifact lib","keywords":["github","actions","artifact"],"homepage":"https://github.com/actions/toolkit/tree/main/packages/artifact","license":"MIT","type":"module","main":"lib/artifact.js","types":"lib/artifact.d.ts","exports":{".":{"types":"./lib/artifact.d.ts","import":"./lib/artifact.js"}},"directories":{"lib":"lib","test":"__tests__"},"files":["lib","!.DS_Store"],"publishConfig":{"access":"public"},"repository":{"type":"git","url":"git+https://github.com/actions/toolkit.git","directory":"packages/artifact"},"scripts":{"audit-moderate":"npm install && npm audit --json --audit-level=moderate > audit.json","test":"cd ../../ && npm run test ./packages/artifact","bootstrap":"cd ../../ && npm run bootstrap","tsc-run":"tsc && cp src/internal/shared/package-version.cjs lib/internal/shared/","tsc":"npm run bootstrap && npm run tsc-run","gen:docs":"typedoc --plugin typedoc-plugin-markdown --out docs/generated src/artifact.ts --githubPages false --readme none"},"bugs":{"url":"https://github.com/actions/toolkit/issues"},"dependencies":{"@actions/core":"^3.0.0","@actions/github":"^9.0.0","@actions/http-client":"^4.0.0","@azure/storage-blob":"^12.30.0","@octokit/core":"^7.0.6","@octokit/plugin-request-log":"^6.0.0","@octokit/plugin-retry":"^8.0.0","@octokit/request":"^10.0.7","@octokit/request-error":"^7.1.0","@protobuf-ts/plugin":"^2.2.3-alpha.1","@protobuf-ts/runtime":"^2.9.4","archiver":"^7.0.1","jwt-decode":"^4.0.0","unzip-stream":"^0.3.1"},"devDependencies":{"@types/archiver":"^7.0.0","@types/unzip-stream":"^0.3.4","typedoc":"^0.28.16","typedoc-plugin-markdown":"^4.9.0","typescript":"^5.9.3"},"overrides":{"uri-js":"npm:uri-js-replace@^1.0.1","node-fetch":"^3.3.2"}}');
@@ -101567,4 +101789,4 @@ module.exports = /*#__PURE__*/JSON.parse('{"name":"@actions/artifact","version":
 
 };
 
-//# sourceMappingURL=713.index.js.map
+//# sourceMappingURL=498.index.js.map

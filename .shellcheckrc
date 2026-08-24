@@ -4,10 +4,30 @@
 # --manifest review-configs. Edit it HERE, not in the target repo.
 #
 # Lives at the repo ROOT because Codacy detects ShellCheck config by that name.
-# Kept identical to .qlty/configs/.shellcheckrc so qlty, the Codacy CLI, the
-# Codacy PR bot and a bare local `shellcheck` all behave the same way.
+# The SETTINGS below are kept identical to .qlty/configs/.shellcheckrc so qlty,
+# the Codacy CLI, the Codacy PR bot and a bare local `shellcheck` all behave the
+# same way. (Only the settings -- the qlty copy carries the measurement that
+# produced them.)
 
 # Resolve `source`/`.` relative to the script being checked rather than the
-# invoking directory. Without this, every script sourcing a sibling helper
-# reports SC1091 (not following: file not found).
+# invoking directory.
 source-path=SCRIPTDIR
+
+# source-path alone does NOT suppress SC1091, which is what the previous
+# version of this comment claimed. Measured on shellcheck 0.11.0, a script
+# sourcing a sibling, invoked from outside its directory:
+#
+#   (no config)                  SC1091 not following: ./lib.sh was not
+#                                       specified as input (see -x)
+#   source-path=SCRIPTDIR        SC1091 not following: ./lib.sh was not
+#                                       specified as input (see -x)
+#   both settings                clean
+#
+# The first two are byte-identical: source-path lets shellcheck FIND a sourced
+# file, external-sources is what lets it FOLLOW one. Against this repo's own
+# hooks, `shellcheck hooks/pre-push` reports 4 SC1091 without this file and 0
+# with it.
+#
+# Safe to pair precisely because source-path is set: resolution stays inside
+# the sourcing script's own directory rather than anywhere on the filesystem.
+external-sources=true

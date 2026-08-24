@@ -89,3 +89,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # For the `review-gate` commit status the reusable workflow posts. This has to be
+      # granted HERE: a reusable workflow cannot elevate the token its caller hands it,
+      # so `statuses: write` in review-gate-reusable.yml alone buys nothing -- the POST
+      # returns a permission error, continue-on-error swallows it, and the context is
+      # never published at all. (codex P1, #378.)
+      statuses: write

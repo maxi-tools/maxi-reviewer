@@ -1,5 +1,6 @@
 import * as github from "@actions/github";
 import * as core from "@actions/core";
+import { extractReviewArtifact } from "./review-command.js";
 import { ExistingFinding, OpenThread, ReviewComment } from "./types.js";
 
 export async function fetchDiff(
@@ -434,14 +435,12 @@ export async function listReviewArtifactComments(
   return records.map((record) => record.body);
 }
 
-/// Delete superseded artifact comments, keeping the newest `keep`.
+/// Delete malformed artifact-marker comments, keeping the newest `keep`.
 ///
-/// Artifact comments render as nothing — their whole body is HTML comments —
-/// so every run leaves another blank comment on the PR. They exist only to let
-/// a later run resume a Jules session, and `latestReviewArtifactSessionId`
-/// reads them newest-first and stops at the first one that actually responded.
-/// Anything older than that is unreachable, so keeping it buys nothing and
-/// costs a blank comment per push.
+/// Valid review artifacts are durable input to `/maxi harvest`, including after
+/// merge, so they must never be pruned. Marker-only or otherwise malformed
+/// comments cannot be harvested; those are safe to trim when repeated failed
+/// writes leave blank comments on a PR.
 ///
 /// `keep` is honoured from the newest end so the caller can retain a margin
 /// rather than trusting this function's view of which artifact responded.
@@ -469,7 +468,10 @@ export async function pruneReviewArtifactComments(
     return 0;
   }
 
-  const stale = records.slice(0, Math.max(0, records.length - keep));
+  const malformed = records.filter(
+    (record) => extractReviewArtifact(record.body) === null
+  );
+  const stale = malformed.slice(0, Math.max(0, malformed.length - keep));
   let deleted = 0;
   for (const record of stale) {
     if (!record.id) continue;

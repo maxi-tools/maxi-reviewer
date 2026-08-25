@@ -658,6 +658,36 @@ describe("pruneReviewArtifactComments", () => {
     expect(deleteComment).not.toHaveBeenCalled();
   });
 
+  it("preserves every artifact that remains available to harvest", async () => {
+    const deleteComment = vi.fn().mockResolvedValue(undefined);
+    const octokit = makeOctokit([1, 2, 3, 4], deleteComment);
+    const harvestable = JSON.stringify({
+      headSha: "abc123",
+      validatedReview: { comments: [] },
+    });
+    octokit.rest.issues.listComments.mockResolvedValue({
+      data: [
+        ...[1, 2, 3].map((id) => ({
+          id,
+          body: `<!-- maxi-review artifact -->\nartifact ${id}`,
+          user: { login: "maxi-reviewer[bot]", type: "Bot" },
+        })),
+        {
+          id: 4,
+          body: `<!-- maxi-review artifact -->\n\`\`\`json\n${harvestable}\n\`\`\``,
+          user: { login: "maxi-reviewer[bot]", type: "Bot" },
+        },
+      ],
+    });
+
+    await expect(
+      pruneReviewArtifactComments(octokit, "owner", "repo", 7, 1)
+    ).resolves.toBe(2);
+    expect(deleteComment).not.toHaveBeenCalledWith(
+      expect.objectContaining({ comment_id: 4 })
+    );
+  });
+
   it("never touches comments that are not review artifacts", async () => {
     const deleteComment = vi.fn().mockResolvedValue(undefined);
     const octokit = makeOctokit([1, 2, 3, 4], deleteComment);

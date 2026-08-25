@@ -1,5 +1,6 @@
 import * as github from "@actions/github";
 import * as core from "@actions/core";
+import { validateReviewArtifact } from "./schema.js";
 import { ExistingFinding, OpenThread, ReviewComment } from "./types.js";
 
 export async function fetchDiff(
@@ -417,6 +418,25 @@ export interface ArtifactCommentOctokit {
   };
 }
 
+const MAX_ARTIFACT_DELETIONS_PER_RUN = 20;
+
+function isValidatedReviewArtifactComment(body: string): boolean {
+  if (!body.includes("<!-- maxi-review artifact -->")) return false;
+  const encoded = body.match(
+    /<!-- maxi-review artifact-data\s+name:[^\n]*\s+encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/
+  );
+  const fenced = body.match(/```json\s*\n([\s\S]*?)\n```/);
+  const json = encoded
+    ? Buffer.from(encoded[1].replace(/\s/g, ""), "base64").toString("utf8")
+    : fenced?.[1];
+  if (!json) return false;
+  try {
+    return validateReviewArtifact(JSON.parse(json) as unknown).ok;
+  } catch {
+    return false;
+  }
+}
+
 async function listReviewArtifactCommentRecords(
   octokit: ArtifactCommentOctokit,
   owner: string,
@@ -439,7 +459,8 @@ async function listReviewArtifactCommentRecords(
   return comments
     .filter(
       (comment) =>
-        comment.body?.includes("<!-- maxi-review artifact -->") === true &&
+        typeof comment.body === "string" &&
+        isValidatedReviewArtifactComment(comment.body) &&
         comment.user?.type === "Bot" &&
         typeof comment.user.login === "string" &&
         trustedAuthors.has(comment.user.login)
@@ -498,7 +519,10 @@ export async function pruneReviewArtifactComments(
     return 0;
   }
 
-  const stale = records.slice(0, Math.max(0, records.length - keep));
+  const stale = records.slice(
+    0,
+    Math.min(Math.max(0, records.length - keep), MAX_ARTIFACT_DELETIONS_PER_RUN)
+  );
   let deleted = 0;
   for (const record of stale) {
     if (!record.id) continue;

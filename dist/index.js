@@ -64691,7 +64691,339 @@ var external_node_os_ = __nccwpck_require__(48161);
 var external_node_path_ = __nccwpck_require__(76760);
 // EXTERNAL MODULE: external "node:util"
 var external_node_util_ = __nccwpck_require__(57975);
+;// CONCATENATED MODULE: ./src/schema.ts
+function validateAnalyzerFinding(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "finding");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.analyzer-finding", errors);
+    requireString(record, "id", undefined, errors);
+    requireString(record, "tool", undefined, errors);
+    requireString(record, "ruleId", undefined, errors);
+    requireEnum(record, "severity", ["info", "warning", "error"], errors);
+    requireEnum(record, "confidence", ["low", "medium", "high", "unknown"], errors);
+    requireString(record, "message", undefined, errors);
+    requireString(record, "path", undefined, errors);
+    requirePositiveInt(record, "startLine", errors);
+    requirePositiveInt(record, "endLine", errors);
+    if (typeof record.startLine === "number" &&
+        typeof record.endLine === "number" &&
+        Number.isInteger(record.startLine) &&
+        Number.isInteger(record.endLine) &&
+        record.startLine > 0 &&
+        record.endLine > 0 &&
+        record.endLine < record.startLine) {
+        errors.push("endLine must be greater than or equal to startLine");
+    }
+    return { ok: errors.length === 0, value: value, errors };
+}
+function validateJulesReview(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "review");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.jules-review", errors);
+    requireString(record, "summary", undefined, errors);
+    requireEnum(record, "verdict", ["approve", "comment", "block"], errors);
+    if (!Array.isArray(record.resolvedCommentIds)) {
+        errors.push("resolvedCommentIds must be an array");
+    }
+    if (!Array.isArray(record.comments)) {
+        errors.push("comments must be an array");
+    }
+    else {
+        record.comments.forEach((comment, index) => {
+            const item = asRecord(comment, errors, `comments[${index}]`);
+            if (!item)
+                return;
+            requireString(item, "id", undefined, errors);
+            requireString(item, "path", undefined, errors);
+            requirePositiveInt(item, "line", errors, `comments[${index}].`);
+            optionalPositiveInt(item, "startLine", errors, `comments[${index}].`);
+            optionalPositiveInt(item, "endLine", errors, `comments[${index}].`);
+            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
+            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
+            requireString(item, "message", undefined, errors);
+            optionalString(item, "promptForAgents", errors);
+            optionalStringArray(item, "sourceFindingIds", errors);
+            validateSuggestion(item.suggestion, errors, `comments[${index}].suggestion`);
+            validateFix(item.fix, errors, `comments[${index}].fix`);
+        });
+    }
+    return { ok: errors.length === 0, value: value, errors };
+}
+function validateRetrievalRequest(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "retrieval-request");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.retrieval-request", errors);
+    if (!Array.isArray(record.requests)) {
+        errors.push("requests must be an array");
+        return { ok: false, errors };
+    }
+    if (record.requests.length === 0) {
+        errors.push("requests must be a non-empty array");
+    }
+    record.requests.forEach((entry, index) => {
+        const item = asRecord(entry, errors, "requests[" + index + "]");
+        if (!item)
+            return;
+        const prefix = "requests[" + index + "].";
+        if (item.tool === "read_file") {
+            requireString(item, "path", undefined, errors, prefix);
+            optionalPositiveInt(item, "startLine", errors, prefix);
+            optionalPositiveInt(item, "endLine", errors, prefix);
+        }
+        else if (item.tool === "grep") {
+            requireString(item, "pattern", undefined, errors, prefix);
+            optionalStringField(item, "pathGlob", errors, prefix);
+        }
+        else if (item.tool === "list_references") {
+            requireString(item, "symbol", undefined, errors, prefix);
+            optionalStringField(item, "pathGlob", errors, prefix);
+        }
+        else {
+            errors.push(prefix + "tool must be one of read_file, grep, list_references");
+        }
+    });
+    return { ok: errors.length === 0, value, errors };
+}
+function validateReviewArtifact(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "artifact");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.review-artifact", errors);
+    requireString(record, "createdAt", undefined, errors);
+    validateRetention(record.retention, errors);
+    requireString(record, "repoFullName", undefined, errors);
+    requirePositiveInt(record, "prNumber", errors);
+    requireString(record, "headSha", undefined, errors);
+    requireString(record, "baseSha", undefined, errors);
+    if (requireArray(record, "analyzerFindings", errors)) {
+        record.analyzerFindings.forEach((finding, index) => {
+            const result = validateAnalyzerFinding(finding);
+            errors.push(...result.errors.map((error) => `analyzerFindings[${index}].${error}`));
+        });
+    }
+    requireStringArray(record, "rawJulesResponses", errors);
+    if (record.validatedReview === undefined) {
+        errors.push("validatedReview is required");
+    }
+    else if (record.validatedReview !== null) {
+        errors.push(...validateArtifactReview(record.validatedReview));
+    }
+    requireStringArray(record, "validationErrors", errors);
+    optionalString(record, "sessionId", errors);
+    validateReviewOutcomeMetadata(record, errors);
+    return { ok: errors.length === 0, value: value, errors };
+}
+function validateReviewOutcomeMetadata(record, errors) {
+    const fields = [
+        "outcomeSchema",
+        "outcome",
+        "reviewOutputChars",
+        "runIdentity",
+    ];
+    const present = fields.filter((field) => record[field] !== undefined);
+    if (present.length === 0)
+        return;
+    if (present.length !== fields.length) {
+        errors.push("review outcome metadata must be present as a complete set");
+    }
+    requireString(record, "outcomeSchema", "maxi.review.v1.review-outcome", errors);
+    requireEnum(record, "outcome", ["TIMED_OUT_NO_CONTENT", "REVIEWED_NO_FINDINGS", "REVIEWED_WITH_FINDINGS"], errors);
+    if (!Number.isInteger(record.reviewOutputChars) ||
+        record.reviewOutputChars < 0) {
+        errors.push("reviewOutputChars must be a non-negative integer");
+    }
+    const identity = asRecord(record.runIdentity, errors, "runIdentity");
+    if (identity) {
+        requirePositiveInt(identity, "workflowRunId", errors, "runIdentity.");
+        requirePositiveInt(identity, "workflowRunAttempt", errors, "runIdentity.");
+        requireString(identity, "job", undefined, errors, "runIdentity.");
+    }
+    if (record.outcome === "TIMED_OUT_NO_CONTENT" &&
+        record.validatedReview !== null) {
+        errors.push("TIMED_OUT_NO_CONTENT requires validatedReview to be null");
+    }
+    if ((record.outcome === "REVIEWED_NO_FINDINGS" ||
+        record.outcome === "REVIEWED_WITH_FINDINGS") &&
+        (record.validatedReview === null || record.validatedReview === undefined)) {
+        errors.push(`${String(record.outcome)} requires a validatedReview`);
+    }
+    const findingCount = artifactReviewFindingCount(record.validatedReview);
+    if (record.outcome === "REVIEWED_NO_FINDINGS" && findingCount !== 0) {
+        errors.push("REVIEWED_NO_FINDINGS requires zero findings");
+    }
+    if (record.outcome === "REVIEWED_WITH_FINDINGS" && findingCount < 1) {
+        errors.push("REVIEWED_WITH_FINDINGS requires at least one finding");
+    }
+}
+function artifactReviewFindingCount(value) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return 0;
+    }
+    const record = value;
+    if (Array.isArray(record.comments))
+        return record.comments.length;
+    if (Array.isArray(record.newComments))
+        return record.newComments.length;
+    return 0;
+}
+function validateArtifactReview(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "validatedReview");
+    if (!record)
+        return errors;
+    if (record.schema === "maxi.review.v1.jules-review") {
+        const result = validateJulesReview(value);
+        return result.errors.map((error) => `validatedReview.${error}`);
+    }
+    requireString(record, "summary", undefined, errors, "validatedReview.");
+    if (typeof record.verdict !== "string" ||
+        !["approve", "comment", "block"].includes(record.verdict)) {
+        errors.push("validatedReview.verdict must be one of approve, comment, block");
+    }
+    if (!Array.isArray(record.resolvedCommentIds)) {
+        errors.push("validatedReview.resolvedCommentIds must be an array");
+    }
+    if (!Array.isArray(record.newComments)) {
+        errors.push("validatedReview.newComments must be an array");
+    }
+    return errors;
+}
+function validateRetention(value, errors) {
+    const retention = asRecord(value, errors, "retention");
+    if (!retention)
+        return;
+    if (retention.harvestableAfterMerge !== true) {
+        errors.push("retention.harvestableAfterMerge must be true");
+    }
+    if (!Array.isArray(retention.channels) ||
+        retention.channels.length !== 2 ||
+        retention.channels[0] !== "github-actions-artifact" ||
+        retention.channels[1] !== "github-pr-comment") {
+        errors.push("retention.channels must be github-actions-artifact, github-pr-comment");
+    }
+    if (retention.commentMarker !== "<!-- maxi-review artifact -->") {
+        errors.push("retention.commentMarker must be <!-- maxi-review artifact -->");
+    }
+}
+function validateSuggestion(value, errors, label) {
+    if (value === undefined)
+        return;
+    const suggestion = asRecord(value, errors, label);
+    if (!suggestion)
+        return;
+    requireString(suggestion, "path", undefined, errors, `${label}.`);
+    requirePositiveInt(suggestion, "startLine", errors, `${label}.`);
+    requirePositiveInt(suggestion, "endLine", errors, `${label}.`);
+    if (Number.isInteger(suggestion.startLine) &&
+        Number.isInteger(suggestion.endLine) &&
+        suggestion.endLine < suggestion.startLine) {
+        errors.push(`${label}.endLine must be greater than or equal to startLine`);
+    }
+    requireStringValue(suggestion, "replacement", errors, `${label}.`);
+}
+function validateFix(value, errors, label) {
+    if (value === undefined)
+        return;
+    const fix = asRecord(value, errors, label);
+    if (!fix)
+        return;
+    if (!Array.isArray(fix.edits)) {
+        errors.push(`${label}.edits must be an array`);
+        return;
+    }
+    if (fix.edits.length === 0) {
+        errors.push(`${label}.edits must be a non-empty array`);
+    }
+    fix.edits.forEach((edit, index) => validateSuggestion(edit, errors, `${label}.edits[${index}]`));
+}
+function asRecord(value, errors, label) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        return value;
+    }
+    errors.push(`${label} must be an object`);
+    return undefined;
+}
+function requireString(record, key, exact, errors, prefix = "") {
+    if (typeof record[key] !== "string" || record[key] === "") {
+        errors.push(`${prefix}${key} must be a non-empty string`);
+        return;
+    }
+    if (exact !== undefined && record[key] !== exact) {
+        errors.push(`${prefix}${key} must be ${exact}`);
+    }
+}
+function requireStringValue(record, key, errors, prefix = "") {
+    if (typeof record[key] !== "string") {
+        errors.push(`${prefix}${key} must be a string`);
+    }
+}
+function optionalString(record, key, errors) {
+    if (record[key] !== undefined && typeof record[key] !== "string") {
+        errors.push(`${key} must be a string`);
+    }
+}
+function optionalStringField(record, key, errors, prefix = "") {
+    if (record[key] !== undefined && typeof record[key] !== "string") {
+        errors.push(`${prefix}${key} must be a string`);
+    }
+}
+function optionalStringArray(record, key, errors) {
+    if (record[key] === undefined)
+        return;
+    if (!Array.isArray(record[key])) {
+        errors.push(`${key} must be an array`);
+        return;
+    }
+    record[key].forEach((item, index) => {
+        if (typeof item !== "string" || item === "") {
+            errors.push(`${key}[${index}] must be a non-empty string`);
+        }
+    });
+}
+function requireStringArray(record, key, errors) {
+    if (!Array.isArray(record[key])) {
+        errors.push(`${key} must be an array`);
+        return;
+    }
+    record[key].forEach((item, index) => {
+        if (typeof item !== "string") {
+            errors.push(`${key}[${index}] must be a string`);
+        }
+    });
+}
+function requireArray(record, key, errors) {
+    if (!Array.isArray(record[key])) {
+        errors.push(`${key} must be an array`);
+        return false;
+    }
+    return true;
+}
+function requireEnum(record, key, allowed, errors) {
+    if (typeof record[key] !== "string" ||
+        !allowed.includes(record[key])) {
+        errors.push(`${key} must be one of ${allowed.join(", ")}`);
+    }
+}
+function requirePositiveInt(record, key, errors, prefix = "") {
+    if (!Number.isInteger(record[key]) || record[key] < 1) {
+        errors.push(`${prefix}${key} must be a positive integer`);
+    }
+}
+function optionalPositiveInt(record, key, errors, prefix = "") {
+    if (record[key] !== undefined) {
+        requirePositiveInt(record, key, errors, prefix);
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/github.ts
+
 
 async function fetchDiff(octokit, owner, repo, pr, baseShaForDiff, headSha) {
     try {
@@ -64979,6 +65311,24 @@ ${encodedContent}
 -->`,
     });
 }
+const MAX_ARTIFACT_DELETIONS_PER_RUN = 20;
+function isValidatedReviewArtifactComment(body) {
+    if (!body.includes("<!-- maxi-review artifact -->"))
+        return false;
+    const encoded = body.match(/<!-- maxi-review artifact-data\s+name:[^\n]*\s+encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/);
+    const fenced = body.match(/```json\s*\n([\s\S]*?)\n```/);
+    const json = encoded
+        ? Buffer.from(encoded[1].replace(/\s/g, ""), "base64").toString("utf8")
+        : fenced?.[1];
+    if (!json)
+        return false;
+    try {
+        return validateReviewArtifact(JSON.parse(json)).ok;
+    }
+    catch {
+        return false;
+    }
+}
 async function listReviewArtifactCommentRecords(octokit, owner, repo, prNumber) {
     const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
     const comments = [];
@@ -64995,7 +65345,8 @@ async function listReviewArtifactCommentRecords(octokit, owner, repo, prNumber) 
             break;
     }
     return comments
-        .filter((comment) => comment.body?.includes("<!-- maxi-review artifact -->") === true &&
+        .filter((comment) => typeof comment.body === "string" &&
+        isValidatedReviewArtifactComment(comment.body) &&
         comment.user?.type === "Bot" &&
         typeof comment.user.login === "string" &&
         trustedAuthors.has(comment.user.login))
@@ -65031,7 +65382,7 @@ async function pruneReviewArtifactComments(octokit, owner, repo, prNumber, keep)
         core/* warning */.$e(`Failed to list review artifact comments: ${String(err)}`);
         return 0;
     }
-    const stale = records.slice(0, Math.max(0, records.length - keep));
+    const stale = records.slice(0, Math.min(Math.max(0, records.length - keep), MAX_ARTIFACT_DELETIONS_PER_RUN));
     let deleted = 0;
     for (const record of stale) {
         if (!record.id)
@@ -69482,337 +69833,6 @@ ${rawResponse}
 \`\`\``;
 }
 
-;// CONCATENATED MODULE: ./src/schema.ts
-function validateAnalyzerFinding(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "finding");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.analyzer-finding", errors);
-    requireString(record, "id", undefined, errors);
-    requireString(record, "tool", undefined, errors);
-    requireString(record, "ruleId", undefined, errors);
-    requireEnum(record, "severity", ["info", "warning", "error"], errors);
-    requireEnum(record, "confidence", ["low", "medium", "high", "unknown"], errors);
-    requireString(record, "message", undefined, errors);
-    requireString(record, "path", undefined, errors);
-    requirePositiveInt(record, "startLine", errors);
-    requirePositiveInt(record, "endLine", errors);
-    if (typeof record.startLine === "number" &&
-        typeof record.endLine === "number" &&
-        Number.isInteger(record.startLine) &&
-        Number.isInteger(record.endLine) &&
-        record.startLine > 0 &&
-        record.endLine > 0 &&
-        record.endLine < record.startLine) {
-        errors.push("endLine must be greater than or equal to startLine");
-    }
-    return { ok: errors.length === 0, value: value, errors };
-}
-function validateJulesReview(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "review");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.jules-review", errors);
-    requireString(record, "summary", undefined, errors);
-    requireEnum(record, "verdict", ["approve", "comment", "block"], errors);
-    if (!Array.isArray(record.resolvedCommentIds)) {
-        errors.push("resolvedCommentIds must be an array");
-    }
-    if (!Array.isArray(record.comments)) {
-        errors.push("comments must be an array");
-    }
-    else {
-        record.comments.forEach((comment, index) => {
-            const item = asRecord(comment, errors, `comments[${index}]`);
-            if (!item)
-                return;
-            requireString(item, "id", undefined, errors);
-            requireString(item, "path", undefined, errors);
-            requirePositiveInt(item, "line", errors, `comments[${index}].`);
-            optionalPositiveInt(item, "startLine", errors, `comments[${index}].`);
-            optionalPositiveInt(item, "endLine", errors, `comments[${index}].`);
-            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
-            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
-            requireString(item, "message", undefined, errors);
-            optionalString(item, "promptForAgents", errors);
-            optionalStringArray(item, "sourceFindingIds", errors);
-            validateSuggestion(item.suggestion, errors, `comments[${index}].suggestion`);
-            validateFix(item.fix, errors, `comments[${index}].fix`);
-        });
-    }
-    return { ok: errors.length === 0, value: value, errors };
-}
-function validateRetrievalRequest(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "retrieval-request");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.retrieval-request", errors);
-    if (!Array.isArray(record.requests)) {
-        errors.push("requests must be an array");
-        return { ok: false, errors };
-    }
-    if (record.requests.length === 0) {
-        errors.push("requests must be a non-empty array");
-    }
-    record.requests.forEach((entry, index) => {
-        const item = asRecord(entry, errors, "requests[" + index + "]");
-        if (!item)
-            return;
-        const prefix = "requests[" + index + "].";
-        if (item.tool === "read_file") {
-            requireString(item, "path", undefined, errors, prefix);
-            optionalPositiveInt(item, "startLine", errors, prefix);
-            optionalPositiveInt(item, "endLine", errors, prefix);
-        }
-        else if (item.tool === "grep") {
-            requireString(item, "pattern", undefined, errors, prefix);
-            optionalStringField(item, "pathGlob", errors, prefix);
-        }
-        else if (item.tool === "list_references") {
-            requireString(item, "symbol", undefined, errors, prefix);
-            optionalStringField(item, "pathGlob", errors, prefix);
-        }
-        else {
-            errors.push(prefix + "tool must be one of read_file, grep, list_references");
-        }
-    });
-    return { ok: errors.length === 0, value, errors };
-}
-function validateReviewArtifact(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "artifact");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.review-artifact", errors);
-    requireString(record, "createdAt", undefined, errors);
-    validateRetention(record.retention, errors);
-    requireString(record, "repoFullName", undefined, errors);
-    requirePositiveInt(record, "prNumber", errors);
-    requireString(record, "headSha", undefined, errors);
-    requireString(record, "baseSha", undefined, errors);
-    if (requireArray(record, "analyzerFindings", errors)) {
-        record.analyzerFindings.forEach((finding, index) => {
-            const result = validateAnalyzerFinding(finding);
-            errors.push(...result.errors.map((error) => `analyzerFindings[${index}].${error}`));
-        });
-    }
-    requireStringArray(record, "rawJulesResponses", errors);
-    if (record.validatedReview === undefined) {
-        errors.push("validatedReview is required");
-    }
-    else if (record.validatedReview !== null) {
-        errors.push(...validateArtifactReview(record.validatedReview));
-    }
-    requireStringArray(record, "validationErrors", errors);
-    optionalString(record, "sessionId", errors);
-    validateReviewOutcomeMetadata(record, errors);
-    return { ok: errors.length === 0, value: value, errors };
-}
-function validateReviewOutcomeMetadata(record, errors) {
-    const fields = [
-        "outcomeSchema",
-        "outcome",
-        "reviewOutputChars",
-        "runIdentity",
-    ];
-    const present = fields.filter((field) => record[field] !== undefined);
-    if (present.length === 0)
-        return;
-    if (present.length !== fields.length) {
-        errors.push("review outcome metadata must be present as a complete set");
-    }
-    requireString(record, "outcomeSchema", "maxi.review.v1.review-outcome", errors);
-    requireEnum(record, "outcome", ["TIMED_OUT_NO_CONTENT", "REVIEWED_NO_FINDINGS", "REVIEWED_WITH_FINDINGS"], errors);
-    if (!Number.isInteger(record.reviewOutputChars) ||
-        record.reviewOutputChars < 0) {
-        errors.push("reviewOutputChars must be a non-negative integer");
-    }
-    const identity = asRecord(record.runIdentity, errors, "runIdentity");
-    if (identity) {
-        requirePositiveInt(identity, "workflowRunId", errors, "runIdentity.");
-        requirePositiveInt(identity, "workflowRunAttempt", errors, "runIdentity.");
-        requireString(identity, "job", undefined, errors, "runIdentity.");
-    }
-    if (record.outcome === "TIMED_OUT_NO_CONTENT" &&
-        record.validatedReview !== null) {
-        errors.push("TIMED_OUT_NO_CONTENT requires validatedReview to be null");
-    }
-    if ((record.outcome === "REVIEWED_NO_FINDINGS" ||
-        record.outcome === "REVIEWED_WITH_FINDINGS") &&
-        (record.validatedReview === null || record.validatedReview === undefined)) {
-        errors.push(`${String(record.outcome)} requires a validatedReview`);
-    }
-    const findingCount = artifactReviewFindingCount(record.validatedReview);
-    if (record.outcome === "REVIEWED_NO_FINDINGS" && findingCount !== 0) {
-        errors.push("REVIEWED_NO_FINDINGS requires zero findings");
-    }
-    if (record.outcome === "REVIEWED_WITH_FINDINGS" && findingCount < 1) {
-        errors.push("REVIEWED_WITH_FINDINGS requires at least one finding");
-    }
-}
-function artifactReviewFindingCount(value) {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return 0;
-    }
-    const record = value;
-    if (Array.isArray(record.comments))
-        return record.comments.length;
-    if (Array.isArray(record.newComments))
-        return record.newComments.length;
-    return 0;
-}
-function validateArtifactReview(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "validatedReview");
-    if (!record)
-        return errors;
-    if (record.schema === "maxi.review.v1.jules-review") {
-        const result = validateJulesReview(value);
-        return result.errors.map((error) => `validatedReview.${error}`);
-    }
-    requireString(record, "summary", undefined, errors, "validatedReview.");
-    if (typeof record.verdict !== "string" ||
-        !["approve", "comment", "block"].includes(record.verdict)) {
-        errors.push("validatedReview.verdict must be one of approve, comment, block");
-    }
-    if (!Array.isArray(record.resolvedCommentIds)) {
-        errors.push("validatedReview.resolvedCommentIds must be an array");
-    }
-    if (!Array.isArray(record.newComments)) {
-        errors.push("validatedReview.newComments must be an array");
-    }
-    return errors;
-}
-function validateRetention(value, errors) {
-    const retention = asRecord(value, errors, "retention");
-    if (!retention)
-        return;
-    if (retention.harvestableAfterMerge !== true) {
-        errors.push("retention.harvestableAfterMerge must be true");
-    }
-    if (!Array.isArray(retention.channels) ||
-        retention.channels.length !== 2 ||
-        retention.channels[0] !== "github-actions-artifact" ||
-        retention.channels[1] !== "github-pr-comment") {
-        errors.push("retention.channels must be github-actions-artifact, github-pr-comment");
-    }
-    if (retention.commentMarker !== "<!-- maxi-review artifact -->") {
-        errors.push("retention.commentMarker must be <!-- maxi-review artifact -->");
-    }
-}
-function validateSuggestion(value, errors, label) {
-    if (value === undefined)
-        return;
-    const suggestion = asRecord(value, errors, label);
-    if (!suggestion)
-        return;
-    requireString(suggestion, "path", undefined, errors, `${label}.`);
-    requirePositiveInt(suggestion, "startLine", errors, `${label}.`);
-    requirePositiveInt(suggestion, "endLine", errors, `${label}.`);
-    if (Number.isInteger(suggestion.startLine) &&
-        Number.isInteger(suggestion.endLine) &&
-        suggestion.endLine < suggestion.startLine) {
-        errors.push(`${label}.endLine must be greater than or equal to startLine`);
-    }
-    requireStringValue(suggestion, "replacement", errors, `${label}.`);
-}
-function validateFix(value, errors, label) {
-    if (value === undefined)
-        return;
-    const fix = asRecord(value, errors, label);
-    if (!fix)
-        return;
-    if (!Array.isArray(fix.edits)) {
-        errors.push(`${label}.edits must be an array`);
-        return;
-    }
-    if (fix.edits.length === 0) {
-        errors.push(`${label}.edits must be a non-empty array`);
-    }
-    fix.edits.forEach((edit, index) => validateSuggestion(edit, errors, `${label}.edits[${index}]`));
-}
-function asRecord(value, errors, label) {
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        return value;
-    }
-    errors.push(`${label} must be an object`);
-    return undefined;
-}
-function requireString(record, key, exact, errors, prefix = "") {
-    if (typeof record[key] !== "string" || record[key] === "") {
-        errors.push(`${prefix}${key} must be a non-empty string`);
-        return;
-    }
-    if (exact !== undefined && record[key] !== exact) {
-        errors.push(`${prefix}${key} must be ${exact}`);
-    }
-}
-function requireStringValue(record, key, errors, prefix = "") {
-    if (typeof record[key] !== "string") {
-        errors.push(`${prefix}${key} must be a string`);
-    }
-}
-function optionalString(record, key, errors) {
-    if (record[key] !== undefined && typeof record[key] !== "string") {
-        errors.push(`${key} must be a string`);
-    }
-}
-function optionalStringField(record, key, errors, prefix = "") {
-    if (record[key] !== undefined && typeof record[key] !== "string") {
-        errors.push(`${prefix}${key} must be a string`);
-    }
-}
-function optionalStringArray(record, key, errors) {
-    if (record[key] === undefined)
-        return;
-    if (!Array.isArray(record[key])) {
-        errors.push(`${key} must be an array`);
-        return;
-    }
-    record[key].forEach((item, index) => {
-        if (typeof item !== "string" || item === "") {
-            errors.push(`${key}[${index}] must be a non-empty string`);
-        }
-    });
-}
-function requireStringArray(record, key, errors) {
-    if (!Array.isArray(record[key])) {
-        errors.push(`${key} must be an array`);
-        return;
-    }
-    record[key].forEach((item, index) => {
-        if (typeof item !== "string") {
-            errors.push(`${key}[${index}] must be a string`);
-        }
-    });
-}
-function requireArray(record, key, errors) {
-    if (!Array.isArray(record[key])) {
-        errors.push(`${key} must be an array`);
-        return false;
-    }
-    return true;
-}
-function requireEnum(record, key, allowed, errors) {
-    if (typeof record[key] !== "string" ||
-        !allowed.includes(record[key])) {
-        errors.push(`${key} must be one of ${allowed.join(", ")}`);
-    }
-}
-function requirePositiveInt(record, key, errors, prefix = "") {
-    if (!Number.isInteger(record[key]) || record[key] < 1) {
-        errors.push(`${prefix}${key} must be a positive integer`);
-    }
-}
-function optionalPositiveInt(record, key, errors, prefix = "") {
-    if (record[key] !== undefined) {
-        requirePositiveInt(record, key, errors, prefix);
-    }
-}
-
 ;// CONCATENATED MODULE: ./src/verify-format.ts
 
 function parseJulesReview(message) {
@@ -72353,7 +72373,7 @@ async function runReviewPr(overrides = {}) {
             linkedIssues: context.linkedIssues,
             incrementalReview: isIncrementalReview,
             excludedGeneratedPaths: excludedPaths.length > 0 ? excludedPaths : undefined,
-            changedFileContext: buildChangedFileContext(context.files ?? new Map(),
+            changedFileContext: buildChangedFileContext(context.files ?? new Map(), 
             // Derive from the (possibly truncated) diff the model actually sees, so
             // context never covers hunks absent from the visible diff payload.
             extractChangedLines(diffText)),
@@ -72452,7 +72472,7 @@ async function runReviewPr(overrides = {}) {
         }
         // Prepare body for the PR review
         const finalBody = `${COMMENT_MARKER}\n## Maxi Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
-        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody,
+        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody, 
         // Never post comments on excluded generated files, even if the model or
         // an analyzer produced one.
         (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs)));

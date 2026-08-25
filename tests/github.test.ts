@@ -14,6 +14,33 @@ import {
   type ArtifactCommentOctokit,
 } from "../src/github.js";
 
+const artifactBody = (id: number) => {
+  const artifact = JSON.stringify({
+    schema: "maxi.review.v1.review-artifact",
+    createdAt: "2026-06-26T03:05:23.000Z",
+    retention: {
+      harvestableAfterMerge: true,
+      channels: ["github-actions-artifact", "github-pr-comment"],
+      commentMarker: "<!-- maxi-review artifact -->",
+    },
+    repoFullName: "maxi/example",
+    prNumber: 7,
+    headSha: `head-${id}`,
+    baseSha: "base",
+    analyzerFindings: [],
+    rawJulesResponses: [],
+    validatedReview: {
+      schema: "maxi.review.v1.jules-review",
+      summary: "Review summary.",
+      verdict: "approve",
+      resolvedCommentIds: [],
+      comments: [],
+    },
+    validationErrors: [],
+  });
+  return `<!-- maxi-review artifact -->\n\`\`\`json\n${artifact}\n\`\`\``;
+};
+
 describe("github.ts", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -534,19 +561,19 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
           listComments: vi.fn().mockResolvedValue({
             data: [
               {
-                body: "<!-- maxi-review artifact -->\nspoofed",
+                body: artifactBody(1),
                 user: { login: "contributor", type: "User" },
               },
               {
-                body: "<!-- maxi-review artifact -->\nwrong bot",
+                body: artifactBody(2),
                 user: { login: "other-bot[bot]", type: "Bot" },
               },
               {
-                body: "<!-- maxi-review artifact -->\ncurrent app",
+                body: artifactBody(3),
                 user: { login: "maxi-reviewer[bot]", type: "Bot" },
               },
               {
-                body: "<!-- maxi-review artifact -->\nlegacy action",
+                body: artifactBody(4),
                 user: { login: "github-actions[bot]", type: "Bot" },
               },
             ],
@@ -562,10 +589,7 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
 
     await expect(
       listReviewArtifactComments(octokit, "owner", "repo", 7)
-    ).resolves.toEqual([
-      "<!-- maxi-review artifact -->\ncurrent app",
-      "<!-- maxi-review artifact -->\nlegacy action",
-    ]);
+    ).resolves.toEqual([artifactBody(3), artifactBody(4)]);
   });
 
   it("trusts the GitHub Actions actor when authenticated user lookup fails", async () => {
@@ -576,11 +600,11 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
           listComments: vi.fn().mockResolvedValue({
             data: [
               {
-                body: "<!-- maxi-review artifact -->\ncurrent actor",
+                body: artifactBody(5),
                 user: { login: "custom-reviewer[bot]", type: "Bot" },
               },
               {
-                body: "<!-- maxi-review artifact -->\nother bot",
+                body: artifactBody(6),
                 user: { login: "other-bot[bot]", type: "Bot" },
               },
             ],
@@ -594,18 +618,37 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
 
     await expect(
       listReviewArtifactComments(octokit, "owner", "repo", 7)
-    ).resolves.toEqual(["<!-- maxi-review artifact -->\ncurrent actor"]);
+    ).resolves.toEqual([artifactBody(5)]);
+  });
+
+  it("rejects trusted bot comments that only mention the marker", async () => {
+    const octokit = {
+      rest: {
+        issues: {
+          listComments: vi.fn().mockResolvedValue({
+            data: [
+              {
+                body: "Visible feedback mentioning <!-- maxi-review artifact -->",
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              },
+            ],
+          }),
+        },
+        users: {
+          getAuthenticated: vi.fn().mockResolvedValue({
+            data: { login: "maxi-reviewer[bot]" },
+          }),
+        },
+      },
+    } as any;
+
+    await expect(
+      listReviewArtifactComments(octokit, "owner", "repo", 7)
+    ).resolves.toEqual([]);
   });
 });
 
 describe("pruneReviewArtifactComments", () => {
-  const artifactBody = (id: number) => {
-    const artifact = JSON.stringify({
-      headSha: `head-${id}`,
-      validatedReview: { comments: [] },
-    });
-    return `<!-- maxi-review artifact -->\n\`\`\`json\n${artifact}\n\`\`\``;
-  };
   const makeOctokit = (
     artifactIds: number[],
     deleteComment = vi.fn().mockResolvedValue(undefined)
@@ -653,6 +696,22 @@ describe("pruneReviewArtifactComments", () => {
     );
     expect(deleteComment).toHaveBeenCalledWith(
       expect.objectContaining({ comment_id: 2 })
+    );
+  });
+
+  it("caps deletion work so cleanup cannot monopolize a review run", async () => {
+    const deleteComment = vi.fn().mockResolvedValue(undefined);
+    const octokit = makeOctokit(
+      Array.from({ length: 30 }, (_, index) => index + 1),
+      deleteComment
+    );
+
+    await expect(
+      pruneReviewArtifactComments(octokit, "owner", "repo", 7, 1)
+    ).resolves.toBe(20);
+    expect(deleteComment).toHaveBeenCalledTimes(20);
+    expect(deleteComment).toHaveBeenLastCalledWith(
+      expect.objectContaining({ comment_id: 20 })
     );
   });
 

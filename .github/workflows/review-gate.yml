@@ -30,53 +30,19 @@ on:
   # still opening a NEW unresolved thread -- a green check would stay
   # green. Deleting one can strand an old failure the same way. There is
   # no thread-created event, so this is the only trigger that covers it.
+  #
+  # It is also the highest-volume trigger by a wide margin: 30 of the 62
+  # Review Gate runs in one repo in 24h. That cost is accepted rather than
+  # optimised away. Skipping the evaluation on this event and leaving the
+  # verdicts PENDING was tried on this branch and withdrawn: the required
+  # checks aggregate across suites (see the concurrency note below), so a
+  # pending-and-never-completed run is not neutral, and "re-run this check"
+  # clears one entry in a rollup that has several. Every event that reaches
+  # this gate now runs it to a verdict.
   pull_request_review_comment:
     types: [created, deleted]
 
 permissions: {}
-
-concurrency:
-  group: review-gate-${{ github.event.pull_request.number }}
-  # NOT cancel-in-progress. `true` here did not de-duplicate this gate --
-  # it stopped the gate running at all, and left a red X where the verdict
-  # should be.
-  #
-  # Measured on maxi-terminal#464, 2026-08-19: TWELVE consecutive check runs
-  # for this gate, every one `cancelled`, not one of them with a single step
-  # executed. maxi-tray#424, maxi-terminal#463, maxi-memory#168 and
-  # maxi-config#344 were in the same state on the same day.
-  #
-  # The mechanism needs both halves to be visible:
-  #
-  #   1. This job runs on the self-hosted fleet, which is saturated, so a run
-  #      waits in the queue for minutes rather than seconds -- maxi-tray#424's
-  #      run sat queued for 7m27s (19:11:11Z -> 19:18:38Z).
-  #   2. The review bots post diff comments in BURSTS. Each one is a
-  #      `pull_request_review_comment: created` event, so each one starts a new
-  #      run, and with cancel-in-progress each new run killed the queued one.
-  #
-  # Nothing ever reached a runner. Every event replaced a pending verdict with
-  # a cancellation, and a cancelled check run is red -- on the PR page it is
-  # indistinguishable from a genuine failure. That is strictly worse than no
-  # gate: this check is already routinely misread as "this PR needs a human
-  # reviewer", and a cancellation makes it say exactly that while carrying no
-  # verdict at all.
-  #
-  # cancel-in-progress is for expensive jobs a newer commit has obsoleted.
-  # Neither clause applies. The gate is two API calls and a python script --
-  # about two seconds of runner time, so there is nothing to save by killing
-  # it -- and it judges the PR's CURRENT review state, not a commit, so an
-  # in-flight run is never stale in the way that setting assumes.
-  #
-  # With `false` the run holding the group is left alone and completes.
-  # Later requests wait behind it; only PENDING ones are superseded, and the
-  # last request to arrive is never superseded, so the newest check run for
-  # this name always carries a real verdict.
-  #
-  # The group is kept: on a saturated fleet, serialising a burst behind one
-  # runner slot is the point. It is cancellation, not queueing, that was the
-  # defect.
-  cancel-in-progress: false
 
 jobs:
   review-gate:
@@ -87,6 +53,7 @@ jobs:
     # is the job's own outcome, not a comment or a label — so write scope would
     # be strictly more than the gate can use.
     permissions:
+      actions: read
       contents: read
       pull-requests: read
       # For the `review-gate` commit status the reusable workflow posts. This has to be

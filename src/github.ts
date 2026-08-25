@@ -1,6 +1,5 @@
 import * as github from "@actions/github";
 import * as core from "@actions/core";
-import { extractReviewArtifact } from "./review-command.js";
 import { ExistingFinding, OpenThread, ReviewComment } from "./types.js";
 
 export async function fetchDiff(
@@ -386,42 +385,73 @@ export interface ReviewArtifactComment {
   body: string;
 }
 
+interface ArtifactCommentApiRecord {
+  id?: number;
+  body?: string | null;
+  user?: { login?: string; type?: string } | null;
+}
+
+interface ArtifactCommentPage {
+  data: ArtifactCommentApiRecord[];
+}
+
+export interface ArtifactCommentOctokit {
+  rest: {
+    issues: {
+      listComments(request: {
+        owner: string;
+        repo: string;
+        issue_number: number;
+        per_page: number;
+        page?: number;
+      }): Promise<ArtifactCommentPage>;
+      deleteComment(request: {
+        owner: string;
+        repo: string;
+        comment_id: number;
+      }): Promise<unknown>;
+    };
+    users: {
+      getAuthenticated(): Promise<{ data: { login?: string } }>;
+    };
+  };
+}
+
 async function listReviewArtifactCommentRecords(
-  octokit: ReturnType<typeof github.getOctokit>,
+  octokit: ArtifactCommentOctokit,
   owner: string,
   repo: string,
   prNumber: number
 ): Promise<ReviewArtifactComment[]> {
   const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
-  const request = {
-    owner,
-    repo,
-    issue_number: prNumber,
-    per_page: 100,
-  };
-  const comments =
-    typeof octokit.paginate === "function"
-      ? await octokit.paginate(octokit.rest.issues.listComments, request)
-      : (await octokit.rest.issues.listComments(request)).data;
+  const comments: ArtifactCommentApiRecord[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: prNumber,
+      per_page: 100,
+      page,
+    });
+    comments.push(...response.data);
+    if (response.data.length < 100) break;
+  }
   return comments
     .filter(
-      (comment: {
-        body?: string;
-        user?: { login?: string; type?: string } | null;
-      }) =>
-        comment.body?.includes("<!-- maxi-review artifact -->") &&
+      (comment) =>
+        comment.body?.includes("<!-- maxi-review artifact -->") === true &&
         comment.user?.type === "Bot" &&
         typeof comment.user.login === "string" &&
         trustedAuthors.has(comment.user.login)
     )
-    .map((comment: { id?: number; body?: string }) => ({
+    .map((comment) => ({
       id: comment.id ?? 0,
       body: comment.body || "",
     }));
 }
 
 export async function listReviewArtifactComments(
-  octokit: ReturnType<typeof github.getOctokit>,
+  octokit: ArtifactCommentOctokit,
   owner: string,
   repo: string,
   prNumber: number
@@ -435,12 +465,12 @@ export async function listReviewArtifactComments(
   return records.map((record) => record.body);
 }
 
-/// Delete malformed artifact-marker comments, keeping the newest `keep`.
+/// Delete superseded artifact comments, keeping the newest `keep`.
 ///
-/// Valid review artifacts are durable input to `/maxi harvest`, including after
-/// merge, so they must never be pruned. Marker-only or otherwise malformed
-/// comments cannot be harvested; those are safe to trim when repeated failed
-/// writes leave blank comments on a PR.
+/// Each review artifact is also uploaded through the GitHub Actions artifact
+/// channel declared in its retention metadata. PR comments keep the newest
+/// copies immediately harvestable after merge without allowing one invisible
+/// HTML-only comment to accumulate for every synchronize event.
 ///
 /// `keep` is honoured from the newest end so the caller can retain a margin
 /// rather than trusting this function's view of which artifact responded.
@@ -448,7 +478,7 @@ export async function listReviewArtifactComments(
 /// Failures are reported and swallowed: pruning cosmetics must never fail a
 /// review.
 export async function pruneReviewArtifactComments(
-  octokit: ReturnType<typeof github.getOctokit>,
+  octokit: ArtifactCommentOctokit,
   owner: string,
   repo: string,
   prNumber: number,
@@ -468,10 +498,7 @@ export async function pruneReviewArtifactComments(
     return 0;
   }
 
-  const malformed = records.filter(
-    (record) => extractReviewArtifact(record.body) === null
-  );
-  const stale = malformed.slice(0, Math.max(0, malformed.length - keep));
+  const stale = records.slice(0, Math.max(0, records.length - keep));
   let deleted = 0;
   for (const record of stale) {
     if (!record.id) continue;
@@ -492,7 +519,7 @@ export async function pruneReviewArtifactComments(
 }
 
 async function trustedArtifactCommentAuthors(
-  octokit: ReturnType<typeof github.getOctokit>
+  octokit: ArtifactCommentOctokit
 ): Promise<Set<string>> {
   const trusted = new Set(["github-actions[bot]", "maxi-reviewer[bot]"]);
   const actor = process.env.GITHUB_ACTOR;

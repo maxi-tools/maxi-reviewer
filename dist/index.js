@@ -64691,217 +64691,381 @@ var external_node_os_ = __nccwpck_require__(48161);
 var external_node_path_ = __nccwpck_require__(76760);
 // EXTERNAL MODULE: external "node:util"
 var external_node_util_ = __nccwpck_require__(57975);
-;// CONCATENATED MODULE: ./src/apply.ts
-function applyStructuredSuggestions(files, comments) {
-    const resultFiles = new Map(files);
-    const applied = [];
-    const skipped = [];
-    // Ranges claimed by accepted edits, per file, so a later group cannot edit a
-    // range that overlaps one an earlier accepted group already owns.
-    const claimed = new Map();
-    const acceptedEdits = [];
-    const lineCountCache = new Map();
-    const lineCountOf = (file) => {
-        const cached = lineCountCache.get(file);
-        if (cached !== undefined)
-            return cached;
-        const content = files.get(file);
-        if (content === undefined)
-            return undefined;
-        const count = splitPreservingFinalNewline(content).bodyLines.length;
-        lineCountCache.set(file, count);
-        return count;
-    };
-    const rangeOf = (edit) => ({
-        file: edit.file,
-        startLine: edit.startLine,
-        endLine: edit.endLine,
+;// CONCATENATED MODULE: ./src/github.ts
+
+async function fetchDiff(octokit, owner, repo, pr, baseShaForDiff, headSha) {
+    try {
+        const compare = await octokit.rest.repos.compareCommitsWithBasehead({
+            owner,
+            repo,
+            basehead: `${baseShaForDiff}...${headSha}`,
+            mediaType: { format: "diff" },
+        });
+        const data = compare.data;
+        if (typeof data === "string")
+            return data;
+    }
+    catch (err) {
+        core/* warning */.$e(`compareCommitsWithBasehead failed, falling back to pulls.get: ${String(err)}`);
+    }
+    // fallback to full PR diff
+    const res = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: pr.number,
+        mediaType: { format: "diff" },
     });
-    const reasonFor = (edit, groupEdits) => {
-        if (!resultFiles.has(edit.file))
-            return "missing file";
-        if (edit.replacement === undefined)
-            return "no structured replacement";
-        const lineCount = lineCountOf(edit.file);
-        if (lineCount === undefined ||
-            edit.startLine < 1 ||
-            edit.endLine < edit.startLine ||
-            edit.endLine > lineCount) {
-            return "invalid range";
+    const data = res.data;
+    if (typeof data === "string")
+        return data;
+    throw new Error("GitHub returned no diff text.");
+}
+async function loadRulesFromBase(octokit, owner, repo, path, baseSha) {
+    try {
+        const file = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path,
+            ref: baseSha,
+        });
+        if ("content" in file.data && typeof file.data.content === "string") {
+            const content = Buffer.from(file.data.content, "base64").toString("utf8");
+            core/* info */.pq(`Loaded ${content.length} chars from ${path} at base SHA`);
+            return content;
         }
-        if (overlaps(claimed.get(edit.file) || [], rangeOf(edit))) {
-            return "overlapping range";
-        }
-        const clashesWithSibling = groupEdits.some((other) => other !== edit &&
-            other.file === edit.file &&
-            other.startLine <= edit.endLine &&
-            other.endLine >= edit.startLine);
-        if (clashesWithSibling)
-            return "overlapping range";
         return undefined;
-    };
-    // One group per comment: a multi-edit `fix` is applied transactionally
-    // (all-or-nothing), while a single suggestion/legacy replacement is a group of
-    // one — preserving the original single-suggestion behaviour.
-    const groups = comments
-        .map((comment) => normalizeComment(comment))
-        .filter((edits) => edits.length > 0)
-        .map((edits) => ({ edits, lead: [...edits].sort(compareEdits)[0] }))
-        .sort((left, right) => compareEdits(left.lead, right.lead));
-    for (const { edits: groupEdits } of groups) {
-        const reasons = groupEdits.map((edit) => reasonFor(edit, groupEdits));
-        if (reasons.some((reason) => reason !== undefined)) {
-            groupEdits.forEach((edit, index) => skipped.push({
-                ...rangeOf(edit),
-                reason: reasons[index] ?? "incomplete fix",
-            }));
-            continue;
+    }
+    catch (err) {
+        core/* warning */.$e(`Failed to load rules from base: ${String(err)}`);
+        return undefined;
+    }
+}
+async function fetchOpenThreads(octokit, owner, repo, prNumber) {
+    const query = `
+    query($owner: String!, $repo: String!, $pr: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $pr) {
+          reviewThreads(first: 100) {
+            nodes {
+              id
+              isResolved
+              comments(first: 20) {
+                nodes {
+                  body
+                  path
+                  line
+                  author { login }
+                  viewerDidAuthor
+                  createdAt
+                }
+              }
+            }
+          }
         }
-        for (const edit of groupEdits) {
-            if (edit.replacement === undefined)
-                continue;
-            claimed.set(edit.file, [
-                ...(claimed.get(edit.file) || []),
-                rangeOf(edit),
-            ]);
-            acceptedEdits.push({
-                file: edit.file,
-                startLine: edit.startLine,
-                endLine: edit.endLine,
-                replacement: edit.replacement,
+      }
+    }
+  `;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response = await octokit.graphql(query, {
+        owner,
+        repo,
+        pr: prNumber,
+    });
+    const threads = response.repository?.pullRequest?.reviewThreads?.nodes || [];
+    let index = 1;
+    const result = [];
+    for (const thread of threads) {
+        if (thread.isResolved)
+            continue;
+        const firstComment = thread.comments.nodes[0];
+        if (!firstComment)
+            continue;
+        if (firstComment.viewerDidAuthor &&
+            (firstComment.body.includes("<!-- maxi-review-inline-comment -->") ||
+                firstComment.body.includes("<!-- jules-inline-comment -->"))) {
+            result.push({
+                index: index++,
+                threadId: thread.id,
+                path: firstComment.path,
+                line: firstComment.line || 0,
+                body: firstComment.body,
+                comments: thread.comments.nodes.map((comment) => ({
+                    author: comment.author?.login || "unknown",
+                    body: comment.body,
+                    line: comment.line || firstComment.line || 0,
+                    viewerDidAuthor: !!comment.viewerDidAuthor,
+                    createdAt: comment.createdAt,
+                })),
             });
         }
     }
-    // Apply accepted edits bottom-to-top within each file so lower edits never
-    // shift the line numbers of higher ones; validation guarantees they do not
-    // overlap.
-    const editsByFile = new Map();
-    for (const edit of acceptedEdits) {
-        editsByFile.set(edit.file, [...(editsByFile.get(edit.file) || []), edit]);
+    return result;
+}
+/**
+ * Fetch active inline findings posted by OTHER reviewers (not this action) on
+ * the PR, so the prompt can ask the model not to restate them. Reuses the
+ * reviewThreads query shape from fetchOpenThreads but keeps the non-self,
+ * unresolved first comments. Bodies are capped; the caller nonce-fences them as
+ * UNTRUSTED. Failures are logged and yield an empty list (best-effort context).
+ */
+async function fetchExistingFindings(octokit, owner, repo, prNumber, options = {}) {
+    const max = options.max ?? 40;
+    const maxBodyChars = options.maxBodyChars ?? 600;
+    const query = "query($owner: String!, $repo: String!, $pr: Int!) {\n" +
+        "  repository(owner: $owner, name: $repo) {\n" +
+        "    pullRequest(number: $pr) {\n" +
+        "      reviewThreads(first: 100) {\n" +
+        "        nodes {\n" +
+        "          isResolved\n" +
+        "          comments(first: 1) {\n" +
+        "            nodes { body path line author { login } viewerDidAuthor }\n" +
+        "          }\n" +
+        "        }\n" +
+        "      }\n" +
+        "    }\n" +
+        "  }\n" +
+        "}";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let response;
+    try {
+        response = await octokit.graphql(query, { owner, repo, pr: prNumber });
     }
-    for (const file of [...editsByFile.keys()].sort()) {
-        const edits = editsByFile.get(file) || [];
-        edits.sort((a, b) => b.startLine - a.startLine || a.endLine - b.endLine);
-        for (const edit of edits) {
-            const content = resultFiles.get(file);
-            if (content === undefined)
-                continue;
-            resultFiles.set(file, replaceLines(content, edit.startLine, edit.endLine, edit.replacement));
-            applied.push({ file, startLine: edit.startLine, endLine: edit.endLine });
+    catch (err) {
+        core/* warning */.$e("dedupe: failed to fetch existing review threads: " + String(err));
+        return [];
+    }
+    const threads = response.repository?.pullRequest?.reviewThreads?.nodes || [];
+    const out = [];
+    for (const thread of threads) {
+        if (thread.isResolved)
+            continue;
+        const c = thread.comments?.nodes?.[0];
+        if (!c || c.viewerDidAuthor)
+            continue;
+        const body = (c.body || "").trim();
+        if (!body)
+            continue;
+        out.push({
+            author: c.author?.login || "unknown",
+            path: c.path || "",
+            line: c.line || 0,
+            body: body.length > maxBodyChars ? body.slice(0, maxBodyChars) : body,
+        });
+        if (out.length >= max)
+            break;
+    }
+    return out;
+}
+async function resolveThreads(octokit, threadIds) {
+    for (const id of threadIds) {
+        try {
+            await octokit.graphql(`
+        mutation($id: ID!) {
+          resolveReviewThread(input: {threadId: $id}) {
+            thread { isResolved }
+          }
+        }
+      `, { id });
+            core/* info */.pq(`Resolved thread ${id}`);
+        }
+        catch (e) {
+            core/* warning */.$e(`Failed to resolve thread ${id}: ${e}`);
         }
     }
-    return { files: resultFiles, applied, skipped };
 }
-function normalizeComment(comment) {
-    if ("fix" in comment &&
-        comment.fix &&
-        Array.isArray(comment.fix.edits) &&
-        comment.fix.edits.length > 0) {
-        return comment.fix.edits
-            .filter((edit) => edit !== null && typeof edit === "object")
-            .map((edit) => ({
-            file: edit.path,
-            startLine: edit.startLine,
-            endLine: edit.endLine,
-            replacement: edit.replacement,
-        }));
-    }
-    return [normalizeSuggestion(comment)];
-}
-function validateApplyAllHead(expectedHeadSha, currentHeadSha) {
-    if (expectedHeadSha !== currentHeadSha) {
+async function submitReview(octokit, owner, repo, prNumber, headSha, summary, comments) {
+    const formattedComments = comments.map((c) => {
+        const severityEmoji = c.severity === "High" ? "🚨" : c.severity === "Warning" ? "⚠️" : "ℹ️";
+        const confidenceEmoji = c.confidence === "High" ? "🟢" : c.confidence === "Medium" ? "🟡" : "🔴";
+        let body = `<!-- maxi-review-inline-comment -->
+**Severity:** ${severityEmoji} ${c.severity} | **Confidence:** ${confidenceEmoji} ${c.confidence}
+
+${messageWithSuggestion(c)}`;
+        if (c.promptForAgents) {
+            body += `
+
+<details>
+<summary>🤖 Prompt for Agents</summary>
+
+${c.promptForAgents}
+</details>`;
+        }
+        const startLine = c.startLine || c.line;
+        const endLine = c.endLine || startLine;
         return {
-            ok: false,
-            reason: `stale head SHA: expected ${expectedHeadSha}, got ${currentHeadSha}`,
+            path: c.file,
+            ...(endLine > startLine
+                ? { start_line: startLine, start_side: "RIGHT", line: endLine }
+                : { line: c.line }),
+            side: "RIGHT",
+            body,
         };
+    });
+    try {
+        await octokit.rest.pulls.createReview({
+            owner,
+            repo,
+            pull_number: prNumber,
+            commit_id: headSha,
+            event: "COMMENT",
+            body: summary,
+            comments: formattedComments,
+        });
     }
-    return { ok: true };
-}
-function buildApplyAllCommitMessage(appliedCount) {
-    return `Apply ${appliedCount} Maxi suggestion${appliedCount === 1 ? "" : "s"}`;
-}
-function normalizeSuggestion(comment) {
-    if ("suggestion" in comment && comment.suggestion) {
-        return {
-            file: comment.suggestion.path,
-            startLine: comment.suggestion.startLine,
-            endLine: comment.suggestion.endLine,
-            replacement: comment.suggestion.replacement,
-        };
+    catch (err) {
+        core/* warning */.$e(`Failed to submit PR review; recording late feedback as a PR comment instead: ${String(err)}`);
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body: buildLateFeedbackComment(summary, comments),
+        });
     }
-    const legacy = comment;
-    return {
-        file: legacy.file,
-        startLine: legacy.startLine || legacy.line,
-        endLine: legacy.endLine || legacy.startLine || legacy.line,
-        replacement: legacy.suggestedReplacement ?? extractSuggestionFence(legacy.message),
-    };
 }
-function extractSuggestionFence(message) {
-    const match = message.match(/```suggestion\s*\n([\s\S]*?)(?:\n)?```/);
-    return match?.[1];
+function messageWithSuggestion(comment) {
+    if (!comment.suggestedReplacement ||
+        comment.message.includes("```suggestion")) {
+        return comment.message;
+    }
+    return `${comment.message}\n\n\`\`\`suggestion\n${comment.suggestedReplacement}\n\`\`\``;
 }
-function replaceLines(content, startLine, endLine, replacement) {
-    const { bodyLines, hasFinalNewline } = splitPreservingFinalNewline(content);
-    const replacementLines = replacement === "" ? [] : replacement.split("\n");
-    bodyLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines);
-    return bodyLines.join("\n") + (hasFinalNewline ? "\n" : "");
-}
-function splitPreservingFinalNewline(content) {
-    const hasFinalNewline = content.endsWith("\n");
-    const body = hasFinalNewline ? content.slice(0, -1) : content;
-    return {
-        bodyLines: body.length === 0 ? [] : body.split("\n"),
-        hasFinalNewline,
-    };
-}
-function overlaps(applied, next) {
-    return applied.some((existing) => next.startLine <= existing.endLine && next.endLine >= existing.startLine);
-}
-function compareEdits(left, right) {
-    const fileOrder = left.file.localeCompare(right.file);
-    if (fileOrder !== 0)
-        return fileOrder;
-    return right.startLine - left.startLine || left.endLine - right.endLine;
-}
+function buildLateFeedbackComment(summary, comments) {
+    const findings = comments
+        .map((comment, index) => {
+        const promptForAgents = comment.promptForAgents
+            ? `\n\n<details>\n<summary>Prompt for Agents</summary>\n\n${comment.promptForAgents}\n</details>`
+            : "";
+        return `### ${index + 1}. ${formatCommentLocation(comment)}
 
-;// CONCATENATED MODULE: ./src/hands-on-fix.ts
-function authorizeHandsOnFix(input) {
-    if (!input.command.startsWith("/maxi fix ")) {
-        return { ok: false, reason: "explicit /maxi fix command required" };
-    }
-    if (input.repository !== input.headRepository) {
-        return {
-            ok: false,
-            reason: "hands-on fixes require a same-repository PR branch",
-        };
-    }
-    if (!input.availableFindingIds.includes(input.requestedFindingId)) {
-        return { ok: false, reason: "requested finding is not available" };
-    }
-    if (input.tokenPermissions.contents !== "write") {
-        return { ok: false, reason: "contents: write permission required" };
-    }
-    if (input.tokenPermissions.pullRequests !== "write") {
-        return { ok: false, reason: "pull-requests: write permission required" };
-    }
-    return { ok: true };
+**Severity:** ${comment.severity} | **Confidence:** ${comment.confidence}
+
+${comment.message}${promptForAgents}`;
+    })
+        .join("\n\n---\n\n");
+    return `<!-- maxi-review late-feedback -->
+## Late Maxi review feedback
+
+${summary}
+
+${findings}`;
 }
-function buildHandsOnFixPrompt(comment) {
-    const location = `${comment.path}:${comment.line}`;
-    const agentGuidance = comment.promptForAgents
-        ? `\n\nSpecific fix guidance:\n${comment.promptForAgents}`
-        : "";
-    return `Fix Maxi review finding ${comment.id}.
-
-Location: ${location}
-Severity: ${comment.severity}
-Confidence: ${comment.confidence}
-
-Review finding:
-${comment.message}${agentGuidance}
-
-Make the smallest correct code change on the PR branch, run the relevant tests, and commit the fix.`;
+function formatCommentLocation(comment) {
+    const startLine = comment.startLine || comment.line;
+    const endLine = comment.endLine || startLine;
+    const lineSuffix = endLine > startLine ? `${startLine}-${endLine}` : `${startLine}`;
+    return `${comment.file}:${lineSuffix}`;
+}
+async function setStatus(octokit, owner, repo, sha, context, state, description) {
+    await octokit.rest.repos.createCommitStatus({
+        owner,
+        repo,
+        sha,
+        state,
+        context,
+        description,
+    });
+}
+async function recordReviewArtifactComment(octokit, owner, repo, prNumber, name, content) {
+    const encodedContent = Buffer.from(content, "utf8").toString("base64");
+    await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: `<!-- maxi-review artifact -->
+<!-- maxi-review artifact-data
+name: ${name}
+encoding: base64
+${encodedContent}
+-->`,
+    });
+}
+async function listReviewArtifactCommentRecords(octokit, owner, repo, prNumber) {
+    const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
+    const comments = [];
+    for (let page = 1;; page += 1) {
+        const response = await octokit.rest.issues.listComments({
+            owner,
+            repo,
+            issue_number: prNumber,
+            per_page: 100,
+            page,
+        });
+        comments.push(...response.data);
+        if (response.data.length < 100)
+            break;
+    }
+    return comments
+        .filter((comment) => comment.body?.includes("<!-- maxi-review artifact -->") === true &&
+        comment.user?.type === "Bot" &&
+        typeof comment.user.login === "string" &&
+        trustedAuthors.has(comment.user.login))
+        .map((comment) => ({
+        id: comment.id ?? 0,
+        body: comment.body || "",
+    }));
+}
+async function listReviewArtifactComments(octokit, owner, repo, prNumber) {
+    const records = await listReviewArtifactCommentRecords(octokit, owner, repo, prNumber);
+    return records.map((record) => record.body);
+}
+/// Delete superseded artifact comments, keeping the newest `keep`.
+///
+/// Each review artifact is also uploaded through the GitHub Actions artifact
+/// channel declared in its retention metadata. PR comments keep the newest
+/// copies immediately harvestable after merge without allowing one invisible
+/// HTML-only comment to accumulate for every synchronize event.
+///
+/// `keep` is honoured from the newest end so the caller can retain a margin
+/// rather than trusting this function's view of which artifact responded.
+///
+/// Failures are reported and swallowed: pruning cosmetics must never fail a
+/// review.
+async function pruneReviewArtifactComments(octokit, owner, repo, prNumber, keep) {
+    if (keep < 1)
+        return 0;
+    let records;
+    try {
+        records = await listReviewArtifactCommentRecords(octokit, owner, repo, prNumber);
+    }
+    catch (err) {
+        core/* warning */.$e(`Failed to list review artifact comments: ${String(err)}`);
+        return 0;
+    }
+    const stale = records.slice(0, Math.max(0, records.length - keep));
+    let deleted = 0;
+    for (const record of stale) {
+        if (!record.id)
+            continue;
+        try {
+            await octokit.rest.issues.deleteComment({
+                owner,
+                repo,
+                comment_id: record.id,
+            });
+            deleted += 1;
+        }
+        catch (err) {
+            core/* warning */.$e(`Failed to delete superseded review artifact comment ${record.id}: ${String(err)}`);
+        }
+    }
+    return deleted;
+}
+async function trustedArtifactCommentAuthors(octokit) {
+    const trusted = new Set(["github-actions[bot]", "maxi-reviewer[bot]"]);
+    const actor = process.env.GITHUB_ACTOR;
+    if (actor?.endsWith("[bot]")) {
+        trusted.add(actor);
+    }
+    try {
+        const authenticated = await octokit.rest.users.getAuthenticated();
+        if (authenticated.data.login) {
+            trusted.add(authenticated.data.login);
+        }
+    }
+    catch (err) {
+        core/* warning */.$e(`Failed to determine authenticated GitHub user for artifact filtering: ${String(err)}`);
+    }
+    return trusted;
 }
 
 // EXTERNAL MODULE: external "fs/promises"
@@ -70702,798 +70866,6 @@ function wrapPermissionError(err, needed, op) {
     return err instanceof Error ? err : new Error(msg);
 }
 
-;// CONCATENATED MODULE: ./src/review-command.ts
-
-
-
-
-
-
-function parseReviewCommand(body) {
-    const text = body.trim();
-    if (/^\/maxi\s+apply-all\b/.test(text)) {
-        return { kind: "apply-all" };
-    }
-    if (/^\/maxi\s+harvest\b/.test(text)) {
-        return { kind: "harvest" };
-    }
-    const fix = text.match(/^\/maxi\s+fix\s+([A-Za-z0-9_.:-]+)\b/);
-    if (fix) {
-        return { kind: "fix", findingId: fix[1] };
-    }
-    return { kind: "unknown" };
-}
-async function runReviewCommand(overrides = {}) {
-    const deps = hasAllReviewCommandDeps(overrides)
-        ? overrides
-        : { ...defaultReviewCommandDeps(), ...overrides };
-    const context = deps.getContext();
-    const command = parseReviewCommand(context.body);
-    if (command.kind === "unknown") {
-        core/* info */.pq("Ignoring non-Maxi review command.");
-        return;
-    }
-    const pr = await deps.fetchPullRequest(context.owner, context.repo, context.issueNumber);
-    if (!pr) {
-        await deps.comment("Maxi review commands only work on pull requests.");
-        return;
-    }
-    if (command.kind === "harvest") {
-        await runHarvestCommand(deps, context);
-        return;
-    }
-    const artifact = await latestReviewArtifact(deps, context.owner, context.repo, context.issueNumber);
-    if (!artifact) {
-        await deps.comment("No Maxi review artifact was found for this pull request.");
-        return;
-    }
-    if (command.kind === "apply-all") {
-        await runApplyAllCommand(deps, context, pr, artifact);
-        return;
-    }
-    await runFixCommand(deps, context, pr, artifact, command.findingId);
-}
-async function runHarvestCommand(deps, context) {
-    const comments = await deps.listArtifactComments(context.owner, context.repo, context.issueNumber);
-    const artifacts = comments
-        .map(extractReviewArtifact)
-        .filter((artifact) => artifact !== null);
-    deps.setOutput("review_artifacts", JSON.stringify(artifacts));
-    await deps.comment(`Harvested ${artifacts.length} Maxi review artifacts.`);
-}
-function extractReviewArtifact(body) {
-    if (!body.includes("<!-- maxi-review artifact -->"))
-        return null;
-    const encodedMatch = body.match(/<!-- maxi-review artifact[\s\S]*?encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/);
-    if (encodedMatch) {
-        return parseReviewArtifactJson(Buffer.from(encodedMatch[1].replace(/\s/g, ""), "base64").toString("utf8"));
-    }
-    const match = body.match(/```json\s*\n([\s\S]*?)\n```/);
-    if (!match)
-        return null;
-    return parseReviewArtifactJson(match[1]);
-}
-function parseReviewArtifactJson(json) {
-    try {
-        const parsed = JSON.parse(json);
-        const validated = validateReviewArtifact(parsed);
-        if (validated.ok && typeof parsed === "object" && parsed !== null) {
-            return parsed;
-        }
-        if (isLegacyReviewArtifact(parsed)) {
-            return parsed;
-        }
-    }
-    catch {
-        return null;
-    }
-    return null;
-}
-function isLegacyReviewArtifact(value) {
-    const artifact = review_command_asRecord(value);
-    if (!artifact)
-        return false;
-    if (artifact.schema !== undefined && !hasLegacyCompatibleEnvelope(artifact)) {
-        return false;
-    }
-    if (typeof artifact.headSha !== "string" || artifact.headSha === "") {
-        return false;
-    }
-    const review = review_command_asRecord(artifact.validatedReview);
-    if (!review)
-        return false;
-    return Array.isArray(review.comments) || Array.isArray(review.newComments);
-}
-function hasLegacyCompatibleEnvelope(artifact) {
-    const retention = review_command_asRecord(artifact.retention);
-    return (artifact.schema === "maxi.review.v1.review-artifact" &&
-        typeof artifact.createdAt === "string" &&
-        retention?.harvestableAfterMerge === true &&
-        typeof artifact.repoFullName === "string" &&
-        Number.isInteger(artifact.prNumber) &&
-        typeof artifact.baseSha === "string" &&
-        Array.isArray(artifact.analyzerFindings) &&
-        Array.isArray(artifact.rawJulesResponses) &&
-        Array.isArray(artifact.validationErrors));
-}
-function buildApplyAllPlan(input) {
-    const head = validateApplyAllHead(input.expectedHeadSha, input.currentHeadSha);
-    if (!head.ok) {
-        return { ok: false, reason: head.reason };
-    }
-    const comments = artifactComments(input.artifact);
-    const result = applyStructuredSuggestions(input.files, comments);
-    return {
-        ok: true,
-        result,
-        commitMessage: buildApplyAllCommitMessage(result.applied.length),
-    };
-}
-function artifactComments(artifact) {
-    const review = review_command_asRecord(artifact.validatedReview);
-    if (!review)
-        return [];
-    if (Array.isArray(review.comments)) {
-        return review.comments;
-    }
-    if (Array.isArray(review.newComments)) {
-        return review.newComments;
-    }
-    return [];
-}
-async function runApplyAllCommand(deps, context, pr, artifact) {
-    const authorization = authorizeApplyAll(pr);
-    if (!authorization.ok) {
-        await deps.comment(`Could not apply Maxi suggestions: ${authorization.reason}`);
-        return;
-    }
-    const comments = artifactComments(artifact);
-    const paths = [
-        ...new Set(comments.flatMap((comment) => commentPaths(comment))),
-    ];
-    const files = await deps.readFiles({
-        owner: context.owner,
-        repo: context.repo,
-        ref: pr.headSha,
-        paths,
-    });
-    const plan = buildApplyAllPlan({
-        artifact,
-        files,
-        expectedHeadSha: artifact.headSha || "",
-        currentHeadSha: pr.headSha,
-    });
-    if (!plan.ok || !plan.result || !plan.commitMessage) {
-        await deps.comment(`Could not apply Maxi suggestions: ${plan.reason}`);
-        return;
-    }
-    if (plan.result.applied.length === 0) {
-        await deps.comment(`No Maxi suggestions were applied. Skipped ${plan.result.skipped.length}.`);
-        return;
-    }
-    try {
-        await deps.commitFiles({
-            owner: context.owner,
-            repo: context.repo,
-            branch: pr.headRef,
-            expectedHeadSha: pr.headSha,
-            message: plan.commitMessage,
-            files: changedFilesOnly(files, plan.result.files),
-        });
-    }
-    catch (err) {
-        await deps.comment(`Could not apply Maxi suggestions: ${review_command_errorMessage(err)}`);
-        return;
-    }
-    await deps.comment(`Applied ${plan.result.applied.length} Maxi suggestion${plan.result.applied.length === 1 ? "" : "s"}. Skipped ${plan.result.skipped.length}.`);
-}
-function authorizeApplyAll(pr) {
-    if (pr.repository !== pr.headRepository) {
-        return {
-            ok: false,
-            reason: "apply-all requires a same-repository PR branch",
-        };
-    }
-    if (pr.tokenPermissions.contents !== "write") {
-        return { ok: false, reason: "contents: write permission required" };
-    }
-    if (pr.tokenPermissions.pullRequests !== "write") {
-        return { ok: false, reason: "pull-requests: write permission required" };
-    }
-    return { ok: true };
-}
-async function runFixCommand(deps, context, pr, artifact, findingId) {
-    const comments = artifactComments(artifact);
-    const availableFindingIds = comments
-        .map((comment) => ("id" in comment ? comment.id : undefined))
-        .filter((id) => !!id);
-    const authorization = authorizeHandsOnFix({
-        command: context.body.trim(),
-        repository: pr.repository,
-        headRepository: pr.headRepository,
-        requestedFindingId: findingId,
-        availableFindingIds,
-        tokenPermissions: pr.tokenPermissions,
-    });
-    if (!authorization.ok) {
-        await deps.comment(`Could not start hands-on Maxi fix: ${authorization.reason}`);
-        return;
-    }
-    const comment = comments.find((candidate) => "id" in candidate && candidate.id === findingId);
-    if (!comment) {
-        await deps.comment(`Could not find Maxi review finding ${findingId}.`);
-        return;
-    }
-    const sessionId = await deps.startHandsOnFix({
-        owner: context.owner,
-        repo: context.repo,
-        prNumber: pr.number,
-        branch: pr.headRef,
-        findingId,
-        prompt: buildHandsOnFixPrompt(comment),
-    });
-    await deps.comment(`Started hands-on Maxi fix session ${sessionId} for ${findingId}.`);
-}
-async function latestReviewArtifact(deps, owner, repo, issueNumber) {
-    const comments = await deps.listArtifactComments(owner, repo, issueNumber);
-    for (const body of comments.slice().reverse()) {
-        const artifact = extractReviewArtifact(body);
-        if (artifact)
-            return artifact;
-    }
-    return null;
-}
-function commentPaths(comment) {
-    if ("fix" in comment && comment.fix && comment.fix.edits.length > 0) {
-        return comment.fix.edits.map((edit) => edit.path);
-    }
-    if ("suggestion" in comment && comment.suggestion) {
-        return [comment.suggestion.path];
-    }
-    const legacy = comment;
-    return legacy.file ? [legacy.file] : [];
-}
-function changedFilesOnly(before, after) {
-    return new Map([...after.entries()].filter(([path, content]) => before.get(path) !== content));
-}
-function review_command_errorMessage(err) {
-    return err instanceof Error ? err.message : String(err);
-}
-function review_command_asRecord(value) {
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        return value;
-    }
-    return undefined;
-}
-function hasAllReviewCommandDeps(deps) {
-    return [
-        deps.getContext,
-        deps.fetchPullRequest,
-        deps.listArtifactComments,
-        deps.readFiles,
-        deps.commitFiles,
-        deps.startHandsOnFix,
-        deps.comment,
-        deps.setOutput,
-    ].every(Boolean);
-}
-function defaultReviewCommandDeps() {
-    const token = core/* getInput */.V4("github_token", { required: true });
-    const octokit = github/* getOctokit */.Q(token);
-    return {
-        getContext: () => {
-            const ctx = github/* context */._;
-            const isWorkflowDispatch = ctx.eventName === "workflow_dispatch";
-            return {
-                body: isWorkflowDispatch
-                    ? core/* getInput */.V4("command", { required: true })
-                    : String(ctx.payload.comment?.body || ""),
-                owner: ctx.repo.owner,
-                repo: ctx.repo.repo,
-                issueNumber: isWorkflowDispatch
-                    ? Number(core/* getInput */.V4("pr_number", { required: true }))
-                    : Number(ctx.payload.issue?.number || 0),
-            };
-        },
-        fetchPullRequest: async (owner, repo, issueNumber) => {
-            const issue = github/* context */._.payload.issue;
-            if (github/* context */._.eventName !== "workflow_dispatch" &&
-                !issue?.pull_request) {
-                return null;
-            }
-            const response = await octokit.rest.pulls.get({
-                owner,
-                repo,
-                pull_number: issueNumber,
-            });
-            const pr = response.data;
-            return {
-                number: pr.number,
-                headSha: pr.head.sha,
-                headRef: pr.head.ref,
-                headRepository: pr.head.repo?.full_name || "",
-                repository: `${owner}/${repo}`,
-                tokenPermissions: {
-                    contents: "write",
-                    pullRequests: "write",
-                },
-            };
-        },
-        listArtifactComments: async (owner, repo, issueNumber) => {
-            const comments = await octokit.paginate(octokit.rest.issues.listComments, {
-                owner,
-                repo,
-                issue_number: issueNumber,
-                per_page: 100,
-            });
-            return comments
-                .map((comment) => comment.body || "")
-                .filter((body) => body.includes("<!-- maxi-review artifact -->"));
-        },
-        readFiles: async ({ owner, repo, ref, paths }) => {
-            const files = new Map();
-            for (const path of paths) {
-                const response = await octokit.rest.repos.getContent({
-                    owner,
-                    repo,
-                    path,
-                    ref,
-                });
-                if (!("content" in response.data))
-                    continue;
-                files.set(path, Buffer.from(response.data.content, "base64").toString("utf8"));
-            }
-            return files;
-        },
-        commitFiles: async ({ owner, repo, branch, expectedHeadSha, message, files, }) => {
-            if (files.size === 0)
-                return;
-            const ref = await octokit.rest.git.getRef({
-                owner,
-                repo,
-                ref: `heads/${branch}`,
-            });
-            const latestCommitSha = ref.data.object.sha;
-            if (latestCommitSha !== expectedHeadSha) {
-                throw new Error(`stale head SHA: expected ${expectedHeadSha}, got ${latestCommitSha}`);
-            }
-            const latestCommit = await octokit.rest.git.getCommit({
-                owner,
-                repo,
-                commit_sha: latestCommitSha,
-            });
-            const tree = await octokit.rest.git.createTree({
-                owner,
-                repo,
-                base_tree: latestCommit.data.tree.sha,
-                tree: await Promise.all([...files.entries()].map(async ([path, content]) => {
-                    const blob = await octokit.rest.git.createBlob({
-                        owner,
-                        repo,
-                        content,
-                        encoding: "utf-8",
-                    });
-                    return {
-                        path,
-                        mode: "100644",
-                        type: "blob",
-                        sha: blob.data.sha,
-                    };
-                })),
-            });
-            const commit = await octokit.rest.git.createCommit({
-                owner,
-                repo,
-                message,
-                tree: tree.data.sha,
-                parents: [latestCommitSha],
-            });
-            await octokit.rest.git.updateRef({
-                owner,
-                repo,
-                ref: `heads/${branch}`,
-                sha: commit.data.sha,
-            });
-        },
-        startHandsOnFix: async ({ owner, repo, branch, prompt }) => {
-            const apiKey = core/* getInput */.V4("jules_api_key", { required: true });
-            core/* setSecret */.Pq(apiKey);
-            return await startJulesHandsOnFix(apiKey, prompt, {
-                github: `${owner}/${repo}`,
-                baseBranch: branch,
-            });
-        },
-        comment: async (body) => {
-            const context = github/* context */._;
-            const issueNumber = context.eventName === "workflow_dispatch"
-                ? Number(core/* getInput */.V4("pr_number", { required: true }))
-                : Number(context.payload.issue?.number || 0);
-            await octokit.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body,
-            });
-        },
-        setOutput: core/* setOutput */.uH,
-    };
-}
-
-;// CONCATENATED MODULE: ./src/github.ts
-
-
-async function fetchDiff(octokit, owner, repo, pr, baseShaForDiff, headSha) {
-    try {
-        const compare = await octokit.rest.repos.compareCommitsWithBasehead({
-            owner,
-            repo,
-            basehead: `${baseShaForDiff}...${headSha}`,
-            mediaType: { format: "diff" },
-        });
-        const data = compare.data;
-        if (typeof data === "string")
-            return data;
-    }
-    catch (err) {
-        core/* warning */.$e(`compareCommitsWithBasehead failed, falling back to pulls.get: ${String(err)}`);
-    }
-    // fallback to full PR diff
-    const res = await octokit.rest.pulls.get({
-        owner,
-        repo,
-        pull_number: pr.number,
-        mediaType: { format: "diff" },
-    });
-    const data = res.data;
-    if (typeof data === "string")
-        return data;
-    throw new Error("GitHub returned no diff text.");
-}
-async function loadRulesFromBase(octokit, owner, repo, path, baseSha) {
-    try {
-        const file = await octokit.rest.repos.getContent({
-            owner,
-            repo,
-            path,
-            ref: baseSha,
-        });
-        if ("content" in file.data && typeof file.data.content === "string") {
-            const content = Buffer.from(file.data.content, "base64").toString("utf8");
-            core/* info */.pq(`Loaded ${content.length} chars from ${path} at base SHA`);
-            return content;
-        }
-        return undefined;
-    }
-    catch (err) {
-        core/* warning */.$e(`Failed to load rules from base: ${String(err)}`);
-        return undefined;
-    }
-}
-async function fetchOpenThreads(octokit, owner, repo, prNumber) {
-    const query = `
-    query($owner: String!, $repo: String!, $pr: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $pr) {
-          reviewThreads(first: 100) {
-            nodes {
-              id
-              isResolved
-              comments(first: 20) {
-                nodes {
-                  body
-                  path
-                  line
-                  author { login }
-                  viewerDidAuthor
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await octokit.graphql(query, {
-        owner,
-        repo,
-        pr: prNumber,
-    });
-    const threads = response.repository?.pullRequest?.reviewThreads?.nodes || [];
-    let index = 1;
-    const result = [];
-    for (const thread of threads) {
-        if (thread.isResolved)
-            continue;
-        const firstComment = thread.comments.nodes[0];
-        if (!firstComment)
-            continue;
-        if (firstComment.viewerDidAuthor &&
-            (firstComment.body.includes("<!-- maxi-review-inline-comment -->") ||
-                firstComment.body.includes("<!-- jules-inline-comment -->"))) {
-            result.push({
-                index: index++,
-                threadId: thread.id,
-                path: firstComment.path,
-                line: firstComment.line || 0,
-                body: firstComment.body,
-                comments: thread.comments.nodes.map((comment) => ({
-                    author: comment.author?.login || "unknown",
-                    body: comment.body,
-                    line: comment.line || firstComment.line || 0,
-                    viewerDidAuthor: !!comment.viewerDidAuthor,
-                    createdAt: comment.createdAt,
-                })),
-            });
-        }
-    }
-    return result;
-}
-/**
- * Fetch active inline findings posted by OTHER reviewers (not this action) on
- * the PR, so the prompt can ask the model not to restate them. Reuses the
- * reviewThreads query shape from fetchOpenThreads but keeps the non-self,
- * unresolved first comments. Bodies are capped; the caller nonce-fences them as
- * UNTRUSTED. Failures are logged and yield an empty list (best-effort context).
- */
-async function fetchExistingFindings(octokit, owner, repo, prNumber, options = {}) {
-    const max = options.max ?? 40;
-    const maxBodyChars = options.maxBodyChars ?? 600;
-    const query = "query($owner: String!, $repo: String!, $pr: Int!) {\n" +
-        "  repository(owner: $owner, name: $repo) {\n" +
-        "    pullRequest(number: $pr) {\n" +
-        "      reviewThreads(first: 100) {\n" +
-        "        nodes {\n" +
-        "          isResolved\n" +
-        "          comments(first: 1) {\n" +
-        "            nodes { body path line author { login } viewerDidAuthor }\n" +
-        "          }\n" +
-        "        }\n" +
-        "      }\n" +
-        "    }\n" +
-        "  }\n" +
-        "}";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let response;
-    try {
-        response = await octokit.graphql(query, { owner, repo, pr: prNumber });
-    }
-    catch (err) {
-        core/* warning */.$e("dedupe: failed to fetch existing review threads: " + String(err));
-        return [];
-    }
-    const threads = response.repository?.pullRequest?.reviewThreads?.nodes || [];
-    const out = [];
-    for (const thread of threads) {
-        if (thread.isResolved)
-            continue;
-        const c = thread.comments?.nodes?.[0];
-        if (!c || c.viewerDidAuthor)
-            continue;
-        const body = (c.body || "").trim();
-        if (!body)
-            continue;
-        out.push({
-            author: c.author?.login || "unknown",
-            path: c.path || "",
-            line: c.line || 0,
-            body: body.length > maxBodyChars ? body.slice(0, maxBodyChars) : body,
-        });
-        if (out.length >= max)
-            break;
-    }
-    return out;
-}
-async function resolveThreads(octokit, threadIds) {
-    for (const id of threadIds) {
-        try {
-            await octokit.graphql(`
-        mutation($id: ID!) {
-          resolveReviewThread(input: {threadId: $id}) {
-            thread { isResolved }
-          }
-        }
-      `, { id });
-            core/* info */.pq(`Resolved thread ${id}`);
-        }
-        catch (e) {
-            core/* warning */.$e(`Failed to resolve thread ${id}: ${e}`);
-        }
-    }
-}
-async function submitReview(octokit, owner, repo, prNumber, headSha, summary, comments) {
-    const formattedComments = comments.map((c) => {
-        const severityEmoji = c.severity === "High" ? "🚨" : c.severity === "Warning" ? "⚠️" : "ℹ️";
-        const confidenceEmoji = c.confidence === "High" ? "🟢" : c.confidence === "Medium" ? "🟡" : "🔴";
-        let body = `<!-- maxi-review-inline-comment -->
-**Severity:** ${severityEmoji} ${c.severity} | **Confidence:** ${confidenceEmoji} ${c.confidence}
-
-${messageWithSuggestion(c)}`;
-        if (c.promptForAgents) {
-            body += `
-
-<details>
-<summary>🤖 Prompt for Agents</summary>
-
-${c.promptForAgents}
-</details>`;
-        }
-        const startLine = c.startLine || c.line;
-        const endLine = c.endLine || startLine;
-        return {
-            path: c.file,
-            ...(endLine > startLine
-                ? { start_line: startLine, start_side: "RIGHT", line: endLine }
-                : { line: c.line }),
-            side: "RIGHT",
-            body,
-        };
-    });
-    try {
-        await octokit.rest.pulls.createReview({
-            owner,
-            repo,
-            pull_number: prNumber,
-            commit_id: headSha,
-            event: "COMMENT",
-            body: summary,
-            comments: formattedComments,
-        });
-    }
-    catch (err) {
-        core/* warning */.$e(`Failed to submit PR review; recording late feedback as a PR comment instead: ${String(err)}`);
-        await octokit.rest.issues.createComment({
-            owner,
-            repo,
-            issue_number: prNumber,
-            body: buildLateFeedbackComment(summary, comments),
-        });
-    }
-}
-function messageWithSuggestion(comment) {
-    if (!comment.suggestedReplacement ||
-        comment.message.includes("```suggestion")) {
-        return comment.message;
-    }
-    return `${comment.message}\n\n\`\`\`suggestion\n${comment.suggestedReplacement}\n\`\`\``;
-}
-function buildLateFeedbackComment(summary, comments) {
-    const findings = comments
-        .map((comment, index) => {
-        const promptForAgents = comment.promptForAgents
-            ? `\n\n<details>\n<summary>Prompt for Agents</summary>\n\n${comment.promptForAgents}\n</details>`
-            : "";
-        return `### ${index + 1}. ${formatCommentLocation(comment)}
-
-**Severity:** ${comment.severity} | **Confidence:** ${comment.confidence}
-
-${comment.message}${promptForAgents}`;
-    })
-        .join("\n\n---\n\n");
-    return `<!-- maxi-review late-feedback -->
-## Late Maxi review feedback
-
-${summary}
-
-${findings}`;
-}
-function formatCommentLocation(comment) {
-    const startLine = comment.startLine || comment.line;
-    const endLine = comment.endLine || startLine;
-    const lineSuffix = endLine > startLine ? `${startLine}-${endLine}` : `${startLine}`;
-    return `${comment.file}:${lineSuffix}`;
-}
-async function setStatus(octokit, owner, repo, sha, context, state, description) {
-    await octokit.rest.repos.createCommitStatus({
-        owner,
-        repo,
-        sha,
-        state,
-        context,
-        description,
-    });
-}
-async function recordReviewArtifactComment(octokit, owner, repo, prNumber, name, content) {
-    const encodedContent = Buffer.from(content, "utf8").toString("base64");
-    await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: prNumber,
-        body: `<!-- maxi-review artifact -->
-<!-- maxi-review artifact-data
-name: ${name}
-encoding: base64
-${encodedContent}
--->`,
-    });
-}
-async function listReviewArtifactCommentRecords(octokit, owner, repo, prNumber) {
-    const trustedAuthors = await trustedArtifactCommentAuthors(octokit);
-    const request = {
-        owner,
-        repo,
-        issue_number: prNumber,
-        per_page: 100,
-    };
-    const comments = typeof octokit.paginate === "function"
-        ? await octokit.paginate(octokit.rest.issues.listComments, request)
-        : (await octokit.rest.issues.listComments(request)).data;
-    return comments
-        .filter((comment) => comment.body?.includes("<!-- maxi-review artifact -->") &&
-        comment.user?.type === "Bot" &&
-        typeof comment.user.login === "string" &&
-        trustedAuthors.has(comment.user.login))
-        .map((comment) => ({
-        id: comment.id ?? 0,
-        body: comment.body || "",
-    }));
-}
-async function listReviewArtifactComments(octokit, owner, repo, prNumber) {
-    const records = await listReviewArtifactCommentRecords(octokit, owner, repo, prNumber);
-    return records.map((record) => record.body);
-}
-/// Delete malformed artifact-marker comments, keeping the newest `keep`.
-///
-/// Valid review artifacts are durable input to `/maxi harvest`, including after
-/// merge, so they must never be pruned. Marker-only or otherwise malformed
-/// comments cannot be harvested; those are safe to trim when repeated failed
-/// writes leave blank comments on a PR.
-///
-/// `keep` is honoured from the newest end so the caller can retain a margin
-/// rather than trusting this function's view of which artifact responded.
-///
-/// Failures are reported and swallowed: pruning cosmetics must never fail a
-/// review.
-async function pruneReviewArtifactComments(octokit, owner, repo, prNumber, keep) {
-    if (keep < 1)
-        return 0;
-    let records;
-    try {
-        records = await listReviewArtifactCommentRecords(octokit, owner, repo, prNumber);
-    }
-    catch (err) {
-        core/* warning */.$e(`Failed to list review artifact comments: ${String(err)}`);
-        return 0;
-    }
-    const malformed = records.filter((record) => extractReviewArtifact(record.body) === null);
-    const stale = malformed.slice(0, Math.max(0, malformed.length - keep));
-    let deleted = 0;
-    for (const record of stale) {
-        if (!record.id)
-            continue;
-        try {
-            await octokit.rest.issues.deleteComment({
-                owner,
-                repo,
-                comment_id: record.id,
-            });
-            deleted += 1;
-        }
-        catch (err) {
-            core/* warning */.$e(`Failed to delete superseded review artifact comment ${record.id}: ${String(err)}`);
-        }
-    }
-    return deleted;
-}
-async function trustedArtifactCommentAuthors(octokit) {
-    const trusted = new Set(["github-actions[bot]", "maxi-reviewer[bot]"]);
-    const actor = process.env.GITHUB_ACTOR;
-    if (actor?.endsWith("[bot]")) {
-        trusted.add(actor);
-    }
-    try {
-        const authenticated = await octokit.rest.users.getAuthenticated();
-        if (authenticated.data.login) {
-            trusted.add(authenticated.data.login);
-        }
-    }
-    catch (err) {
-        core/* warning */.$e(`Failed to determine authenticated GitHub user for artifact filtering: ${String(err)}`);
-    }
-    return trusted;
-}
-
 ;// CONCATENATED MODULE: ./src/prompt.ts
 
 /**
@@ -72981,7 +72353,7 @@ async function runReviewPr(overrides = {}) {
             linkedIssues: context.linkedIssues,
             incrementalReview: isIncrementalReview,
             excludedGeneratedPaths: excludedPaths.length > 0 ? excludedPaths : undefined,
-            changedFileContext: buildChangedFileContext(context.files ?? new Map(), 
+            changedFileContext: buildChangedFileContext(context.files ?? new Map(),
             // Derive from the (possibly truncated) diff the model actually sees, so
             // context never covers hunks absent from the visible diff payload.
             extractChangedLines(diffText)),
@@ -73080,7 +72452,7 @@ async function runReviewPr(overrides = {}) {
         }
         // Prepare body for the PR review
         const finalBody = `${COMMENT_MARKER}\n## Maxi Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
-        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody, 
+        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody,
         // Never post comments on excluded generated files, even if the model or
         // an analyzer produced one.
         (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs)));
@@ -73270,14 +72642,14 @@ function extractReviewArtifactFromComment(body) {
         return null;
     const encodedMatch = body.match(/<!-- maxi-review artifact[\s\S]*?encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/);
     if (encodedMatch) {
-        return review_pr_parseReviewArtifactJson(Buffer.from(encodedMatch[1].replace(/\s/g, ""), "base64").toString("utf8"));
+        return parseReviewArtifactJson(Buffer.from(encodedMatch[1].replace(/\s/g, ""), "base64").toString("utf8"));
     }
     const match = body.match(/```json\s*\n([\s\S]*?)\n```/);
     if (!match)
         return null;
-    return review_pr_parseReviewArtifactJson(match[1]);
+    return parseReviewArtifactJson(match[1]);
 }
-function review_pr_parseReviewArtifactJson(json) {
+function parseReviewArtifactJson(json) {
     try {
         const parsed = JSON.parse(json);
         const validated = validateReviewArtifact(parsed);
@@ -73381,6 +72753,636 @@ function statusFromVerdict(verdict, failOn) {
             state: "success",
             description: `Review complete (verdict: ${verdict})`,
         };
+}
+
+;// CONCATENATED MODULE: ./src/apply.ts
+function applyStructuredSuggestions(files, comments) {
+    const resultFiles = new Map(files);
+    const applied = [];
+    const skipped = [];
+    // Ranges claimed by accepted edits, per file, so a later group cannot edit a
+    // range that overlaps one an earlier accepted group already owns.
+    const claimed = new Map();
+    const acceptedEdits = [];
+    const lineCountCache = new Map();
+    const lineCountOf = (file) => {
+        const cached = lineCountCache.get(file);
+        if (cached !== undefined)
+            return cached;
+        const content = files.get(file);
+        if (content === undefined)
+            return undefined;
+        const count = splitPreservingFinalNewline(content).bodyLines.length;
+        lineCountCache.set(file, count);
+        return count;
+    };
+    const rangeOf = (edit) => ({
+        file: edit.file,
+        startLine: edit.startLine,
+        endLine: edit.endLine,
+    });
+    const reasonFor = (edit, groupEdits) => {
+        if (!resultFiles.has(edit.file))
+            return "missing file";
+        if (edit.replacement === undefined)
+            return "no structured replacement";
+        const lineCount = lineCountOf(edit.file);
+        if (lineCount === undefined ||
+            edit.startLine < 1 ||
+            edit.endLine < edit.startLine ||
+            edit.endLine > lineCount) {
+            return "invalid range";
+        }
+        if (overlaps(claimed.get(edit.file) || [], rangeOf(edit))) {
+            return "overlapping range";
+        }
+        const clashesWithSibling = groupEdits.some((other) => other !== edit &&
+            other.file === edit.file &&
+            other.startLine <= edit.endLine &&
+            other.endLine >= edit.startLine);
+        if (clashesWithSibling)
+            return "overlapping range";
+        return undefined;
+    };
+    // One group per comment: a multi-edit `fix` is applied transactionally
+    // (all-or-nothing), while a single suggestion/legacy replacement is a group of
+    // one — preserving the original single-suggestion behaviour.
+    const groups = comments
+        .map((comment) => normalizeComment(comment))
+        .filter((edits) => edits.length > 0)
+        .map((edits) => ({ edits, lead: [...edits].sort(compareEdits)[0] }))
+        .sort((left, right) => compareEdits(left.lead, right.lead));
+    for (const { edits: groupEdits } of groups) {
+        const reasons = groupEdits.map((edit) => reasonFor(edit, groupEdits));
+        if (reasons.some((reason) => reason !== undefined)) {
+            groupEdits.forEach((edit, index) => skipped.push({
+                ...rangeOf(edit),
+                reason: reasons[index] ?? "incomplete fix",
+            }));
+            continue;
+        }
+        for (const edit of groupEdits) {
+            if (edit.replacement === undefined)
+                continue;
+            claimed.set(edit.file, [
+                ...(claimed.get(edit.file) || []),
+                rangeOf(edit),
+            ]);
+            acceptedEdits.push({
+                file: edit.file,
+                startLine: edit.startLine,
+                endLine: edit.endLine,
+                replacement: edit.replacement,
+            });
+        }
+    }
+    // Apply accepted edits bottom-to-top within each file so lower edits never
+    // shift the line numbers of higher ones; validation guarantees they do not
+    // overlap.
+    const editsByFile = new Map();
+    for (const edit of acceptedEdits) {
+        editsByFile.set(edit.file, [...(editsByFile.get(edit.file) || []), edit]);
+    }
+    for (const file of [...editsByFile.keys()].sort()) {
+        const edits = editsByFile.get(file) || [];
+        edits.sort((a, b) => b.startLine - a.startLine || a.endLine - b.endLine);
+        for (const edit of edits) {
+            const content = resultFiles.get(file);
+            if (content === undefined)
+                continue;
+            resultFiles.set(file, replaceLines(content, edit.startLine, edit.endLine, edit.replacement));
+            applied.push({ file, startLine: edit.startLine, endLine: edit.endLine });
+        }
+    }
+    return { files: resultFiles, applied, skipped };
+}
+function normalizeComment(comment) {
+    if ("fix" in comment &&
+        comment.fix &&
+        Array.isArray(comment.fix.edits) &&
+        comment.fix.edits.length > 0) {
+        return comment.fix.edits
+            .filter((edit) => edit !== null && typeof edit === "object")
+            .map((edit) => ({
+            file: edit.path,
+            startLine: edit.startLine,
+            endLine: edit.endLine,
+            replacement: edit.replacement,
+        }));
+    }
+    return [normalizeSuggestion(comment)];
+}
+function validateApplyAllHead(expectedHeadSha, currentHeadSha) {
+    if (expectedHeadSha !== currentHeadSha) {
+        return {
+            ok: false,
+            reason: `stale head SHA: expected ${expectedHeadSha}, got ${currentHeadSha}`,
+        };
+    }
+    return { ok: true };
+}
+function buildApplyAllCommitMessage(appliedCount) {
+    return `Apply ${appliedCount} Maxi suggestion${appliedCount === 1 ? "" : "s"}`;
+}
+function normalizeSuggestion(comment) {
+    if ("suggestion" in comment && comment.suggestion) {
+        return {
+            file: comment.suggestion.path,
+            startLine: comment.suggestion.startLine,
+            endLine: comment.suggestion.endLine,
+            replacement: comment.suggestion.replacement,
+        };
+    }
+    const legacy = comment;
+    return {
+        file: legacy.file,
+        startLine: legacy.startLine || legacy.line,
+        endLine: legacy.endLine || legacy.startLine || legacy.line,
+        replacement: legacy.suggestedReplacement ?? extractSuggestionFence(legacy.message),
+    };
+}
+function extractSuggestionFence(message) {
+    const match = message.match(/```suggestion\s*\n([\s\S]*?)(?:\n)?```/);
+    return match?.[1];
+}
+function replaceLines(content, startLine, endLine, replacement) {
+    const { bodyLines, hasFinalNewline } = splitPreservingFinalNewline(content);
+    const replacementLines = replacement === "" ? [] : replacement.split("\n");
+    bodyLines.splice(startLine - 1, endLine - startLine + 1, ...replacementLines);
+    return bodyLines.join("\n") + (hasFinalNewline ? "\n" : "");
+}
+function splitPreservingFinalNewline(content) {
+    const hasFinalNewline = content.endsWith("\n");
+    const body = hasFinalNewline ? content.slice(0, -1) : content;
+    return {
+        bodyLines: body.length === 0 ? [] : body.split("\n"),
+        hasFinalNewline,
+    };
+}
+function overlaps(applied, next) {
+    return applied.some((existing) => next.startLine <= existing.endLine && next.endLine >= existing.startLine);
+}
+function compareEdits(left, right) {
+    const fileOrder = left.file.localeCompare(right.file);
+    if (fileOrder !== 0)
+        return fileOrder;
+    return right.startLine - left.startLine || left.endLine - right.endLine;
+}
+
+;// CONCATENATED MODULE: ./src/hands-on-fix.ts
+function authorizeHandsOnFix(input) {
+    if (!input.command.startsWith("/maxi fix ")) {
+        return { ok: false, reason: "explicit /maxi fix command required" };
+    }
+    if (input.repository !== input.headRepository) {
+        return {
+            ok: false,
+            reason: "hands-on fixes require a same-repository PR branch",
+        };
+    }
+    if (!input.availableFindingIds.includes(input.requestedFindingId)) {
+        return { ok: false, reason: "requested finding is not available" };
+    }
+    if (input.tokenPermissions.contents !== "write") {
+        return { ok: false, reason: "contents: write permission required" };
+    }
+    if (input.tokenPermissions.pullRequests !== "write") {
+        return { ok: false, reason: "pull-requests: write permission required" };
+    }
+    return { ok: true };
+}
+function buildHandsOnFixPrompt(comment) {
+    const location = `${comment.path}:${comment.line}`;
+    const agentGuidance = comment.promptForAgents
+        ? `\n\nSpecific fix guidance:\n${comment.promptForAgents}`
+        : "";
+    return `Fix Maxi review finding ${comment.id}.
+
+Location: ${location}
+Severity: ${comment.severity}
+Confidence: ${comment.confidence}
+
+Review finding:
+${comment.message}${agentGuidance}
+
+Make the smallest correct code change on the PR branch, run the relevant tests, and commit the fix.`;
+}
+
+;// CONCATENATED MODULE: ./src/review-command.ts
+
+
+
+
+
+
+function parseReviewCommand(body) {
+    const text = body.trim();
+    if (/^\/maxi\s+apply-all\b/.test(text)) {
+        return { kind: "apply-all" };
+    }
+    if (/^\/maxi\s+harvest\b/.test(text)) {
+        return { kind: "harvest" };
+    }
+    const fix = text.match(/^\/maxi\s+fix\s+([A-Za-z0-9_.:-]+)\b/);
+    if (fix) {
+        return { kind: "fix", findingId: fix[1] };
+    }
+    return { kind: "unknown" };
+}
+async function runReviewCommand(overrides = {}) {
+    const deps = hasAllReviewCommandDeps(overrides)
+        ? overrides
+        : { ...defaultReviewCommandDeps(), ...overrides };
+    const context = deps.getContext();
+    const command = parseReviewCommand(context.body);
+    if (command.kind === "unknown") {
+        core/* info */.pq("Ignoring non-Maxi review command.");
+        return;
+    }
+    const pr = await deps.fetchPullRequest(context.owner, context.repo, context.issueNumber);
+    if (!pr) {
+        await deps.comment("Maxi review commands only work on pull requests.");
+        return;
+    }
+    if (command.kind === "harvest") {
+        await runHarvestCommand(deps, context);
+        return;
+    }
+    const artifact = await latestReviewArtifact(deps, context.owner, context.repo, context.issueNumber);
+    if (!artifact) {
+        await deps.comment("No Maxi review artifact was found for this pull request.");
+        return;
+    }
+    if (command.kind === "apply-all") {
+        await runApplyAllCommand(deps, context, pr, artifact);
+        return;
+    }
+    await runFixCommand(deps, context, pr, artifact, command.findingId);
+}
+async function runHarvestCommand(deps, context) {
+    const comments = await deps.listArtifactComments(context.owner, context.repo, context.issueNumber);
+    const artifacts = comments
+        .map(extractReviewArtifact)
+        .filter((artifact) => artifact !== null);
+    deps.setOutput("review_artifacts", JSON.stringify(artifacts));
+    await deps.comment(`Harvested ${artifacts.length} Maxi review artifacts.`);
+}
+function extractReviewArtifact(body) {
+    if (!body.includes("<!-- maxi-review artifact -->"))
+        return null;
+    const encodedMatch = body.match(/<!-- maxi-review artifact[\s\S]*?encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/);
+    if (encodedMatch) {
+        return review_command_parseReviewArtifactJson(Buffer.from(encodedMatch[1].replace(/\s/g, ""), "base64").toString("utf8"));
+    }
+    const match = body.match(/```json\s*\n([\s\S]*?)\n```/);
+    if (!match)
+        return null;
+    return review_command_parseReviewArtifactJson(match[1]);
+}
+function review_command_parseReviewArtifactJson(json) {
+    try {
+        const parsed = JSON.parse(json);
+        const validated = validateReviewArtifact(parsed);
+        if (validated.ok && typeof parsed === "object" && parsed !== null) {
+            return parsed;
+        }
+        if (isLegacyReviewArtifact(parsed)) {
+            return parsed;
+        }
+    }
+    catch {
+        return null;
+    }
+    return null;
+}
+function isLegacyReviewArtifact(value) {
+    const artifact = review_command_asRecord(value);
+    if (!artifact)
+        return false;
+    if (artifact.schema !== undefined && !hasLegacyCompatibleEnvelope(artifact)) {
+        return false;
+    }
+    if (typeof artifact.headSha !== "string" || artifact.headSha === "") {
+        return false;
+    }
+    const review = review_command_asRecord(artifact.validatedReview);
+    if (!review)
+        return false;
+    return Array.isArray(review.comments) || Array.isArray(review.newComments);
+}
+function hasLegacyCompatibleEnvelope(artifact) {
+    const retention = review_command_asRecord(artifact.retention);
+    return (artifact.schema === "maxi.review.v1.review-artifact" &&
+        typeof artifact.createdAt === "string" &&
+        retention?.harvestableAfterMerge === true &&
+        typeof artifact.repoFullName === "string" &&
+        Number.isInteger(artifact.prNumber) &&
+        typeof artifact.baseSha === "string" &&
+        Array.isArray(artifact.analyzerFindings) &&
+        Array.isArray(artifact.rawJulesResponses) &&
+        Array.isArray(artifact.validationErrors));
+}
+function buildApplyAllPlan(input) {
+    const head = validateApplyAllHead(input.expectedHeadSha, input.currentHeadSha);
+    if (!head.ok) {
+        return { ok: false, reason: head.reason };
+    }
+    const comments = artifactComments(input.artifact);
+    const result = applyStructuredSuggestions(input.files, comments);
+    return {
+        ok: true,
+        result,
+        commitMessage: buildApplyAllCommitMessage(result.applied.length),
+    };
+}
+function artifactComments(artifact) {
+    const review = review_command_asRecord(artifact.validatedReview);
+    if (!review)
+        return [];
+    if (Array.isArray(review.comments)) {
+        return review.comments;
+    }
+    if (Array.isArray(review.newComments)) {
+        return review.newComments;
+    }
+    return [];
+}
+async function runApplyAllCommand(deps, context, pr, artifact) {
+    const authorization = authorizeApplyAll(pr);
+    if (!authorization.ok) {
+        await deps.comment(`Could not apply Maxi suggestions: ${authorization.reason}`);
+        return;
+    }
+    const comments = artifactComments(artifact);
+    const paths = [
+        ...new Set(comments.flatMap((comment) => commentPaths(comment))),
+    ];
+    const files = await deps.readFiles({
+        owner: context.owner,
+        repo: context.repo,
+        ref: pr.headSha,
+        paths,
+    });
+    const plan = buildApplyAllPlan({
+        artifact,
+        files,
+        expectedHeadSha: artifact.headSha || "",
+        currentHeadSha: pr.headSha,
+    });
+    if (!plan.ok || !plan.result || !plan.commitMessage) {
+        await deps.comment(`Could not apply Maxi suggestions: ${plan.reason}`);
+        return;
+    }
+    if (plan.result.applied.length === 0) {
+        await deps.comment(`No Maxi suggestions were applied. Skipped ${plan.result.skipped.length}.`);
+        return;
+    }
+    try {
+        await deps.commitFiles({
+            owner: context.owner,
+            repo: context.repo,
+            branch: pr.headRef,
+            expectedHeadSha: pr.headSha,
+            message: plan.commitMessage,
+            files: changedFilesOnly(files, plan.result.files),
+        });
+    }
+    catch (err) {
+        await deps.comment(`Could not apply Maxi suggestions: ${review_command_errorMessage(err)}`);
+        return;
+    }
+    await deps.comment(`Applied ${plan.result.applied.length} Maxi suggestion${plan.result.applied.length === 1 ? "" : "s"}. Skipped ${plan.result.skipped.length}.`);
+}
+function authorizeApplyAll(pr) {
+    if (pr.repository !== pr.headRepository) {
+        return {
+            ok: false,
+            reason: "apply-all requires a same-repository PR branch",
+        };
+    }
+    if (pr.tokenPermissions.contents !== "write") {
+        return { ok: false, reason: "contents: write permission required" };
+    }
+    if (pr.tokenPermissions.pullRequests !== "write") {
+        return { ok: false, reason: "pull-requests: write permission required" };
+    }
+    return { ok: true };
+}
+async function runFixCommand(deps, context, pr, artifact, findingId) {
+    const comments = artifactComments(artifact);
+    const availableFindingIds = comments
+        .map((comment) => ("id" in comment ? comment.id : undefined))
+        .filter((id) => !!id);
+    const authorization = authorizeHandsOnFix({
+        command: context.body.trim(),
+        repository: pr.repository,
+        headRepository: pr.headRepository,
+        requestedFindingId: findingId,
+        availableFindingIds,
+        tokenPermissions: pr.tokenPermissions,
+    });
+    if (!authorization.ok) {
+        await deps.comment(`Could not start hands-on Maxi fix: ${authorization.reason}`);
+        return;
+    }
+    const comment = comments.find((candidate) => "id" in candidate && candidate.id === findingId);
+    if (!comment) {
+        await deps.comment(`Could not find Maxi review finding ${findingId}.`);
+        return;
+    }
+    const sessionId = await deps.startHandsOnFix({
+        owner: context.owner,
+        repo: context.repo,
+        prNumber: pr.number,
+        branch: pr.headRef,
+        findingId,
+        prompt: buildHandsOnFixPrompt(comment),
+    });
+    await deps.comment(`Started hands-on Maxi fix session ${sessionId} for ${findingId}.`);
+}
+async function latestReviewArtifact(deps, owner, repo, issueNumber) {
+    const comments = await deps.listArtifactComments(owner, repo, issueNumber);
+    for (const body of comments.slice().reverse()) {
+        const artifact = extractReviewArtifact(body);
+        if (artifact)
+            return artifact;
+    }
+    return null;
+}
+function commentPaths(comment) {
+    if ("fix" in comment && comment.fix && comment.fix.edits.length > 0) {
+        return comment.fix.edits.map((edit) => edit.path);
+    }
+    if ("suggestion" in comment && comment.suggestion) {
+        return [comment.suggestion.path];
+    }
+    const legacy = comment;
+    return legacy.file ? [legacy.file] : [];
+}
+function changedFilesOnly(before, after) {
+    return new Map([...after.entries()].filter(([path, content]) => before.get(path) !== content));
+}
+function review_command_errorMessage(err) {
+    return err instanceof Error ? err.message : String(err);
+}
+function review_command_asRecord(value) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        return value;
+    }
+    return undefined;
+}
+function hasAllReviewCommandDeps(deps) {
+    return [
+        deps.getContext,
+        deps.fetchPullRequest,
+        deps.listArtifactComments,
+        deps.readFiles,
+        deps.commitFiles,
+        deps.startHandsOnFix,
+        deps.comment,
+        deps.setOutput,
+    ].every(Boolean);
+}
+function defaultReviewCommandDeps() {
+    const token = core/* getInput */.V4("github_token", { required: true });
+    const octokit = github/* getOctokit */.Q(token);
+    return {
+        getContext: () => {
+            const ctx = github/* context */._;
+            const isWorkflowDispatch = ctx.eventName === "workflow_dispatch";
+            return {
+                body: isWorkflowDispatch
+                    ? core/* getInput */.V4("command", { required: true })
+                    : String(ctx.payload.comment?.body || ""),
+                owner: ctx.repo.owner,
+                repo: ctx.repo.repo,
+                issueNumber: isWorkflowDispatch
+                    ? Number(core/* getInput */.V4("pr_number", { required: true }))
+                    : Number(ctx.payload.issue?.number || 0),
+            };
+        },
+        fetchPullRequest: async (owner, repo, issueNumber) => {
+            const issue = github/* context */._.payload.issue;
+            if (github/* context */._.eventName !== "workflow_dispatch" &&
+                !issue?.pull_request) {
+                return null;
+            }
+            const response = await octokit.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: issueNumber,
+            });
+            const pr = response.data;
+            return {
+                number: pr.number,
+                headSha: pr.head.sha,
+                headRef: pr.head.ref,
+                headRepository: pr.head.repo?.full_name || "",
+                repository: `${owner}/${repo}`,
+                tokenPermissions: {
+                    contents: "write",
+                    pullRequests: "write",
+                },
+            };
+        },
+        listArtifactComments: async (owner, repo, issueNumber) => {
+            const comments = await octokit.paginate(octokit.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: issueNumber,
+                per_page: 100,
+            });
+            return comments
+                .map((comment) => comment.body || "")
+                .filter((body) => body.includes("<!-- maxi-review artifact -->"));
+        },
+        readFiles: async ({ owner, repo, ref, paths }) => {
+            const files = new Map();
+            for (const path of paths) {
+                const response = await octokit.rest.repos.getContent({
+                    owner,
+                    repo,
+                    path,
+                    ref,
+                });
+                if (!("content" in response.data))
+                    continue;
+                files.set(path, Buffer.from(response.data.content, "base64").toString("utf8"));
+            }
+            return files;
+        },
+        commitFiles: async ({ owner, repo, branch, expectedHeadSha, message, files, }) => {
+            if (files.size === 0)
+                return;
+            const ref = await octokit.rest.git.getRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`,
+            });
+            const latestCommitSha = ref.data.object.sha;
+            if (latestCommitSha !== expectedHeadSha) {
+                throw new Error(`stale head SHA: expected ${expectedHeadSha}, got ${latestCommitSha}`);
+            }
+            const latestCommit = await octokit.rest.git.getCommit({
+                owner,
+                repo,
+                commit_sha: latestCommitSha,
+            });
+            const tree = await octokit.rest.git.createTree({
+                owner,
+                repo,
+                base_tree: latestCommit.data.tree.sha,
+                tree: await Promise.all([...files.entries()].map(async ([path, content]) => {
+                    const blob = await octokit.rest.git.createBlob({
+                        owner,
+                        repo,
+                        content,
+                        encoding: "utf-8",
+                    });
+                    return {
+                        path,
+                        mode: "100644",
+                        type: "blob",
+                        sha: blob.data.sha,
+                    };
+                })),
+            });
+            const commit = await octokit.rest.git.createCommit({
+                owner,
+                repo,
+                message,
+                tree: tree.data.sha,
+                parents: [latestCommitSha],
+            });
+            await octokit.rest.git.updateRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`,
+                sha: commit.data.sha,
+            });
+        },
+        startHandsOnFix: async ({ owner, repo, branch, prompt }) => {
+            const apiKey = core/* getInput */.V4("jules_api_key", { required: true });
+            core/* setSecret */.Pq(apiKey);
+            return await startJulesHandsOnFix(apiKey, prompt, {
+                github: `${owner}/${repo}`,
+                baseBranch: branch,
+            });
+        },
+        comment: async (body) => {
+            const context = github/* context */._;
+            const issueNumber = context.eventName === "workflow_dispatch"
+                ? Number(core/* getInput */.V4("pr_number", { required: true }))
+                : Number(context.payload.issue?.number || 0);
+            await octokit.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+            });
+        },
+        setOutput: core/* setOutput */.uH,
+    };
 }
 
 ;// CONCATENATED MODULE: ./src/hard-deadline.ts

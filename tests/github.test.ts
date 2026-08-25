@@ -11,6 +11,7 @@ import {
   recordReviewArtifactComment,
   listReviewArtifactComments,
   pruneReviewArtifactComments,
+  type ArtifactCommentOctokit,
 } from "../src/github.js";
 
 describe("github.ts", () => {
@@ -598,6 +599,13 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
 });
 
 describe("pruneReviewArtifactComments", () => {
+  const artifactBody = (id: number) => {
+    const artifact = JSON.stringify({
+      headSha: `head-${id}`,
+      validatedReview: { comments: [] },
+    });
+    return `<!-- maxi-review artifact -->\n\`\`\`json\n${artifact}\n\`\`\``;
+  };
   const makeOctokit = (
     artifactIds: number[],
     deleteComment = vi.fn().mockResolvedValue(undefined)
@@ -615,7 +623,7 @@ describe("pruneReviewArtifactComments", () => {
               },
               ...artifactIds.map((id) => ({
                 id,
-                body: `<!-- maxi-review artifact -->\nartifact ${id}`,
+                body: artifactBody(id),
                 user: { login: "maxi-reviewer[bot]", type: "Bot" },
               })),
             ],
@@ -628,7 +636,7 @@ describe("pruneReviewArtifactComments", () => {
           }),
         },
       },
-    }) as any;
+    }) satisfies ArtifactCommentOctokit;
 
   it("deletes the oldest artifact comments beyond the keep count", async () => {
     const deleteComment = vi.fn().mockResolvedValue(undefined);
@@ -658,31 +666,15 @@ describe("pruneReviewArtifactComments", () => {
     expect(deleteComment).not.toHaveBeenCalled();
   });
 
-  it("preserves every artifact that remains available to harvest", async () => {
+  it("prunes superseded parseable artifacts while keeping the newest", async () => {
     const deleteComment = vi.fn().mockResolvedValue(undefined);
     const octokit = makeOctokit([1, 2, 3, 4], deleteComment);
-    const harvestable = JSON.stringify({
-      headSha: "abc123",
-      validatedReview: { comments: [] },
-    });
-    octokit.rest.issues.listComments.mockResolvedValue({
-      data: [
-        ...[1, 2, 3].map((id) => ({
-          id,
-          body: `<!-- maxi-review artifact -->\nartifact ${id}`,
-          user: { login: "maxi-reviewer[bot]", type: "Bot" },
-        })),
-        {
-          id: 4,
-          body: `<!-- maxi-review artifact -->\n\`\`\`json\n${harvestable}\n\`\`\``,
-          user: { login: "maxi-reviewer[bot]", type: "Bot" },
-        },
-      ],
-    });
-
     await expect(
       pruneReviewArtifactComments(octokit, "owner", "repo", 7, 1)
-    ).resolves.toBe(2);
+    ).resolves.toBe(3);
+    expect(deleteComment).toHaveBeenCalledWith(
+      expect.objectContaining({ comment_id: 1 })
+    );
     expect(deleteComment).not.toHaveBeenCalledWith(
       expect.objectContaining({ comment_id: 4 })
     );

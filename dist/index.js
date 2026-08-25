@@ -65380,6 +65380,11 @@ async function pruneReviewArtifactComments(octokit, owner, repo, prNumber, keep)
         core/* warning */.$e(`Failed to list review artifact comments: ${String(err)}`);
         return 0;
     }
+    return pruneReviewArtifactCommentsFromSnapshot(octokit, owner, repo, records, keep);
+}
+async function pruneReviewArtifactCommentsFromSnapshot(octokit, owner, repo, records, keep) {
+    if (keep < 1)
+        return 0;
     const stale = records.slice(0, Math.min(Math.max(0, records.length - keep), MAX_ARTIFACT_DELETIONS_PER_RUN));
     let deleted = 0;
     for (const record of stale) {
@@ -72203,7 +72208,9 @@ const defaultDeps = {
     uploadArtifact: uploadReviewArtifact,
     recordReviewArtifact: recordReviewArtifactComment,
     listReviewArtifactComments: listReviewArtifactComments,
+    listReviewArtifactCommentRecords: listReviewArtifactCommentRecords,
     pruneReviewArtifactComments: pruneReviewArtifactComments,
+    pruneReviewArtifactCommentsFromSnapshot: pruneReviewArtifactCommentsFromSnapshot,
     wrapPermissionError: wrapPermissionError,
     writeJobSummary: async (collectedCharacters) => {
         core/* summary */.z.addHeading("Maxi Review");
@@ -72448,9 +72455,9 @@ async function runReviewPr(overrides = {}) {
         // the newest artifact that actually responded plus every newer dead session;
         // a fixed count can prune the only resumable session after enough timeouts.
         try {
-            const artifactComments = await deps.listReviewArtifactComments(octokit, owner, repo, prNumber);
-            const artifactCommentsToKeep = reviewArtifactCommentsToKeep(artifactComments, REVIEW_ARTIFACT_COMMENTS_KEPT);
-            await deps.pruneReviewArtifactComments(octokit, owner, repo, prNumber, artifactCommentsToKeep);
+            const artifactComments = await deps.listReviewArtifactCommentRecords(octokit, owner, repo, prNumber);
+            const artifactCommentsToKeep = reviewArtifactCommentsToKeep(artifactComments.map((comment) => comment.body), REVIEW_ARTIFACT_COMMENTS_KEPT);
+            await deps.pruneReviewArtifactCommentsFromSnapshot(octokit, owner, repo, artifactComments, artifactCommentsToKeep);
         }
         catch (err) {
             core/* warning */.$e(`Failed to size review artifact retention: ${String(err)}`);

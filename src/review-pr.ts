@@ -29,7 +29,9 @@ import {
   setStatus,
   recordReviewArtifactComment,
   listReviewArtifactComments,
+  listReviewArtifactCommentRecords,
   pruneReviewArtifactComments,
+  pruneReviewArtifactCommentsFromSnapshot,
 } from "./github.js";
 import {
   runJulesReview,
@@ -162,7 +164,9 @@ export interface ReviewPrDeps {
   uploadArtifact: (name: string, content: string) => Promise<void>;
   recordReviewArtifact: typeof recordReviewArtifactComment;
   listReviewArtifactComments: typeof listReviewArtifactComments;
+  listReviewArtifactCommentRecords: typeof listReviewArtifactCommentRecords;
   pruneReviewArtifactComments: typeof pruneReviewArtifactComments;
+  pruneReviewArtifactCommentsFromSnapshot: typeof pruneReviewArtifactCommentsFromSnapshot;
   wrapPermissionError: typeof wrapPermissionError;
   writeJobSummary: (collectedCharacters: number) => Promise<void>;
 }
@@ -182,7 +186,9 @@ const defaultDeps: ReviewPrDeps = {
   uploadArtifact: uploadReviewArtifact,
   recordReviewArtifact: recordReviewArtifactComment,
   listReviewArtifactComments,
+  listReviewArtifactCommentRecords,
   pruneReviewArtifactComments,
+  pruneReviewArtifactCommentsFromSnapshot,
   wrapPermissionError,
   writeJobSummary: async (collectedCharacters: number) => {
     core.summary.addHeading("Maxi Review");
@@ -528,21 +534,21 @@ export async function runReviewPr(
     // the newest artifact that actually responded plus every newer dead session;
     // a fixed count can prune the only resumable session after enough timeouts.
     try {
-      const artifactComments = await deps.listReviewArtifactComments(
+      const artifactComments = await deps.listReviewArtifactCommentRecords(
         octokit,
         owner,
         repo,
         prNumber
       );
       const artifactCommentsToKeep = reviewArtifactCommentsToKeep(
-        artifactComments,
+        artifactComments.map((comment) => comment.body),
         REVIEW_ARTIFACT_COMMENTS_KEPT
       );
-      await deps.pruneReviewArtifactComments(
+      await deps.pruneReviewArtifactCommentsFromSnapshot(
         octokit,
         owner,
         repo,
-        prNumber,
+        artifactComments,
         artifactCommentsToKeep
       );
     } catch (err) {

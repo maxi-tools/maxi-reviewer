@@ -30,7 +30,9 @@ describe("index.ts", () => {
     setStatus: vi.fn(),
     recordReviewArtifactComment: vi.fn(),
     listReviewArtifactComments: vi.fn(),
+    listReviewArtifactCommentRecords: vi.fn(),
     pruneReviewArtifactComments: vi.fn(),
+    pruneReviewArtifactCommentsFromSnapshot: vi.fn(),
   };
 
   const mockJulesHelper = {
@@ -99,7 +101,11 @@ describe("index.ts", () => {
     mockGithubHelper.fetchOpenThreads.mockResolvedValue([]);
     mockGithubHelper.fetchExistingFindings.mockResolvedValue([]);
     mockGithubHelper.listReviewArtifactComments.mockResolvedValue([]);
+    mockGithubHelper.listReviewArtifactCommentRecords.mockResolvedValue([]);
     mockGithubHelper.pruneReviewArtifactComments.mockResolvedValue(0);
+    mockGithubHelper.pruneReviewArtifactCommentsFromSnapshot.mockResolvedValue(
+      0
+    );
     mockGithubHelper.setStatus.mockResolvedValue(undefined);
     mockJulesHelper.runJulesReview.mockResolvedValue({
       reviewResult: {
@@ -361,7 +367,7 @@ describe("index.ts", () => {
   });
 
   it("skips artifact pruning when retention sizing fails", async () => {
-    mockGithubHelper.listReviewArtifactComments.mockRejectedValue(
+    mockGithubHelper.listReviewArtifactCommentRecords.mockRejectedValue(
       new Error("transient list failure")
     );
 
@@ -371,6 +377,26 @@ describe("index.ts", () => {
     expect(mockWarning).toHaveBeenCalledWith(
       expect.stringContaining("Failed to size review artifact retention")
     );
+  });
+
+  it("sizes and prunes from the same artifact snapshot", async () => {
+    const snapshot = [{ id: 7, body: "not a decodable artifact" }];
+    mockGithubHelper.listReviewArtifactCommentRecords.mockResolvedValue(
+      snapshot
+    );
+
+    await loadIndex();
+
+    expect(
+      mockGithubHelper.pruneReviewArtifactCommentsFromSnapshot
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      snapshot,
+      expect.any(Number)
+    );
+    expect(mockGithubHelper.pruneReviewArtifactComments).not.toHaveBeenCalled();
   });
 
   it("handles fail_on = never", async () => {

@@ -438,7 +438,7 @@ function isValidatedReviewArtifactComment(body: string): boolean {
   }
 }
 
-async function listReviewArtifactCommentRecords(
+export async function listReviewArtifactCommentRecords(
   octokit: ArtifactCommentOctokit,
   owner: string,
   repo: string,
@@ -520,6 +520,23 @@ export async function pruneReviewArtifactComments(
     return 0;
   }
 
+  return pruneReviewArtifactCommentsFromSnapshot(
+    octokit,
+    owner,
+    repo,
+    records,
+    keep
+  );
+}
+
+export async function pruneReviewArtifactCommentsFromSnapshot(
+  octokit: ArtifactCommentOctokit,
+  owner: string,
+  repo: string,
+  records: ReviewArtifactComment[],
+  keep: number
+): Promise<number> {
+  if (keep < 1) return 0;
   const stale = records.slice(
     0,
     Math.min(Math.max(0, records.length - keep), MAX_ARTIFACT_DELETIONS_PER_RUN)

@@ -72373,7 +72373,7 @@ async function runReviewPr(overrides = {}) {
             linkedIssues: context.linkedIssues,
             incrementalReview: isIncrementalReview,
             excludedGeneratedPaths: excludedPaths.length > 0 ? excludedPaths : undefined,
-            changedFileContext: buildChangedFileContext(context.files ?? new Map(), 
+            changedFileContext: buildChangedFileContext(context.files ?? new Map(),
             // Derive from the (possibly truncated) diff the model actually sees, so
             // context never covers hunks absent from the visible diff payload.
             extractChangedLines(diffText)),
@@ -72472,7 +72472,7 @@ async function runReviewPr(overrides = {}) {
         }
         // Prepare body for the PR review
         const finalBody = `${COMMENT_MARKER}\n## Maxi Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
-        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody, 
+        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody,
         // Never post comments on excluded generated files, even if the model or
         // an analyzer produced one.
         (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs)));

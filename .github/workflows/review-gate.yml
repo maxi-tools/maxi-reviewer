@@ -35,7 +35,8 @@ on:
   # Review Gate runs in one repo in 24h. That cost is accepted rather than
   # optimised away. Skipping the evaluation on this event and leaving the
   # verdicts PENDING was tried on this branch and withdrawn: the required
-  # checks aggregate across suites, so a
+  # checks aggregate across suites -- see the status publisher note in
+  # review-gate-reusable.yml -- so a
   # pending-and-never-completed run is not neutral, and "re-run this check"
   # clears one entry in a rollup that has several. Every event that reaches
   # this gate now runs it to a verdict.

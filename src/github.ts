@@ -421,11 +421,12 @@ export interface ArtifactCommentOctokit {
 const MAX_ARTIFACT_DELETIONS_PER_RUN = 20;
 
 function isValidatedReviewArtifactComment(body: string): boolean {
-  if (!body.includes("<!-- maxi-review artifact -->")) return false;
   const encoded = body.match(
-    /<!-- maxi-review artifact-data\s+name:[^\n]*\s+encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/
+    /^<!-- maxi-review artifact -->\n<!-- maxi-review artifact-data\nname: [^\n]+\nencoding: base64\n([A-Za-z0-9+/=\n]+)\n-->\n?$/
   );
-  const fenced = body.match(/```json\s*\n([\s\S]*?)\n```/);
+  const fenced = body.match(
+    /^<!-- maxi-review artifact -->\n```json\n([\s\S]*?)\n```\n?$/
+  );
   const json = encoded
     ? Buffer.from(encoded[1].replace(/\s/g, ""), "base64").toString("utf8")
     : fenced?.[1];

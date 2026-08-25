@@ -631,6 +631,14 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
                 body: "Visible feedback mentioning <!-- maxi-review artifact -->",
                 user: { login: "maxi-reviewer[bot]", type: "Bot" },
               },
+              {
+                body: `Visible fallback review text\n${artifactBody(9)}`,
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              },
+              {
+                body: `${artifactBody(10)}\nVisible trailing review text`,
+                user: { login: "maxi-reviewer[bot]", type: "Bot" },
+              },
             ],
           }),
         },

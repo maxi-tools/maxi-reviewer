@@ -65313,10 +65313,8 @@ ${encodedContent}
 }
 const MAX_ARTIFACT_DELETIONS_PER_RUN = 20;
 function isValidatedReviewArtifactComment(body) {
-    if (!body.includes("<!-- maxi-review artifact -->"))
-        return false;
-    const encoded = body.match(/<!-- maxi-review artifact-data\s+name:[^\n]*\s+encoding:\s*base64\s*\n([A-Za-z0-9+/=\s]+?)\n-->/);
-    const fenced = body.match(/```json\s*\n([\s\S]*?)\n```/);
+    const encoded = body.match(/^<!-- maxi-review artifact -->\n<!-- maxi-review artifact-data\nname: [^\n]+\nencoding: base64\n([A-Za-z0-9+/=\n]+)\n-->\n?$/);
+    const fenced = body.match(/^<!-- maxi-review artifact -->\n```json\n([\s\S]*?)\n```\n?$/);
     const json = encoded
         ? Buffer.from(encoded[1].replace(/\s/g, ""), "base64").toString("utf8")
         : fenced?.[1];
@@ -72373,7 +72371,7 @@ async function runReviewPr(overrides = {}) {
             linkedIssues: context.linkedIssues,
             incrementalReview: isIncrementalReview,
             excludedGeneratedPaths: excludedPaths.length > 0 ? excludedPaths : undefined,
-            changedFileContext: buildChangedFileContext(context.files ?? new Map(),
+            changedFileContext: buildChangedFileContext(context.files ?? new Map(), 
             // Derive from the (possibly truncated) diff the model actually sees, so
             // context never covers hunks absent from the visible diff payload.
             extractChangedLines(diffText)),
@@ -72472,7 +72470,7 @@ async function runReviewPr(overrides = {}) {
         }
         // Prepare body for the PR review
         const finalBody = `${COMMENT_MARKER}\n## Maxi Review\n\n${summary}\n\n---\n_Session: \`${sessionId}\`_`;
-        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody,
+        await deps.submitReview(octokit, owner, repo, prNumber, headSha, finalBody, 
         // Never post comments on excluded generated files, even if the model or
         // an analyzer produced one.
         (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs)));

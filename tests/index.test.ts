@@ -360,6 +360,19 @@ describe("index.ts", () => {
     );
   });
 
+  it("skips artifact pruning when retention sizing fails", async () => {
+    mockGithubHelper.listReviewArtifactComments.mockRejectedValue(
+      new Error("transient list failure")
+    );
+
+    await loadIndex();
+
+    expect(mockGithubHelper.pruneReviewArtifactComments).not.toHaveBeenCalled();
+    expect(mockWarning).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to size review artifact retention")
+    );
+  });
+
   it("handles fail_on = never", async () => {
     mockGetInput.mockImplementation((name: string) => {
       if (name === "fail_on") return "never";

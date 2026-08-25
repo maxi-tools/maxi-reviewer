@@ -72447,15 +72447,14 @@ async function runReviewPr(overrides = {}) {
         // so without this every push leaves another blank comment on the PR. Retain
         // the newest artifact that actually responded plus every newer dead session;
         // a fixed count can prune the only resumable session after enough timeouts.
-        let artifactCommentsToKeep = REVIEW_ARTIFACT_COMMENTS_KEPT;
         try {
             const artifactComments = await deps.listReviewArtifactComments(octokit, owner, repo, prNumber);
-            artifactCommentsToKeep = reviewArtifactCommentsToKeep(artifactComments, REVIEW_ARTIFACT_COMMENTS_KEPT);
+            const artifactCommentsToKeep = reviewArtifactCommentsToKeep(artifactComments, REVIEW_ARTIFACT_COMMENTS_KEPT);
+            await deps.pruneReviewArtifactComments(octokit, owner, repo, prNumber, artifactCommentsToKeep);
         }
         catch (err) {
             core/* warning */.$e(`Failed to size review artifact retention: ${String(err)}`);
         }
-        await deps.pruneReviewArtifactComments(octokit, owner, repo, prNumber, artifactCommentsToKeep);
         if (!reviewResult) {
             await deps.setStatus(octokit, owner, repo, headSha, statusContext, "failure", "Review timed out; see harvested artifact");
             core/* warning */.$e(`Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`);

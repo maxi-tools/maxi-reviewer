@@ -3,6 +3,7 @@ import { buildReviewArtifact } from "../src/late-feedback-harvest.js";
 import {
   buildArtifactCommentContent,
   latestReviewArtifactSessionId,
+  reviewArtifactCommentsToKeep,
 } from "../src/review-pr.js";
 
 // Reproduce the persisted PR-comment shape extractReviewArtifactFromComment
@@ -73,5 +74,20 @@ describe("latestReviewArtifactSessionId", () => {
     expect(
       latestReviewArtifactSessionId([dead("a"), dead("b"), dead("c")])
     ).toBeUndefined();
+  });
+
+  it("retains the newest responding artifact and every newer dead artifact", () => {
+    expect(
+      reviewArtifactCommentsToKeep(
+        [alive("s-live"), dead("s-dead-1"), dead("s-dead-2"), dead("s-dead-3")],
+        3
+      )
+    ).toBe(4);
+  });
+
+  it("uses the normal margin when the newest artifact responded", () => {
+    expect(
+      reviewArtifactCommentsToKeep([dead("s-old-dead"), alive("s-new-live")], 3)
+    ).toBe(3);
   });
 });

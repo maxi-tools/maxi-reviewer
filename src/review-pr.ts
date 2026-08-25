@@ -524,18 +524,30 @@ export async function runReviewPr(
     }
 
     // Artifact comments render as nothing — their whole body is HTML comments —
-    // so without this every push leaves another blank comment on the PR. They
-    // exist only for session resume, and `latestReviewArtifactSessionId` reads
-    // them newest-first and stops at the first that actually responded, so
-    // older ones are unreachable. Keep a few beyond the one just written rather
-    // than exactly one, so a run of non-responding sessions still has something
-    // older to fall back to.
+    // so without this every push leaves another blank comment on the PR. Retain
+    // the newest artifact that actually responded plus every newer dead session;
+    // a fixed count can prune the only resumable session after enough timeouts.
+    let artifactCommentsToKeep = REVIEW_ARTIFACT_COMMENTS_KEPT;
+    try {
+      const artifactComments = await deps.listReviewArtifactComments(
+        octokit,
+        owner,
+        repo,
+        prNumber
+      );
+      artifactCommentsToKeep = reviewArtifactCommentsToKeep(
+        artifactComments,
+        REVIEW_ARTIFACT_COMMENTS_KEPT
+      );
+    } catch (err) {
+      core.warning(`Failed to size review artifact retention: ${String(err)}`);
+    }
     await deps.pruneReviewArtifactComments(
       octokit,
       owner,
       repo,
       prNumber,
-      REVIEW_ARTIFACT_COMMENTS_KEPT
+      artifactCommentsToKeep
     );
 
     if (!reviewResult) {
@@ -880,13 +892,30 @@ export function latestReviewArtifactSessionId(
     // retry via startReviewSession(previousSessionId) and time out identically,
     // trapping the PR. Treat it as dead, keep looking for an older session that
     // actually responded, and fall back to a fresh session when none did.
-    const responded =
-      (artifact.rawJulesResponses?.length ?? 0) > 0 ||
-      artifact.validatedReview != null;
-    if (!responded) continue;
+    if (!reviewArtifactResponded(artifact)) continue;
     return artifact.sessionId;
   }
   return undefined;
+}
+
+export function reviewArtifactCommentsToKeep(
+  comments: string[],
+  minimum: number
+): number {
+  for (let index = comments.length - 1; index >= 0; index -= 1) {
+    const artifact = extractReviewArtifactFromComment(comments[index]);
+    if (artifact && reviewArtifactResponded(artifact)) {
+      return Math.max(minimum, comments.length - index);
+    }
+  }
+  return minimum;
+}
+
+function reviewArtifactResponded(artifact: ReviewArtifact): boolean {
+  return (
+    (artifact.rawJulesResponses?.length ?? 0) > 0 ||
+    artifact.validatedReview != null
+  );
 }
 
 function extractReviewArtifactFromComment(body: string): ReviewArtifact | null {

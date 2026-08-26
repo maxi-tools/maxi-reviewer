@@ -506,7 +506,23 @@ jobs:
         # runner-release watchdog. A 35-minute bound fires FIRST and kills a
         # review still legitimately inside its own deadline, defeating the
         # graceful status cleanup this is meant to preserve.
-        timeout-minutes: 55
+        # 10, not 30, and 35 rather than 55 above it. MEASURED on maxi-nix,
+        # the last seven completed runs of this workflow: 30.7, 30.8, 30.8,
+        # 41.1, 50.3, 50.3 and 59.0 minutes -- and THREE OF THE SEVEN produced
+        # no verdict at all. Those three are the 30-minute cluster: they spent
+        # the whole budget and returned nothing, then set `jules/review` red
+        # for having failed to work.
+        #
+        # A review that has produced no agent message in ten minutes is not
+        # about to. Cutting the budget turns the common bad case from half an
+        # hour of dead wall-clock into ten minutes, and the worst case from 55
+        # to 35, on a gate that every push to every PR in ~90 repos waits for.
+        #
+        # The step bound still has to sit above the action's in-process hard
+        # deadline (timeout_minutes + 20 = 30), which is why it is 35 and not
+        # tighter: a blocked Node event loop can stop the in-process timers
+        # firing, so the outer bound is the real runner-release watchdog.
+        timeout-minutes: 35
         uses: maxi-tools/maxi-reviewer@ae2700a9171b4204bbd5416d17e90910ace4c128
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
@@ -517,7 +533,7 @@ jobs:
             ${{ steps.churn.outputs.text }}
 
             ${{ steps.maxilint.outputs.text }}
-          timeout_minutes: "30"
+          timeout_minutes: "10"
           fail_on: "blocking"
           status_context: jules/review
           analyzer_mode: "off"

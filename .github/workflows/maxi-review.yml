@@ -395,6 +395,38 @@ jobs:
             echo "JULES_RULES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Looks ACROSS review rounds, which no single review can do. A
+      # line-level reviewer is very good at "this line is wrong" and
+      # structurally unable to say "this approach guarantees more of these" --
+      # every finding is correct, every fix is correct, and the next round
+      # produces another of the same shape. Emits nothing on a converging PR,
+      # which is almost all of them.
+      - name: Detect review churn
+        id: churn
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH"
+          # PIPED, not passed as an argument. One real PR's comment payload
+          # measured 910 KB against a 1 MB ARG_MAX on these runners, and the
+          # PRs this step targets are the ones with the most comments -- so
+          # argv would have failed to exec exactly where it is needed.
+          #
+          # `|| true` and the empty default below: this step may only ever ADD a
+          # question to the review. A rate-limited call or a parse failure must
+          # leave the review exactly as it would have been and never fail the
+          # job -- the review is the product, this is a footnote on it.
+          text=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
+            | python3 .maxi-config/maxi-review/detect-review-churn.py 2>/dev/null \
+            || true)
+          {
+            echo "text<<CHURN_EOF"
+            echo "$text"
+            echo "CHURN_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Prepare lint findings context
         id: maxilint
         run: |
@@ -482,6 +514,7 @@ jobs:
           rules_file: ""
           extra_instructions: |
             ${{ steps.rules.outputs.text }}
+            ${{ steps.churn.outputs.text }}
 
             ${{ steps.maxilint.outputs.text }}
           timeout_minutes: "30"

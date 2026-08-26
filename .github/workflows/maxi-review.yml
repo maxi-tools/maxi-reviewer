@@ -421,21 +421,34 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
             | python3 .maxi-config/maxi-review/detect-review-churn.py 2>/dev/null \
             || true)
+          # A RANDOM DELIMITER, because `$text` is PR comment bodies -- data an
+          # attacker controls. With a fixed `CHURN_EOF`, a comment containing
+          # that word on a line of its own closes the heredoc early, and every
+          # line after it is parsed as a fresh `$GITHUB_OUTPUT` assignment:
+          # arbitrary step outputs, set by anyone who can comment on a PR.
+          # GitHub's own guidance for untrusted multiline output is a delimiter
+          # the writer cannot predict. (maxi-reviewer, seen on the fan-out.)
+          delim="CHURN_EOF_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
           {
-            echo "text<<CHURN_EOF"
-            echo "$text"
-            echo "CHURN_EOF"
+            printf '%s\n' "text<<$delim"
+            printf '%s\n' "$text"
+            printf '%s\n' "$delim"
           } >> "$GITHUB_OUTPUT"
 
       - name: Prepare lint findings context
         id: maxilint
         run: |
+          # Random for the same reason as the churn block above. This one is
+          # findings text produced from the PR's own source, so it is one
+          # remove from attacker-controlled rather than two -- a lint message
+          # can quote the code that triggered it.
+          delim="MAXI_LINT_EOF_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
           {
-            echo "text<<MAXI_LINT_EOF"
+            printf '%s\n' "text<<$delim"
             if [ -s .maxi-lint-findings/maxi-lint-findings.md ]; then
               cat .maxi-lint-findings/maxi-lint-findings.md
             fi
-            echo "MAXI_LINT_EOF"
+            printf '%s\n' "$delim"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR head

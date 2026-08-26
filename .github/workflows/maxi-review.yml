@@ -78,22 +78,6 @@ jobs:
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
 
-      # The self-hosted Linux x64 fleet is NixOS, and gh is not in the
-      # default profile there -- but it IS in the nix store, so this resolves
-      # in ~30ms and downloads nothing. No-op wherever gh already exists.
-      - name: Ensure gh on PATH
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v gh >/dev/null 2>&1; then
-            exit 0
-          fi
-          if ! command -v nix >/dev/null 2>&1; then
-            echo "::error::gh is absent and nix is unavailable to provision it on $RUNNER_NAME"
-            exit 1
-          fi
-          echo "$(nix build nixpkgs#gh --no-link --print-out-paths)/bin" >> "$GITHUB_PATH"
-
       - name: Run maxi-lint deny gate
         id: maxilint
         env:
@@ -392,22 +376,6 @@ jobs:
           sparse-checkout: maxi-review
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
-
-      # The self-hosted Linux x64 fleet is NixOS, and gh is not in the
-      # default profile there -- but it IS in the nix store, so this resolves
-      # in ~30ms and downloads nothing. No-op wherever gh already exists.
-      - name: Ensure gh on PATH
-        shell: bash
-        run: |
-          set -euo pipefail
-          if command -v gh >/dev/null 2>&1; then
-            exit 0
-          fi
-          if ! command -v nix >/dev/null 2>&1; then
-            echo "::error::gh is absent and nix is unavailable to provision it on $RUNNER_NAME"
-            exit 1
-          fi
-          echo "$(nix build nixpkgs#gh --no-link --print-out-paths)/bin" >> "$GITHUB_PATH"
 
       - name: Select per-language rules from changed files
         id: rules

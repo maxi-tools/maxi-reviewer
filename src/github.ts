@@ -432,7 +432,8 @@ function isValidatedReviewArtifactComment(body: string): boolean {
     : fenced?.[1];
   if (!json) return false;
   try {
-    return validateReviewArtifact(JSON.parse(json) as unknown).ok;
+    const parsed: unknown = JSON.parse(json);
+    return validateReviewArtifact(parsed).ok;
   } catch {
     return false;
   }

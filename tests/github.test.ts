@@ -578,6 +578,7 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
               },
             ],
           }),
+          deleteComment: vi.fn(),
         },
         users: {
           getAuthenticated: vi.fn().mockResolvedValue({
@@ -585,7 +586,7 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
           }),
         },
       },
-    } as any;
+    } satisfies ArtifactCommentOctokit;
 
     await expect(
       listReviewArtifactComments(octokit, "owner", "repo", 7)
@@ -641,6 +642,7 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
               },
             ],
           }),
+          deleteComment: vi.fn(),
         },
         users: {
           getAuthenticated: vi.fn().mockResolvedValue({
@@ -648,7 +650,7 @@ eyJzY2hlbWEiOiJtYXhpLnJldmlldy52MS5yZXZpZXctYXJ0aWZhY3QifQ==
           }),
         },
       },
-    } as any;
+    } satisfies ArtifactCommentOctokit;
 
     await expect(
       listReviewArtifactComments(octokit, "owner", "repo", 7)

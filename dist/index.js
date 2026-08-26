@@ -65321,7 +65321,8 @@ function isValidatedReviewArtifactComment(body) {
     if (!json)
         return false;
     try {
-        return validateReviewArtifact(JSON.parse(json)).ok;
+        const parsed = JSON.parse(json);
+        return validateReviewArtifact(parsed).ok;
     }
     catch {
         return false;

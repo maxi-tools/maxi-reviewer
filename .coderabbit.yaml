@@ -46,11 +46,38 @@ reviews:
     - "!**/dist/**"
     - "!**/*.wasm"
     - "!**/*.bin"
-    - "!**/fixtures/**"
+    # Fixture directories are ENUMERATED, not matched by a blanket
+    # `!**/fixtures/**`. Codacy (.codacy.yml), qlty (.qlty/qlty.toml) and cubic
+    # (cubic.yaml) all deliberately enumerate them for the same reason, and
+    # CodeRabbit was the only reviewer still hiding the class wholesale.
+    #
+    # The blanket glob swallows directories that are not test data at all. The
+    # worked example is maxi-core's src/daemon/fixtures/continuation_parity.json:
+    # it is `include_str!`d into src/brain_parity.rs as DEFAULT_FIXTURES and
+    # decides model accuracy and promotion. It is a production input whose
+    # directory happens to be named `fixtures`, and CodeRabbit was skipping
+    # review of it on the strength of the name alone.
+    - "!**/.github/**/fixtures/**"
+    - "!**/benches/**/fixtures/**"
+    - "!**/benchmarks/**/fixtures/**"
+    - "!**/tests/**/fixtures/**"
     # Retired by design. In maxi-core this single path accounted for 37 of one
     # PR's 38 unresolved threads, none of them high severity.
     - "!docs/archive/**"
 
+  # LANES. Six reviewers run on these repos -- CodeRabbit, cubic, Codacy, Qlty,
+  # Qodana and maxi-reviewer (Jules) -- and they were duplicating each other. On
+  # maxi-core#3513 four independently reported the same worktree-dedup bug; on
+  # #3455 two independently found the same two bugs. The org merge bar requires
+  # zero unresolved threads, so a duplicate finding is not extra confidence, it
+  # is an extra merge gate for a defect already reported.
+  #
+  # CodeRabbit leads on TEST-FIXTURE REALISM and WORKFLOW/YAML CORRECTNESS. It
+  # is demonstrably the only reviewer here attacking whether a test actually
+  # proves what it claims, which is why that lane is its own.
+  #
+  # The lane is a priority, not a blindfold -- every block below carries the
+  # same escape hatch, and it must stay.
   path_instructions:
     - path: "**/*.rs"
       instructions: |
@@ -65,8 +92,28 @@ reviews:
         - No ZWJ emoji in tool or category definitions; they break across
           serialization and byte parsing.
         - Internal git dependencies track `branch = "main"`, not pinned revs.
-        Do flag: unwrap/expect reachable from user input, blocking calls inside
-        async fns, and a lock held across an await.
+        YOUR LANE on Rust: whether the TESTS prove what they claim. Does the
+        fixture resemble input the code will really see, or was it shaped to
+        make the assertion pass? Does the test fail if the behaviour it covers
+        regresses? Is a new branch, error path or state transition reachable by
+        any test at all? Spend the budget there.
+
+        Leave these to the reviewer that leads on them, unless you believe the
+        finding is P1:
+        - Daemon panic paths, async cancellation-safety in `tokio::select!`,
+          DashMap lock discipline, unbounded allocation -- maxi-reviewer
+          (Jules) leads.
+        - Cross-target `src/lib.rs` / `src/main.rs` module parity and
+          feature/`cfg(target_os)` gating -- cubic leads.
+        - Complexity, function length, parameter counts, nesting, duplication
+          -- Qlty leads, with metric history.
+        - Style and naming -- rustfmt, clippy and Qodana lead.
+
+        ESCAPE HATCH: if you find a defect you believe is P1 -- data loss, an
+        exposed credential or token, a daemon-wide panic or deadlock, a
+        security hole, or a CI gate that passes without doing its work --
+        raise it whatever lane it belongs to, and say you are raising it
+        out-of-lane. A missed P1 costs far more than a duplicate comment.
     - path: "**/*.py"
       instructions: |
         Mostly CI-critical scripts. Prioritise exit codes and error propagation:
@@ -88,6 +135,18 @@ reviews:
         `github.event_name != 'pull_request' || (head.repo.full_name ==
         github.repository && ...)`. A `head.repo.full_name != github.repository`
         term inside an OR admits fork PRs.
+
+        This is YOUR LANE -- workflow and YAML correctness is yours to lead on,
+        so review it thoroughly rather than deferring. Two failure modes seen
+        in practice and worth naming: a required check that is ABSENT is not a
+        required check that PASSED, and grepping a job log for `::error::`
+        matches the guard scripts' echoed error TEMPLATES rather than real
+        emissions. Also check that the subcommand list a workflow gates on
+        covers what its config declares -- a `cargo deny check` that omits
+        `licenses` leaves deny.toml's allow-list enforced by nothing.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
     - path: "**/*.md"
       instructions: |
         Review prose for accuracy against the code it describes, not for style.

@@ -22,8 +22,47 @@ jobs:
     # Same-repository only: this job uses org app credentials to install the
     # private maxi-lint scanner. It checks changed files only and fails solely
     # on deny-level deterministic findings.
+    #
+    # NOT maxi-config's own fan-out. Every branch the distributor pushes is
+    # named maxi-config-sync/<manifest> (scripts/sync-maxi-review.sh), and what
+    # it carries is a byte-for-byte copy of a payload already reviewed on the
+    # maxi-config PR that changed it -- including this very file. The fan-out
+    # reaches ~31 repos, so without this the org re-derives one verdict
+    # thirty-one times per change, on the same self-hosted lane the repos' real
+    # CI is queued on.
+    #
+    # `github.head_ref` and not `github.event.pull_request.head.ref`: they
+    # agree on pull_request events, and head_ref is the spelling every other
+    # branch guard in this fleet already uses (`startsWith(github.head_ref,
+    # 'salvage/') == false`), so a reader recognises the shape.
+    #
+    # THE AUTHOR IS CHECKED TOO, and the condition is the De Morgan of "skip
+    # when it is the fan-out": run unless the branch prefix AND the identity
+    # both say fan-out. A head ref is chosen by whoever pushes the branch, so
+    # the prefix alone would let anyone opt out of the org's review lanes by
+    # naming a branch. This matches pr_review_gate.py, which gates its bypass
+    # on the same pair -- and the two must not disagree, or the gate and the
+    # reviewers it counts would classify the same PR differently.
+    #
+    # Spelled `maxi-tools-auth[bot]` WITH the suffix, unlike the Python gate's
+    # bare slug. `github.event.*` is the raw webhook payload, i.e. REST shape,
+    # and REST spells a Bot actor with the suffix -- confirmed on a live
+    # fan-out PR (maxi-kvm#24: `user.login = "maxi-tools-auth[bot]"`, `type =
+    # "Bot"`), where the same actor reads as `maxi-tools-auth` over GraphQL.
+    # The two literals differ because the two APIs differ, not by accident.
+    #
+    # This exclusion is only half of the change. `review-gate`'s
+    # non-author-review leg counts DISTINCT NON-AUTHOR reviewers, and on a
+    # fan-out PR those reviewers were maxi-reviewer and CodeRabbit -- exactly
+    # what is being suppressed. maxi-config's pr_review_gate.py therefore
+    # bypasses the same branch prefix, and MUST be deployed first, or every
+    # fan-out PR is gate-red with no push that can fix it.
     if: >
       github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      ) &&
       (
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
@@ -272,9 +311,17 @@ jobs:
 
   review:
     needs: lint-gate
+    # Same fan-out exclusion as lint-gate, restated rather than inherited:
+    # `always()` here means a SKIPPED lint-gate does not skip this job, so
+    # excluding only lint-gate would leave the AI reviewer -- the expensive
+    # half -- running on all ~31 copies anyway.
     if: >
       always() &&
       github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      ) &&
       (
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')

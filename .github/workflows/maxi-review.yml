@@ -51,6 +51,28 @@ jobs:
     # "Bot"`), where the same actor reads as `maxi-tools-auth` over GraphQL.
     # The two literals differ because the two APIs differ, not by accident.
     #
+    # NOR A DEPENDABOT RUN, for a different reason: it cannot work at all.
+    # `secrets.APP_ID` / `APP_PRIVATE_KEY` are ordinary Actions secrets, and a
+    # Dependabot-triggered run gets the DEPENDABOT secrets scope instead --
+    # which this org has never populated. So both arrive as empty strings and
+    # the app-token step below dies with `The 'client-id' (or deprecated
+    # 'app-id') input must be set to a non-empty string`, ~5s in, having
+    # scanned nothing. That is maxi-kvm#4-#7 exactly. A job that cannot reach
+    # its scanner should SKIP and say so, not report the PR broken.
+    #
+    # Keyed on `github.actor`, not on the PR author, because the actor is what
+    # GitHub keys the secrets restriction on: when a human pushes to a
+    # dependabot/* branch the actor becomes that human, ordinary secrets ARE
+    # available, and this lane should run normally. maxi-core's ci.yml keys its
+    # eleven dependabot guards the same way, for the same reason.
+    #
+    # The review gate's non-author-review leg is what makes this safe to skip
+    # rather than merely quiet: pr_review_gate.py waives THAT CONDITION ONLY on
+    # a dependabot/* PR, because these two jobs are the only non-author
+    # reviewers such a PR ever gets and no push can summon them -- the next
+    # push is Dependabot's too. It does NOT waive the unresolved-threads
+    # condition, which stays measurable via the human-push case above.
+    #
     # This exclusion is only half of the change. `review-gate`'s
     # non-author-review leg counts DISTINCT NON-AUTHOR reviewers, and on a
     # fan-out PR those reviewers were maxi-reviewer and CodeRabbit -- exactly
@@ -59,6 +81,7 @@ jobs:
     # fan-out PR is gate-red with no push that can fix it.
     if: >
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
       (
         startsWith(github.head_ref, 'maxi-config-sync/') == false ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
@@ -318,6 +341,7 @@ jobs:
     if: >
       always() &&
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
       (
         startsWith(github.head_ref, 'maxi-config-sync/') == false ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'

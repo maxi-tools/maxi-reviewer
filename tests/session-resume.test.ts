@@ -20,6 +20,7 @@ function comment(sessionId: string, validatedReview: unknown): string {
         validatedReview === null
           ? "TIMED_OUT_NO_CONTENT"
           : "REVIEWED_NO_FINDINGS",
+      timeoutMinutes: 30,
       reviewOutputChars: validatedReview === null ? 0 : 12,
       runIdentity: {
         workflowRunId: 101,

@@ -165,6 +165,44 @@ reviews:
     # nothing" rather than "CodeRabbit never looked".
     base_branches:
       - "^(main|master|dev)$"
+    # maxi-config's own fan-out. These PRs carry a byte-for-byte copy of a diff
+    # that was already reviewed on the maxi-config PR that changed it, opened
+    # into ~31 repos at once -- so reviewing them spends this org's whole rate
+    # limit re-deriving one verdict thirty-one times, and denies review to PRs
+    # that have not been reviewed anywhere.
+    #
+    # BOTH keys, deliberately, because each is one rename away from failing
+    # open and failing open here is SILENT -- 31 unwanted reviews and no error.
+    # ignore_usernames is an EXACT match on the login, so it stops matching the
+    # day the distributor's app identity changes; ignore_title_keywords is a
+    # case-insensitive substring of the title, so it stops matching if
+    # $pr_title in sync-maxi-review.sh is reworded. Two independent covers for
+    # one PR, not one cover stated twice.
+    #
+    # Know what the username key costs: maxi-tools-auth[bot] is the org's
+    # general automation identity, not the fan-out's alone -- it also opens the
+    # `ci-budgets-sync` PRs that regenerate runner budgets. Those lose
+    # CodeRabbit too. That is judged acceptable rather than overlooked: they
+    # are generated files with no reviewable logic, and they keep maxi-reviewer
+    # (whose head_ref guard excludes only maxi-config-sync/), so the review
+    # gate still has a non-author reviewer on them and does not wedge. If a
+    # future automation on this identity DOES want CodeRabbit, drop this key
+    # and rely on the title key alone rather than widening the bypass.
+    #
+    # `ignore_labels` is NOT the third cover, because CodeRabbit has no such
+    # key (checked against schema.v2.json); the label-shaped control is
+    # `labels`, an allow/deny list evaluated for EVERY PR, and the fan-out
+    # applies no labels anyway.
+    #
+    # The head branch would be the sharpest key of the three -- the fan-out
+    # always pushes maxi-config-sync/<manifest> -- but auto_review filters on
+    # BASE branches only, so it is not expressible here. maxi-review.yml and
+    # the review gate key off it directly instead.
+    ignore_usernames:
+      - "maxi-tools-auth[bot]"
+    ignore_title_keywords:
+      - "sync maxi-review from maxi-config"
+      - "sync review-configs from maxi-config"
 
 chat:
   auto_reply: true

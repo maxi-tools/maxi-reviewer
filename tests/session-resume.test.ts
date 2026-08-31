@@ -3,7 +3,10 @@ import { buildReviewArtifact } from "../src/late-feedback-harvest.js";
 import {
   buildArtifactCommentContent,
   latestReviewArtifactSessionId,
+  reviewTimeoutExplanation,
 } from "../src/review-pr.js";
+
+const TIMEOUT_MINUTES = 30;
 
 // Reproduce the persisted PR-comment shape extractReviewArtifactFromComment
 // parses: a base64-encoded artifact (rawJulesResponses are stripped by
@@ -20,7 +23,14 @@ function comment(sessionId: string, validatedReview: unknown): string {
         validatedReview === null
           ? "TIMED_OUT_NO_CONTENT"
           : "REVIEWED_NO_FINDINGS",
-      timeoutMinutes: 30,
+      timeoutMinutes: TIMEOUT_MINUTES,
+      // A timed-out artifact carries its reason in production, so the fixture
+      // carries one too -- otherwise this shape drifts from the real one and
+      // stops being evidence about what the parser will actually meet.
+      outcomeReason:
+        validatedReview === null
+          ? reviewTimeoutExplanation(TIMEOUT_MINUTES)
+          : undefined,
       reviewOutputChars: validatedReview === null ? 0 : 12,
       runIdentity: {
         workflowRunId: 101,

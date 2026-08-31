@@ -17,7 +17,23 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm install
+        # pnpm, not npm, because the "Verify checked-in dist" step below cannot
+        # work otherwise. ncc bakes node_modules paths and webpack chunk ids
+        # into the bundle, and pnpm's isolated layout
+        # (node_modules/.pnpm/@google+jules-sdk@0.2.0/...) is not npm's flat one
+        # (node_modules/@google/jules-sdk/...). The tree's dist is built by the
+        # pre-commit hook, which runs `pnpm build`, so a bundle rebuilt here
+        # under npm differed on every line that names a module — the diff was
+        # ~27k lines and had nothing to do with the change under review.
+        #
+        # It had been red on every pull request since at least 2026-08-26,
+        # including maxi-config-sync branches that touch no source at all. A
+        # gate that cannot pass is not a gate; it just trains people to merge
+        # past it. Same package manager and the same lockfile, or this step
+        # verifies nothing.
+        run: |
+          npm install -g pnpm@10
+          pnpm install --frozen-lockfile
       - name: Run review-outcome regression tests
         run: npm test -- tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts tests/index.test.ts
       - name: Prettier check changed files

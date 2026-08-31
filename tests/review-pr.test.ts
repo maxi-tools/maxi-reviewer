@@ -8,6 +8,8 @@ import * as github from "@actions/github";
 import {
   buildArtifactCommentContent,
   fetchPullRequestContext,
+  reviewTimeoutExplanation,
+  reviewTimeoutStatus,
   runAnalyzers,
   runReviewPr,
   uploadReviewArtifact,
@@ -473,7 +475,7 @@ describe("runReviewPr orchestration", () => {
       "head-sha",
       "",
       "failure",
-      "Review timed out; see harvested artifact"
+      "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
     );
     expect(deps.submitReview).not.toHaveBeenCalled();
   });
@@ -581,6 +583,11 @@ describe("runReviewPr orchestration", () => {
       validatedReview: null,
       outcomeSchema: "maxi.review.v1.review-outcome",
       outcome: "TIMED_OUT_NO_CONTENT",
+      // A harvested timeout is unreadable without the budget it was judged
+      // against, and "timed out" alone reads as a verdict on the code.
+      timeoutMinutes: 30,
+      outcomeReason:
+        "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds.",
       reviewOutputChars: 0,
       runIdentity: {
         workflowRunId: 101,
@@ -611,14 +618,57 @@ describe("runReviewPr orchestration", () => {
       "head-sha",
       "",
       "failure",
-      "Review timed out; see harvested artifact"
+      "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
     );
     expect(core.warning).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
+      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds. Recorded a harvestable review artifact."
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes."
+      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds."
     );
+  });
+});
+
+describe("review timeout wording", () => {
+  // The budget has already moved 30 -> 10 -> 15. A minute count written as a
+  // literal on any of these surfaces would have been wrong twice over, on the
+  // one line a blocked author actually reads.
+  it.each([10, 15, 30, 45])(
+    "states the configured %i-minute budget everywhere it appears",
+    (minutes) => {
+      const status = reviewTimeoutStatus(minutes);
+      const explanation = reviewTimeoutExplanation(minutes);
+
+      expect(status).toContain(`${minutes} min`);
+      expect(explanation).toContain(`within ${minutes} minutes`);
+      expect(explanation).toContain(`${minutes}-minute budget`);
+
+      // And no other budget survives from a copied literal.
+      for (const stale of [10, 15, 30, 45].filter((m) => m !== minutes)) {
+        expect(status).not.toContain(String(stale));
+        expect(explanation).not.toContain(String(stale));
+      }
+    }
+  );
+
+  it("says no review exists, that this is not a finding, and that re-running helps", () => {
+    const status = reviewTimeoutStatus(15);
+    expect(status).toContain("No review");
+    expect(status).toContain("not a code finding");
+    expect(status).toContain("re-runs often pass");
+
+    const explanation = reviewTimeoutExplanation(15);
+    expect(explanation).toContain("no review was produced");
+    expect(explanation).toContain("not a verdict on the code");
+    expect(explanation).toContain("re-running this job often succeeds");
+  });
+
+  it("keeps the status line inside GitHub's 140-character limit", () => {
+    // Silent truncation past 140 would eat the tail of the sentence — which is
+    // where "re-runs often pass", the only actionable part, lives.
+    for (const minutes of [1, 15, 1440, 35791]) {
+      expect(reviewTimeoutStatus(minutes).length).toBeLessThanOrEqual(140);
+    }
   });
 });
 

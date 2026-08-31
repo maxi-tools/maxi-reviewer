@@ -56,7 +56,7 @@ jobs:
         run: git diff --exit-code -- dist
       - name: Upload generated dist
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: issue-17-generated-output
           path: |

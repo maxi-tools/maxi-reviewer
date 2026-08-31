@@ -357,20 +357,22 @@ jobs:
     # single line. Same-repository PRs only (the `if` above), so this is org
     # code on the org's own fleet, not fork code.
     runs-on: [self-hosted, Linux, X64]
-    # Must exceed the step's 55, or the job cap fires first and the step bound
-    # — the actual runner-release watchdog — can never take effect. README:
-    # "use a step timeout-minutes of at least 55 and a job timeout above that."
+    # Must exceed the reviewer step's 40, or the job cap fires first and the
+    # step bound — the actual runner-release watchdog — can never take effect.
+    # README: "use a step timeout-minutes of at least [hard deadline + cleanup
+    # headroom] and a job timeout above that."
     #
-    # 70, not 65, because this cap covers the WHOLE job, and everything ahead of
-    # the reviewer step here is network-bound: two app-token mints, the
-    # maxi-lint findings artifact download, the rules fetch, the per-language
-    # rule selection, the PR-head checkout, and the built-in rules fetch and
+    # 70 because this cap covers the WHOLE job, and everything ahead of the
+    # reviewer step here is network-bound: two app-token mints, the maxi-lint
+    # findings artifact download, the rules fetch, the per-language rule
+    # selection, the PR-head checkout, and the built-in rules fetch and
     # staging. (The pinned maxi-lint cargo install is NOT in this job — it runs
-    # in lint-gate, under its own 10-minute cap.) At 60 only five minutes covers
-    # all of that before the cap starts eating the reviewer's own budget, and a
-    # job cancellation kills the action mid-run, skipping exactly the graceful
-    # status cleanup the 55 exists to preserve. 70 leaves 15 minutes of setup
-    # headroom above the step bound and still releases the runner.
+    # in lint-gate, under its own 10-minute cap.) A job cancellation kills the
+    # action mid-run, skipping exactly the graceful status cleanup the step
+    # bound exists to preserve, so this cap must never be the one that fires.
+    # 70 leaves 30 minutes of setup headroom above the 40-minute step bound,
+    # and bounds the job far below GitHub's 6-hour default, which is what would
+    # otherwise hold the runner if both inner bounds failed to fire.
     timeout-minutes: 70
     permissions:
       pull-requests: write
@@ -581,32 +583,31 @@ jobs:
         # ~37% of invocations used to hang with no step output and hold a scarce
         # self-hosted runner until the job timeout (maxi-reviewer#53).
         #
-        # 55, not 35. The action enforces its own hard deadline in-process at
-        # `hard_timeout_minutes`, which defaults to `timeout_minutes + 20` — so
-        # 50 with the 30-minute Jules budget set below. maxi-reviewer's README
-        # requires the step bound to sit ABOVE that, at 55 or more, plus cleanup
-        # headroom: a blocked Node event loop can stop the in-process timers
-        # firing, which is exactly why this outer bound is the real
-        # runner-release watchdog. A 35-minute bound fires FIRST and kills a
-        # review still legitimately inside its own deadline, defeating the
-        # graceful status cleanup this is meant to preserve.
-        # 10, not 30, and 35 rather than 55 above it. MEASURED on maxi-nix,
-        # the last seven completed runs of this workflow: 30.7, 30.8, 30.8,
-        # 41.1, 50.3, 50.3 and 59.0 minutes -- and THREE OF THE SEVEN produced
-        # no verdict at all. Those three are the 30-minute cluster: they spent
-        # the whole budget and returned nothing, then set `jules/review` red
-        # for having failed to work.
+        # 40, derived — do not tune it on its own. Two regimes have to agree
+        # on this number, and 40 is the value correct in both.
         #
-        # A review that has produced no agent message in ten minutes is not
-        # about to. Cutting the budget turns the common bad case from half an
-        # hour of dead wall-clock into ten minutes, and the worst case from 55
-        # to 35, on a gate that every push to every PR in ~90 repos waits for.
+        # The arithmetic maxi-reviewer's README specifies: the action enforces
+        # a hard deadline in-process at `hard_timeout_minutes`, defaulting to
+        # `timeout_minutes + 20`, and the step bound must sit ABOVE that plus a
+        # few minutes of cleanup headroom. 15 + 20 = 35, + 5 = 40 — the same
+        # five-minute margin the documented 30-minute default gets (50, step
+        # 55). A bound AT 35 fires at the same instant as the in-process
+        # deadline and can kill a review still legitimately inside it.
         #
-        # The step bound still has to sit above the action's in-process hard
-        # deadline (timeout_minutes + 20 = 30), which is why it is 35 and not
-        # tighter: a blocked Node event loop can stop the in-process timers
-        # firing, so the outer bound is the real runner-release watchdog.
-        timeout-minutes: 35
+        # But the PINNED build does not implement any of that, and the comment
+        # this replaced asserted it anyway. ae2700a (2026-08-19) predates
+        # src/hard-deadline.ts: `hard_timeout_minutes` is absent from its
+        # action.yml inputs and its dist contains no deadline timer. Checked,
+        # not assumed. So on the fleet today this is not the outer of two
+        # watchdogs — it is the ONLY thing that releases the runner, and it has
+        # to cover setup, the full 15-minute poll, and review submission. 40
+        # leaves 25 minutes for everything that is not polling.
+        #
+        # Hence 40 either way: sole watchdog now, outer bound above a 35-minute
+        # in-process deadline once the pin advances, so the pin can move
+        # without this number having to move with it. Whenever `timeout_minutes`
+        # moves, this does: timeout_minutes + 25.
+        timeout-minutes: 40
         uses: maxi-tools/maxi-reviewer@ae2700a9171b4204bbd5416d17e90910ace4c128
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
@@ -617,7 +618,38 @@ jobs:
             ${{ steps.churn.outputs.text }}
 
             ${{ steps.maxilint.outputs.text }}
-          timeout_minutes: "10"
+          # 15 — twice measured, from both directions.
+          #
+          # Down from 30: MEASURED on maxi-nix, the last seven completed runs
+          # under the 30-minute budget were 30.7, 30.8, 30.8, 41.1, 50.3, 50.3
+          # and 59.0 minutes -- and THREE OF THE SEVEN produced no verdict at
+          # all. Those three are the 30-minute cluster: they spent the whole
+          # budget and returned nothing, then set `jules/review` red for having
+          # failed to work. On a gate every push to every PR in ~90 repos waits
+          # for, that is half an hour of dead wall-clock per bad run.
+          #
+          # Back up from 10: the premise behind 10 was "a review that has
+          # produced no agent message in ten minutes is not about to". MEASURED
+          # 2026-08-30, that is false. `pollForReview` in maxi-reviewer's
+          # src/jules.ts sleeps 20s between attempts, so 10 minutes is ~30
+          # attempts -- and two real reviews landed that day on attempt 26
+          # (~8.7 min) and attempt 29 (~9.7 min), inside the budget by seconds.
+          # maxi-reviewer's own action.yml warns that non-trivial PRs often
+          # take 15-25 minutes. 15 keeps half the saving over 30 while putting
+          # the observed successes comfortably inside the budget instead of on
+          # the cliff edge.
+          #
+          # NOT per-repository: that theory came from bootstrap and maxi-kvm
+          # being absent from Jules' connected Codebases list, and one run
+          # killed it -- bootstrap#68, still absent, came back `verdict:
+          # approve`. One observation rules the theory out without explaining
+          # the variance. Response latency looks independent of anything we
+          # send, which leaves this number as the only lever we control.
+          #
+          # Changing this number changes `timeout-minutes` on this step: the
+          # in-process hard deadline is timeout_minutes + 20 and the step bound
+          # must clear it by ~5 minutes of cleanup headroom.
+          timeout_minutes: "15"
           fail_on: "blocking"
           status_context: jules/review
           analyzer_mode: "off"

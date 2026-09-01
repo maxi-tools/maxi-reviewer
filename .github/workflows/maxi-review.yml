@@ -551,7 +551,7 @@ jobs:
           # runs the action that consumes them. Split them and the reviewer
           # grades with one revision's code against another revision's rules —
           # a mismatch nothing else in this workflow would surface.
-          ref: ae2700a9171b4204bbd5416d17e90910ace4c128
+          ref: f772893df470bf0749e32ba6e916fad1166d3d63
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -573,42 +573,55 @@ jobs:
       # Evaluating a newer head is a deliberate follow-up, not a drive-by bump
       # inside the PR whose job is to stop unreviewed drift.
       #
-      # ae2700a is the previous pin, 6fe937d (2026-07-22), plus exactly one
-      # commit: the fix that stops an artifact-storage outage from failing a
-      # completed review (maxi-reviewer ae2700a). It was cut FROM 6fe937d and
-      # then merged to main precisely so this pin could move by that one commit
-      # rather than by the 41 of unrelated drift that separate 6fe937d from
-      # maxi-reviewer's head.
+      # f772893 is maxi-reviewer#92's merge commit, and it is main's head as
+      # this moves -- a deliberate exception to "ancestor, not head", argued
+      # rather than assumed. Six commits touch src/ or action.yml since the
+      # previous pin ae2700a (2026-08-19): the in-process hard deadline
+      # (862f1aa), the empty-review failure and explicit review outcomes
+      # (ebdb6b4), the pending-status heartbeat and its two follow-ups
+      # (04aa040, a2729c5, b4f67fe), and the timeout message this pin exists to
+      # ship (a80aec7). The other 92 are workflow syncs and dependabot bumps
+      # that never reach the action.
+      #
+      # The dogfood evidence the old wording asked for did not exist before
+      # now. maxi-reviewer's "Verify checked-in dist" gate had been red on
+      # every PR since at least 2026-08-26: it installed with npm against a
+      # pnpm lockfile, so ncc rebuilt ~27k lines of different module
+      # bookkeeping and the diff never had anything to do with the change under
+      # review. 9b7b57f, inside this range, fixes it. f772893 is the first
+      # commit whose dist has actually been verified against its own source.
+      #
+      # Advancing this also activates `hard_timeout_minutes`, a new input
+      # defaulting to timeout_minutes + 20 = 35. Nothing in this file moves for
+      # it: the step bound below is already 40, picked so this pin could
+      # advance without dragging the timeout arithmetic behind it.
       - name: Run maxi-reviewer
         # ~37% of invocations used to hang with no step output and hold a scarce
         # self-hosted runner until the job timeout (maxi-reviewer#53).
         #
-        # 40, derived — do not tune it on its own. Two regimes have to agree
-        # on this number, and 40 is the value correct in both.
+        # 40, derived — do not tune it on its own. The action enforces a hard
+        # deadline in-process at `hard_timeout_minutes`, defaulting to
+        # `timeout_minutes + 20`, and maxi-reviewer's README requires this step
+        # bound to sit ABOVE that plus a few minutes of cleanup headroom.
+        # 15 + 20 = 35, + 5 = 40 — the same five-minute margin the documented
+        # 30-minute default gets (50, step 55). A bound AT 35 fires at the same
+        # instant as the in-process deadline and can kill a review still
+        # legitimately inside it, defeating the graceful status cleanup this
+        # exists to preserve. A blocked Node event loop can stop the in-process
+        # timers firing, which is why this outer bound is the real
+        # runner-release watchdog.
         #
-        # The arithmetic maxi-reviewer's README specifies: the action enforces
-        # a hard deadline in-process at `hard_timeout_minutes`, defaulting to
-        # `timeout_minutes + 20`, and the step bound must sit ABOVE that plus a
-        # few minutes of cleanup headroom. 15 + 20 = 35, + 5 = 40 — the same
-        # five-minute margin the documented 30-minute default gets (50, step
-        # 55). A bound AT 35 fires at the same instant as the in-process
-        # deadline and can kill a review still legitimately inside it.
-        #
-        # But the PINNED build does not implement any of that, and the comment
-        # this replaced asserted it anyway. ae2700a (2026-08-19) predates
-        # src/hard-deadline.ts: `hard_timeout_minutes` is absent from its
-        # action.yml inputs and its dist contains no deadline timer. Checked,
-        # not assumed. So on the fleet today this is not the outer of two
-        # watchdogs — it is the ONLY thing that releases the runner, and it has
-        # to cover setup, the full 15-minute poll, and review submission. 40
-        # leaves 25 minutes for everything that is not polling.
-        #
-        # Hence 40 either way: sole watchdog now, outer bound above a 35-minute
-        # in-process deadline once the pin advances, so the pin can move
-        # without this number having to move with it. Whenever `timeout_minutes`
-        # moves, this does: timeout_minutes + 25.
+        # That arithmetic only became true of the FLEET when the pin advanced
+        # to f772893 above. The previous pin, ae2700a, predated
+        # src/hard-deadline.ts entirely — no `hard_timeout_minutes` input, no
+        # deadline timer in its dist — so this bound was the only thing
+        # releasing the runner, and it had to cover setup plus the whole poll
+        # rather than merely outlive a timer at 35. 40 was chosen to be correct
+        # under both regimes precisely so the pin could move without this
+        # number moving with it. Whenever `timeout_minutes` moves, this does:
+        # timeout_minutes + 25.
         timeout-minutes: 40
-        uses: maxi-tools/maxi-reviewer@ae2700a9171b4204bbd5416d17e90910ace4c128
+        uses: maxi-tools/maxi-reviewer@f772893df470bf0749e32ba6e916fad1166d3d63
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

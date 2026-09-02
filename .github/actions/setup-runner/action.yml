@@ -1,0 +1,1100 @@
+# maxi-config-owned self-hosted runner setup action.
+#
+# Distributed to every org repo by scripts/sync-maxi-review.sh --manifest
+# runner-setup, which installs it at .github/actions/setup-runner/action.yml.
+# EDIT IT HERE, not in the target repo: the distributor refuses to overwrite a
+# copy whose marker line above has been removed, and any other local edit is
+# reverted on the next fan-out without comment.
+name: 'Setup Self-Hosted Runner'
+description: |
+  Bootstrap a self-hosted runner with all tooling needed for maxi-tools CI.
+  Idempotent — safe to run repeatedly, skips already-installed tools.
+  Detects available accelerators (GPU, NPU, ANE) and installs matching
+  runtimes so benchmarks produce the richest possible comparison data.
+  Works on macOS (arm64/x64), Linux (x64/arm64), and Windows (x64).
+
+inputs:
+  rust:
+    description: 'Install Rust toolchain'
+    default: 'true'
+  rust-version:
+    description: 'Rust toolchain version (stable, nightly, or specific like 1.93.0)'
+    default: 'stable'
+  rust-components:
+    description: 'Comma-separated Rust components (clippy,rustfmt)'
+    default: 'clippy,rustfmt'
+  cargo-tools:
+    description: 'Comma-separated cargo tools to install (nextest,audit,deny)'
+    default: ''
+  onnxruntime:
+    description: 'Install ONNX Runtime (auto-detects best EP for available hardware)'
+    default: 'false'
+  onnxruntime-version:
+    description: 'ONNX Runtime version'
+    default: '1.23.0'
+  accelerators:
+    description: 'Install accelerator runtimes (cuda, rocm, openvino, directml, coreml, all, auto)'
+    default: 'auto'
+  python:
+    description: 'Ensure Python 3 is available'
+    default: 'false'
+  python-venv:
+    description: 'Provision Python 3.11 in a per-job venv and put it first on PATH (tomllib; the auto-support harness). Uses nix on NixOS runners.'
+    default: 'false'
+  yt-dlp:
+    description: 'Install yt-dlp into the python-venv (auto-support transcript step); implies python-venv'
+    default: 'false'
+  node:
+    description: 'Ensure Node.js is available'
+    default: 'false'
+  system-deps:
+    description: 'Install system-level build deps (libasound, dbus, etc.)'
+    default: 'false'
+
+outputs:
+  ort-dylib-path:
+    description: 'Path to ONNX Runtime dylib (if installed)'
+    value: ${{ steps.ort-unix.outputs.dylib_path || steps.ort-win.outputs.dylib_path }}
+  platform:
+    description: 'Detected platform (darwin-arm64, linux-x64, windows-x64, etc.)'
+    value: ${{ steps.detect.outputs.platform }}
+  has-cuda:
+    description: 'Whether CUDA GPU was detected'
+    value: ${{ steps.hw.outputs.has_cuda }}
+  has-rocm:
+    description: 'Whether AMD GPU with ROCm support was detected'
+    value: ${{ steps.hw.outputs.has_rocm }}
+  has-amd-gpu:
+    description: 'Whether an AMD GPU was detected regardless of ROCm readiness'
+    value: ${{ steps.hw.outputs.has_amd_gpu }}
+  has-npu-intel:
+    description: 'Whether an Intel NPU/VPU was detected'
+    value: ${{ steps.hw.outputs.has_npu_intel }}
+  has-npu-amd:
+    description: 'Whether an AMD XDNA NPU was detected'
+    value: ${{ steps.hw.outputs.has_npu_amd }}
+  has-ane:
+    description: 'Whether Apple Neural Engine is available'
+    value: ${{ steps.hw.outputs.has_ane }}
+  has-directml:
+    description: 'Whether DirectML is available (Windows GPU)'
+    value: ${{ steps.hw.outputs.has_directml }}
+  accelerator-summary:
+    description: 'Human-readable summary of detected accelerators'
+    value: ${{ steps.hw.outputs.summary }}
+
+runs:
+  using: "composite"
+  steps:
+    # Self-heal the osxkeychain checkout deadlock on fresh self-hosted macOS runners:
+    # an empty global credential.helper resets git's helper list, so the locked login
+    # keychain is never consulted. Runs before GIT_CONFIG_GLOBAL is overridden, so it
+    # persists in ~/.gitconfig and protects every later job/workflow on this runner.
+    # Pairs with ci.yml's GIT_CONFIG_NOSYSTEM, which guards the first checkout that
+    # runs before this step ever does.
+    - name: Disable git credential helper (macOS keychain deadlock guard)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: git config --global credential.helper ""
+
+    # ── Compile cache ───────────────────────────────────────────────────
+    # There is exactly ONE sccache server per machine, and it takes SCCACHE_DIR
+    # and SCCACHE_CACHE_SIZE from whichever job happens to START it. Every later
+    # client on that box reaches the already-running server, and its own
+    # SCCACHE_DIR is ignored. These values are therefore a fleet-wide contract
+    # between repos, not a per-repo preference: they only do anything if every
+    # workflow on the runner agrees on them.
+    #
+    # Until this step existed maxi-ml set none of them, so its jobs ran sccache
+    # on the DEFAULT dir at the DEFAULT 10 GiB cap. Measured 2026-08-11, that
+    # pool sat at exactly 10G on maximini24pro, maxibookpro26 and maxibookair24
+    # -- pinned at the ceiling, evicting on every write -- while maxi-core's
+    # separately-configured pool held 62-75G beside it on the same disks.
+    #
+    # Keep the path and the formula byte-identical to
+    # maxi-core/.github/actions/size-sccache. If the two drift, the repos stop
+    # sharing and start evicting each other.
+    - name: Configure sccache
+      if: runner.environment == 'self-hosted' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        # `set +e` deliberately: this must degrade rather than fail a build over
+        # a cache-sizing heuristic. Composite bash steps get `-e -o pipefail`,
+        # under which a df that cannot read the path kills the step before any
+        # fallback runs.
+        set +e
+        set -uo pipefail
+
+        # The MACHINE decides where its cache lives; the repo only fills
+        # gaps. Honour whatever the runner service already set: maxibookpro24
+        # pins its pool to a Thunderbolt volume in the runner .env precisely
+        # because its internal disk is the wrong place for it, and hardcoding
+        # $HOME here would silently undo that.
+        dir="${SCCACHE_DIR:-$HOME/sccache}"
+        mkdir -p "$dir" 2>/dev/null
+        if [ ! -d "$dir" ] || [ ! -w "$dir" ]; then
+          # Same doctrine as the Rust-home fallback in `Install Rust` below:
+          # honour the machine's choice unless it is impossible. An SCCACHE_DIR
+          # on an unmounted volume does not degrade to a cold build — the
+          # sccache server fails to start and takes every compile with it — so
+          # an unusable dir is replaced, loudly, for this job only.
+          # (codex, PR #1911)
+          echo "::warning title=Unusable SCCACHE_DIR::SCCACHE_DIR=$dir is not usable on $(hostname -s); falling back to $HOME/sccache for this job"
+          dir="$HOME/sccache"
+          mkdir -p "$dir"
+          sccache_dir_fell_back=1
+        fi
+
+        # Probe with the fleet's tool prefixes on PATH. This step deliberately
+        # runs before `Setup PATH`, and a runner service whose PATH omits
+        # /opt/homebrew/bin would otherwise fail to find an ALREADY-INSTALLED
+        # sccache, silently disable the wrapper, and leave it disabled for the
+        # rest of the job. Self-contained rather than dependent on step order.
+        # (codex + cubic, PR #1893)
+        export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.cargo/bin:$PATH"
+
+        # Selecting a cache dir does nothing unless something routes through
+        # sccache. maxi-ml's `.cargo/config.toml` does NOT pin `rustc-wrapper`
+        # (maxi-core's does), and clippy.yml explicitly sets RUSTC_WRAPPER="",
+        # so before this step maxi-ml CI compiled with no compile cache at all
+        # -- and with CARGO_TARGET_DIR under RUNNER_TEMP, which the runner wipes
+        # per job, that means a cold build every run. Configuring SCCACHE_DIR
+        # while nothing invokes sccache would have logged a cache that did not
+        # exist. (codex + cubic, PR #1893)
+        #
+        # Install before selecting the wrapper: maxi-core#3463 is the failure
+        # mode where the wrapper is chosen but the binary is absent, and cargo
+        # then dies in `cargo metadata` before doing any work.
+        if ! command -v sccache >/dev/null 2>&1; then
+          if command -v brew >/dev/null 2>&1; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install --quiet sccache 2>/dev/null
+          fi
+        fi
+        if command -v sccache >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          if [ "${sccache_dir_fell_back:-0}" = "1" ]; then
+            # The ONE server per machine (contract above) took ITS cache dir
+            # at daemon startup; exporting a new SCCACHE_DIR does not repoint
+            # a live daemon that started against the now-unusable volume —
+            # later clients connect to it and their SCCACHE_DIR is ignored.
+            # Stop it so this job's first compile starts a fresh server
+            # against the fallback dir. Any concurrent job on this runner was
+            # already broken by the dead cache dir; a restarted server is
+            # strictly better for it too. (codex, PR #1911)
+            sccache --stop-server >/dev/null 2>&1 || true
+          fi
+        else
+          # Fail open, loudly. A missing binary must not select the wrapper.
+          echo "::warning::sccache not installed and could not be installed; compiling without a compile cache"
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+        fi
+
+        cap="${SCCACHE_CACHE_SIZE:-}"
+        if [ -z "$cap" ]; then
+          avail="$(df -Pk "$dir" 2>/dev/null | awk 'NR==2 { printf "%d", $4 / 1024 / 1024 }' || true)"
+          case "${avail:-}" in
+            "" | *[!0-9]*) avail=0 ;;
+          esac
+
+          # A quarter of free space. The floor keeps a tight runner caching
+          # something; the avail/2 clamp stops a "cap" larger than the volume,
+          # which is not a cap at all; the ceiling stops a multi-terabyte box
+          # declaring an absurd bound.
+          n=$(( avail / 4 ))
+          [ "$n" -lt 20 ] && n=20
+          [ "$n" -gt $(( avail / 2 )) ] && n=$(( avail / 2 ))
+          [ "$n" -gt 400 ] && n=400
+          [ "$n" -ge 1 ] && cap="${n}G"
+        fi
+
+        {
+          echo "SCCACHE_DIR=$dir"
+          echo "SCCACHE_GHA_ENABLED=false"
+          # Incremental artifacts are never cacheable by sccache and they change
+          # the per-crate hash, so leaving it on costs hits for nothing in CI.
+          echo "CARGO_INCREMENTAL=0"
+        } >> "$GITHUB_ENV"
+
+        if [ -n "$cap" ]; then
+          echo "SCCACHE_CACHE_SIZE=$cap" >> "$GITHUB_ENV"
+          echo "sccache: $dir, cap $cap"
+        else
+          echo "::warning::sccache sizing: could not read free space for $dir; leaving the cap at its default"
+        fi
+
+    # ── Platform detection ──────────────────────────────────────────────
+    - name: Detect platform
+      id: detect
+      shell: bash
+      run: |
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64|amd64) ARCH="x64" ;;
+          aarch64)      ARCH="arm64" ;;
+        esac
+        echo "platform=${OS}-${ARCH}" >> $GITHUB_OUTPUT
+        echo "os=$OS" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "::notice::Runner platform: ${OS}-${ARCH}"
+
+    # ── Hardware / accelerator detection ────────────────────────────────
+    - name: Detect accelerators
+      id: hw
+      shell: bash
+      run: |
+        export PATH="$HOME/.cargo/bin:/usr/local/cuda/bin:/opt/rocm/bin:$PATH"
+        HAS_CUDA=false
+        HAS_AMD_GPU=false
+        HAS_ROCM=false
+        HAS_NPU_INTEL=false
+        HAS_NPU_AMD=false
+        HAS_ANE=false
+        HAS_DIRECTML=false
+        SUMMARY=""
+
+        OS="${{ steps.detect.outputs.os }}"
+
+        # --- NVIDIA CUDA ---
+        # Every probe in this step is ADVISORY: it names hardware for the
+        # summary and routes the optional installs further down. None of it may
+        # fail the step. A composite action's `shell: bash` is
+        # `bash --noprofile --norc -eo pipefail {0}`, so a bare
+        # `X=$(... | grep ...)` whose grep matches nothing takes that pipeline's
+        # exit status, and `-e` kills the whole action -- silently, because a
+        # grep that matches nothing also prints nothing. Hence `|| true` on
+        # every capture below: absent hardware must read as an empty string.
+        if command -v nvidia-smi &>/dev/null; then
+          GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || true)"
+          if [ -n "$GPU_NAME" ]; then
+            HAS_CUDA=true
+            CUDA_VER="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)"
+            SUMMARY="${SUMMARY}CUDA: ${GPU_NAME} (driver ${CUDA_VER:-unknown}); "
+          fi
+        fi
+
+        # --- AMD ROCm (Linux) ---
+        # ONE regex for both the guard and the extraction, deliberately. They
+        # used to differ: `AMD.*Radeon` decided an AMD GPU was present, and
+        # `AMD.*VGA\|AMD.*Display` tried to name it. The second can never match
+        # lspci, which prints the device CLASS before the vendor --
+        #
+        #   c5:00.0 VGA compatible controller: Advanced Micro Devices, Inc.
+        #   [AMD/ATI] Strix Halo [Radeon 8060S Graphics]
+        #
+        # -- so "VGA" precedes "AMD" and `AMD.*VGA` never matches. On a real AMD
+        # box the guard therefore passed, the name grep found nothing, exited 1,
+        # and took the step with it: exit 1 at 35ms with no output, on EVERY job
+        # that landed on maxicoconut-1..4 (gfx1151). Sharing one pattern is what
+        # keeps the guard and the extraction from disagreeing again.
+        if [ "$OS" = "linux" ]; then
+          amd_pci_re='(VGA compatible controller|Display controller|3D controller).*(Advanced Micro Devices|AMD/ATI)'
+          if command -v rocminfo &>/dev/null; then
+            AMD_GPU="$(rocminfo 2>/dev/null | grep -i "marketing name" | head -1 | sed 's/.*: *//' || true)"
+            if [ -n "$AMD_GPU" ]; then
+              HAS_ROCM=true
+              SUMMARY="${SUMMARY}ROCm: ${AMD_GPU}; "
+            fi
+          fi
+          # Not an `elif`. A node can ship a `rocminfo` that runs but names no
+          # agent -- no /dev/kfd in the runner service's user context is the
+          # common cause -- and that node still has an AMD GPU worth reporting
+          # and installing for. Under the old `elif` those nodes read "CPU only"
+          # because the lspci fallback was unreachable whenever rocminfo existed.
+          if [ "$HAS_ROCM" != true ] && lspci 2>/dev/null | grep -qiE "$amd_pci_re"; then
+            # GPU present but ROCm not usable — we'll install it
+            HAS_AMD_GPU=true
+            AMD_GPU="$(lspci 2>/dev/null | grep -iE "$amd_pci_re" | head -1 | sed 's/.*: //' || true)"
+            SUMMARY="${SUMMARY}AMD GPU (needs ROCm): ${AMD_GPU:-unknown AMD device}; "
+          fi
+        fi
+
+        # --- DirectML (Windows) ---
+        # Only advertise DirectML once we have a concrete Windows GPU device.
+        if command -v powershell.exe &>/dev/null 2>/dev/null; then
+          DX_GPU="$(powershell.exe -NoProfile -Command "(Get-CimInstance Win32_VideoController).Name" 2>/dev/null | head -1 | tr -d '\r' || true)"
+          if [ -n "$DX_GPU" ]; then
+            HAS_DIRECTML=true
+            SUMMARY="${SUMMARY}DirectML: ${DX_GPU}; "
+          fi
+        fi
+
+        # --- Apple Neural Engine ---
+        if [ "$OS" = "darwin" ]; then
+          # All Apple Silicon Macs have ANE
+          # Guarded like every other probe: `sysctl -n` on a key the kernel
+          # does not publish exits non-zero, and an unguarded assignment would
+          # take that status straight into `set -e`.
+          CHIP="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
+          if echo "$CHIP" | grep -qi "Apple"; then
+            HAS_ANE=true
+            SUMMARY="${SUMMARY}ANE: ${CHIP}; "
+          fi
+        fi
+
+        # --- NPU detection (split Intel vs AMD for install routing) ---
+        # Same shape as the AMD GPU probe above, for the same reason: one
+        # variable per pattern, used by both the guard and the extraction. These
+        # two happened to agree, which is luck rather than structure -- they were
+        # spelled twice each, and that is precisely how the GPU pair drifted into
+        # the outage this file was rewritten for.
+        if [ "$OS" = "linux" ]; then
+          # Intel Meteor Lake / Arrow Lake NPU (VPU)
+          intel_npu_re='Intel.*VPU|Intel.*NPU|Intel.*AI Boost'
+          if lspci 2>/dev/null | grep -qiE "$intel_npu_re"; then
+            HAS_NPU_INTEL=true
+            NPU_NAME="$(lspci 2>/dev/null | grep -iE "$intel_npu_re" | head -1 | sed 's/.*: *//' || true)"
+            SUMMARY="${SUMMARY}Intel NPU: ${NPU_NAME:-unknown Intel NPU}; "
+          fi
+          # AMD XDNA NPU (Ryzen AI)
+          amd_npu_re='AMD.*IPU|AMD.*XDNA|AMD.*AIE'
+          if lspci 2>/dev/null | grep -qiE "$amd_npu_re"; then
+            HAS_NPU_AMD=true
+            NPU_NAME="$(lspci 2>/dev/null | grep -iE "$amd_npu_re" | head -1 | sed 's/.*: *//' || true)"
+            SUMMARY="${SUMMARY}AMD NPU: ${NPU_NAME:-unknown AMD NPU}; "
+          fi
+        fi
+        # Windows NPU detection (split by vendor string)
+        if command -v powershell.exe &>/dev/null 2>/dev/null; then
+          NPU_WIN="$(powershell.exe -NoProfile -Command "Get-PnpDevice -Class 'System' -Status OK 2>\$null | Where-Object { \$_.FriendlyName -match 'NPU|Neural|XDNA|IPU|VPU|AI' } | Select-Object -First 1 -ExpandProperty FriendlyName" 2>/dev/null | tr -d '\r' || true)"
+          if [ -n "$NPU_WIN" ]; then
+            if echo "$NPU_WIN" | grep -qi "AMD\|XDNA"; then
+              HAS_NPU_AMD=true
+            else
+              HAS_NPU_INTEL=true
+            fi
+            SUMMARY="${SUMMARY}NPU: ${NPU_WIN}; "
+          fi
+        fi
+
+        # Default summary
+        if [ -z "$SUMMARY" ]; then
+          SUMMARY="CPU only"
+        fi
+
+        # A newline reaching $GITHUB_OUTPUT makes the runner reject the whole
+        # file ("Invalid format") and fail the step for a reason that has
+        # nothing to do with the hardware it was probing. Every capture above is
+        # `head -1`, so this should be a no-op; it is here because the cost of
+        # being wrong is one more silent step failure and the cost of the guard
+        # is one pipe.
+        SUMMARY="$(printf '%s' "$SUMMARY" | tr -d '\n\r' || true)"
+
+        echo "has_cuda=$HAS_CUDA" >> $GITHUB_OUTPUT
+        echo "has_amd_gpu=$HAS_AMD_GPU" >> $GITHUB_OUTPUT
+        echo "has_rocm=$HAS_ROCM" >> $GITHUB_OUTPUT
+        echo "has_npu_intel=$HAS_NPU_INTEL" >> $GITHUB_OUTPUT
+        echo "has_npu_amd=$HAS_NPU_AMD" >> $GITHUB_OUTPUT
+        echo "has_ane=$HAS_ANE" >> $GITHUB_OUTPUT
+        echo "has_directml=$HAS_DIRECTML" >> $GITHUB_OUTPUT
+        echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+        echo "::notice::Accelerators: $SUMMARY"
+
+    # ── PATH setup for self-hosted runners ──────────────────────────────
+    - name: Setup PATH
+      shell: bash
+      run: |
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        [ -d "/opt/homebrew/bin" ] && echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+        [ -d "$HOME/.local/bin" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        # CUDA
+        echo "/usr/local/cuda/bin" >> "$GITHUB_PATH"
+        # ROCm
+        echo "/opt/rocm/bin" >> "$GITHUB_PATH"
+
+    # ── System dependencies ─────────────────────────────────────────────
+    - name: Install system dependencies (Linux)
+      if: inputs.system-deps == 'true' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        if command -v apt-get &>/dev/null; then
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential pkg-config cmake \
+            libasound2-dev libudev-dev libdbus-1-dev \
+            libxcb1-dev libxcb-shm0-dev libxcb-randr0-dev \
+            libxdo-dev libssl-dev 2>/dev/null || true
+        fi
+
+    - name: Install system dependencies (macOS)
+      if: inputs.system-deps == 'true' && runner.os == 'macOS'
+      shell: bash
+      run: |
+        BREW=""
+        if command -v brew &>/dev/null; then BREW=brew
+        elif [ -x /opt/homebrew/bin/brew ]; then BREW=/opt/homebrew/bin/brew
+        elif [ -x /usr/local/bin/brew ]; then BREW=/usr/local/bin/brew
+        fi
+        if [ -n "$BREW" ]; then
+          $BREW install pkg-config cmake 2>/dev/null || true
+        fi
+
+    # ── Apple Developer Toolchain (Xcode, Metal, CoreML) ───────────────
+    - name: Setup Xcode Command Line Tools
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # Xcode CLT is required for: metal shader compiler (xcrun metal),
+        # metallib linker, CoreML compiler, C/C++ toolchain for Rust builds.
+        if ! xcode-select -p &>/dev/null; then
+          echo "Xcode Command Line Tools not found — installing..."
+          # Use softwareupdate for headless install (xcode-select --install opens a GUI dialog)
+          touch /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+          # `|| true` or the else-branch below is unreachable: under pipefail a
+          # `grep -o` that matches nothing makes this assignment exit 1, and -e
+          # ends the step before the fallback it exists for can run.
+          CLT_PKG=$(softwareupdate -l 2>/dev/null | grep -o ".*Command Line Tools.*" | head -1 | sed 's/^[* ]*//' || true)
+          if [ -n "$CLT_PKG" ]; then
+            softwareupdate -i "$CLT_PKG" --verbose 2>/dev/null || true
+          else
+            echo "::warning::Could not find CLT package via softwareupdate — trying xcode-select"
+            xcode-select --install 2>/dev/null || true
+            # Bounded wait (max 5 minutes) to avoid infinite hang in headless CI
+            for i in $(seq 1 60); do
+              xcode-select -p &>/dev/null && break
+              sleep 5
+            done
+          fi
+          rm -f /tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+
+          if ! xcode-select -p &>/dev/null; then
+            echo "::error::Xcode Command Line Tools installation failed. Install manually: xcode-select --install"
+            exit 1
+          fi
+        fi
+        XCODE_PATH=$(xcode-select -p)
+        echo "Xcode tools: $XCODE_PATH"
+
+        # If full Xcode.app is installed, prefer it (has Metal Performance Shaders, GPU tools)
+        if [ -d "/Applications/Xcode.app" ]; then
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer 2>/dev/null || true
+          echo "Switched to full Xcode.app"
+        elif [ -d "/Applications/Xcode-beta.app" ]; then
+          sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer 2>/dev/null || true
+          echo "Switched to Xcode-beta.app"
+        fi
+
+        # Accept Xcode license (required for first use on fresh systems)
+        sudo xcodebuild -license accept 2>/dev/null || true
+
+    - name: Verify Metal shader toolchain
+      if: runner.os == 'macOS'
+      id: metal-tools
+      shell: bash
+      run: |
+        METAL_OK=true
+        METAL_SUMMARY=""
+
+        # Metal shader compiler
+        if xcrun --find metal &>/dev/null; then
+          METAL_VER=$(xcrun metal --version 2>&1 | head -1)
+          METAL_SUMMARY="metal compiler: ${METAL_VER}"
+          echo "Metal compiler: $METAL_VER"
+        else
+          METAL_OK=false
+          echo "::error::xcrun metal not found — Metal shader compilation will fail"
+          echo "  Install Xcode.app (not just CLT) for Metal compiler support"
+        fi
+
+        # Metal linker (metallib)
+        if xcrun --find metallib &>/dev/null; then
+          echo "metallib linker: available"
+        else
+          METAL_OK=false
+          echo "::error::xcrun metallib not found — Metal library linking will fail"
+        fi
+
+        # Metal Performance Shaders framework
+        if [ -d "$(xcrun --show-sdk-path)/System/Library/Frameworks/MetalPerformanceShaders.framework" ] 2>/dev/null; then
+          echo "MetalPerformanceShaders.framework: present"
+        elif [ -d "/System/Library/Frameworks/MetalPerformanceShaders.framework" ]; then
+          echo "MetalPerformanceShaders.framework: present (system)"
+        else
+          echo "::warning::MetalPerformanceShaders.framework not found in SDK"
+        fi
+
+        # Metal feature set — check what the GPU supports
+        METAL_FAMILY=$(system_profiler SPDisplaysDataType 2>/dev/null | grep -Ei "Metal Family|Metal Support" | head -1 | sed 's/.*: *//' || true)
+        if [ -n "$METAL_FAMILY" ]; then
+          echo "GPU Metal family: $METAL_FAMILY"
+          METAL_SUMMARY="${METAL_SUMMARY}; GPU: ${METAL_FAMILY}"
+        fi
+
+        echo "metal_ok=$METAL_OK" >> $GITHUB_OUTPUT
+        echo "metal_summary=$METAL_SUMMARY" >> $GITHUB_OUTPUT
+
+    - name: Verify CoreML toolchain
+      if: runner.os == 'macOS'
+      id: coreml-tools
+      shell: bash
+      run: |
+        COREML_OK=true
+
+        # CoreML compiler (coremlcompiler) — needed for .mlpackage → .mlmodelc
+        if xcrun --find coremlcompiler &>/dev/null; then
+          echo "coremlcompiler: available"
+        else
+          COREML_OK=false
+          echo "::warning::coremlcompiler not found — .mlpackage compilation unavailable"
+          echo "  This requires full Xcode.app installation"
+        fi
+
+        # CoreML.framework
+        SDK_PATH=$(xcrun --show-sdk-path 2>/dev/null || echo "")
+        if [ -d "$SDK_PATH/System/Library/Frameworks/CoreML.framework" ] 2>/dev/null; then
+          echo "CoreML.framework: present in SDK"
+        elif [ -d "/System/Library/Frameworks/CoreML.framework" ]; then
+          echo "CoreML.framework: present (system)"
+        else
+          COREML_OK=false
+          echo "::warning::CoreML.framework not found"
+        fi
+
+        # MLCompute.framework (hardware-accelerated training/inference)
+        if [ -d "/System/Library/Frameworks/MLCompute.framework" ]; then
+          echo "MLCompute.framework: present"
+        fi
+
+        # Check ANE availability via IOKit
+        # `|| true`, not `|| echo "0"`: `grep -c` PRINTS 0 and EXITS 1 when
+        # nothing matches, so the echo appended a second zero and the value
+        # became "0\n0" -- which `[ ... -gt 0 ]` then rejects with "integer
+        # expression expected" on every Mac without an ANE.
+        ANE_DEVICE=$(ioreg -l 2>/dev/null | grep -c "AppleH[0-9]*ANE\|ANECompilerService" || true)
+        if [ "${ANE_DEVICE:-0}" -gt 0 ]; then
+          echo "Apple Neural Engine: detected ($ANE_DEVICE references)"
+        else
+          echo "::warning::ANE not detected via IOKit"
+        fi
+
+        echo "coreml_ok=$COREML_OK" >> $GITHUB_OUTPUT
+
+    # ── Rust toolchain ──────────────────────────────────────────────────
+    - name: Install Rust
+      id: rust-install
+      if: inputs.rust == 'true'
+      shell: bash
+      run: |
+        # Same contract as `Configure sccache` above -- the MACHINE decides where
+        # its caches live and the repo only fills gaps -- but rustup has no
+        # equivalent of that step's `set +e`. A RUSTUP_HOME the runner user
+        # cannot write makes `rustup update stable` exit 1 on "could not create
+        # home directory: ... Permission denied", and the composite step's
+        # `-e -o pipefail` takes the whole job down before a line is compiled.
+        # That is how `Documentation Check` went red on #1911: it landed on
+        # maxibookpro24, whose Thunderbolt volume was not mounted, while passing
+        # on every other Mac that could have picked up the same
+        # `[self-hosted, macOS, ARM64]` job. Which Mac answers is a lottery, so
+        # the lane was red at random.
+        #
+        # Only reached when honouring the machine's choice is impossible: a
+        # location that can be created and written is left exactly as-is.
+        # SCCACHE_DIR gets the same treatment in `Configure sccache` above —
+        # an unusable cache dir does NOT degrade to a cold build (the sccache
+        # server fails to start), so both fall back rather than fail. Warn
+        # loudly so the machine still gets fixed.
+        for _spec in RUSTUP_HOME:"$HOME/.rustup" CARGO_HOME:"$HOME/.cargo"; do
+          _name="${_spec%%:*}"
+          _fallback="${_spec#*:}"
+          _dir="${!_name:-}"
+          [ -n "$_dir" ] || continue
+          if mkdir -p "$_dir" 2>/dev/null && [ -w "$_dir" ]; then
+            continue
+          fi
+          echo "::warning title=Unusable $_name::$_name=$_dir is not writable on $(hostname -s); falling back to $_fallback for this job"
+          mkdir -p "$_fallback"
+          export "$_name=$_fallback"
+          echo "$_name=$_fallback" >> "$GITHUB_ENV"
+        done
+
+        # Source cargo's env file if there is one, and never fail when there is
+        # not. Two things this has to get right that a bare
+        # `. "$HOME/.cargo/env"` does not:
+        #
+        #   1. CARGO_HOME is not always $HOME/.cargo. The NixOS ml-node runners
+        #      set CARGO_HOME=/data/rust/<runner>/cargo on the systemd unit,
+        #      deliberately, because $HOME is the work directory and the runner
+        #      module deletes it on every restart. (The fallback loop above may
+        #      also have just repointed CARGO_HOME at $HOME/.cargo for this job
+        #      -- either way this honours whatever value is now in effect, which
+        #      a hardcoded "$HOME/.cargo/env" would not.)
+        #   2. A rustup that came from the system package manager rather than
+        #      rustup-init never writes an `env` file at all.
+        #
+        # Composite steps run with `-e`, so an unguarded source of a missing
+        # file kills the whole step. That is exactly what happened the first
+        # time a rust job was routed to a NixOS runner:
+        #
+        #   .../7a6d47e9-....sh: line 11: /data/ci/ml-node-1/.cargo/env:
+        #   No such file or directory
+        #   ##[error]Process completed with exit code 1.
+        #
+        # The guard already existed on the first of the three call sites; this
+        # just stops the other two from being written a different way.
+        cargo_env() {
+          env_file="${CARGO_HOME:-$HOME/.cargo}/env"
+          [ -f "$env_file" ] && . "$env_file"
+          return 0
+        }
+
+        cargo_env
+
+        NEED_INSTALL=false
+        REQUESTED="${{ inputs.rust-version }}"
+
+        if ! command -v rustc &>/dev/null; then
+          NEED_INSTALL=true
+        elif [ "$REQUESTED" = "stable" ] && command -v rustup &>/dev/null; then
+          rustup update stable
+          rustup default stable
+          cargo_env
+        elif [ "$REQUESTED" = "stable" ]; then
+          NEED_INSTALL=true
+        elif [ "$REQUESTED" != "stable" ] && [ -n "$REQUESTED" ]; then
+          # Unguarded, a rustc whose version string does not match the pattern
+          # ends the Install Rust step instead of triggering an install.
+          CURRENT=$(rustc --version | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || true)
+          if [ "$CURRENT" != "$REQUESTED" ]; then
+            NEED_INSTALL=true
+          fi
+        fi
+
+        if [ "$NEED_INSTALL" = true ]; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$REQUESTED"
+          cargo_env
+        fi
+
+        COMPONENTS="${{ inputs.rust-components }}"
+        if [ -n "$COMPONENTS" ]; then
+          rustup component add $(echo "$COMPONENTS" | tr ',' ' ') 2>/dev/null || true
+        fi
+
+        echo "version=$(rustc --version)" >> $GITHUB_OUTPUT
+
+    # ── Cargo tools ─────────────────────────────────────────────────────
+    - name: Install cargo tools
+      if: inputs.cargo-tools != ''
+      shell: bash
+      run: |
+        [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+        IFS=',' read -ra TOOLS <<< "${{ inputs.cargo-tools }}"
+        for tool in "${TOOLS[@]}"; do
+          tool=$(echo "$tool" | xargs)
+          BIN="cargo-${tool}"
+          [ "$tool" = "nextest" ] && BIN="cargo-nextest"
+          if ! command -v "$BIN" &>/dev/null; then
+            echo "Installing $tool..."
+            if [ "$tool" = "nextest" ]; then
+              # Fast pre-built binary
+              NEXTEST_PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
+              [ "$NEXTEST_PLATFORM" = "darwin" ] && NEXTEST_PLATFORM="mac"
+              curl -LsSf "https://get.nexte.st/latest/${NEXTEST_PLATFORM}" 2>/dev/null \
+                | tar xz -C "$HOME/.cargo/bin" 2>/dev/null \
+                || cargo install cargo-nextest 2>/dev/null || echo "::warning::Failed to install $tool"
+            else
+              cargo install "cargo-${tool}" 2>/dev/null || echo "::warning::Failed to install $tool"
+            fi
+          fi
+        done
+
+    # ── CUDA toolkit (Linux) ────────────────────────────────────────────
+    - name: Install CUDA toolkit
+      if: |
+        steps.hw.outputs.has_cuda == 'true' &&
+        runner.os == 'Linux' &&
+        (inputs.accelerators == 'auto' || inputs.accelerators == 'all' || contains(inputs.accelerators, 'cuda'))
+      shell: bash
+      run: |
+        if command -v nvcc &>/dev/null; then
+          echo "CUDA toolkit already installed: $(nvcc --version | tail -1)"
+          exit 0
+        fi
+        echo "Installing CUDA toolkit..."
+        # Use NVIDIA's package repo for the runtime libraries ort needs
+        DISTRO=$(. /etc/os-release && echo "${ID}${VERSION_ID}" | tr -d '.')
+        ARCH=$(uname -m)
+        case "$DISTRO" in
+          ubuntu2204|ubuntu2404)
+            # mktemp, not a fixed /tmp name. These are persistent multi-tenant
+            # runners, so a predictable path in a world-writable directory can
+            # be replaced between the download and the `sudo dpkg -i` that
+            # installs it as root.
+            keyring_deb="$(mktemp -t cuda-keyring.XXXXXX.deb)"
+            wget -q "https://developer.download.nvidia.com/compute/cuda/repos/${DISTRO}/${ARCH}/cuda-keyring_1.1-1_all.deb" -O "$keyring_deb"
+            sudo dpkg -i "$keyring_deb"
+            rm -f "$keyring_deb"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq cuda-toolkit-12-6 2>/dev/null || echo "::warning::CUDA toolkit install failed"
+            ;;
+          *)
+            echo "::warning::Auto CUDA install not supported on $DISTRO — install manually"
+            ;;
+        esac
+
+    # ── ROCm (Linux AMD GPU) ────────────────────────────────────────────
+    - name: Install ROCm
+      # Gated on has_amd_gpu, NOT has_rocm. `has_rocm` is set only when
+      # `rocminfo` already runs and names an agent -- that is, only when ROCm is
+      # already installed -- so gating the installer on it meant the step fired
+      # exclusively on nodes that did not need it and short-circuited at the
+      # `command -v rocminfo` check below. The node this step exists for reports
+      # has_amd_gpu=true and has_rocm=false, and never reached it.
+      if: |
+        steps.hw.outputs.has_amd_gpu == 'true' &&
+        runner.os == 'Linux' &&
+        (inputs.accelerators == 'auto' || inputs.accelerators == 'all' || contains(inputs.accelerators, 'rocm'))
+      shell: bash
+      run: |
+        if command -v rocminfo &>/dev/null; then
+          echo "ROCm already installed"
+          exit 0
+        fi
+        echo "Installing ROCm runtime..."
+        # Ubuntu-based ROCm install
+        if command -v apt-get &>/dev/null; then
+          sudo mkdir -p /etc/apt/keyrings
+          wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/rocm.gpg 2>/dev/null || true
+          DISTRO=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          ARCH=$(dpkg --print-architecture)
+          echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/latest $DISTRO main" | sudo tee /etc/apt/sources.list.d/rocm.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rocm-hip-runtime rocm-hip-sdk 2>/dev/null || echo "::warning::ROCm install failed — manual setup may be needed"
+        else
+          echo "::warning::ROCm auto-install requires apt — install manually"
+        fi
+
+    # ── AMD XDNA NPU driver (Windows) ──────────────────────────────────
+    - name: Check XDNA NPU driver (Windows)
+      if: |
+        steps.hw.outputs.has_npu_amd == 'true' &&
+        runner.os == 'Windows' &&
+        (inputs.accelerators == 'auto' || inputs.accelerators == 'all' || contains(inputs.accelerators, 'npu'))
+      shell: pwsh
+      run: |
+        # Check if XDNA driver is loaded
+        $xdna = Get-PnpDevice -Class 'System' -Status OK 2>$null |
+          Where-Object { $_.FriendlyName -match 'XDNA|NPU|Neural|IPU' } |
+          Select-Object -First 1
+        if ($xdna) {
+          Write-Host "NPU driver present: $($xdna.FriendlyName)"
+        } else {
+          Write-Host "::warning::NPU hardware detected but driver not loaded. Install AMD XDNA driver from https://www.amd.com/en/developer/resources/ryzen-ai-software.html"
+        }
+
+    # ── Intel OpenVINO (for Intel NPU/GPU) ──────────────────────────────
+    - name: Install OpenVINO runtime
+      if: |
+        steps.hw.outputs.has_npu_intel == 'true' &&
+        runner.os == 'Linux' &&
+        (inputs.accelerators == 'auto' || inputs.accelerators == 'all' || contains(inputs.accelerators, 'openvino'))
+      shell: bash
+      run: |
+        if dpkg-query -W -f='${Package}\n' 'openvino*' 2>/dev/null | grep -q '^openvino'; then
+          echo "OpenVINO already installed"
+          exit 0
+        fi
+        echo "::warning::Intel NPU detected. For best performance install OpenVINO: https://docs.openvino.ai/latest/get_started.html"
+        # Auto-install if apt is available
+        if command -v apt-get &>/dev/null; then
+          sudo mkdir -p /etc/apt/keyrings
+          wget -q https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB -O - \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/intel-openvino.gpg 2>/dev/null || true
+          DISTRO=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          case "$DISTRO" in
+            jammy) OV_DISTRO="ubuntu22" ;;
+            noble) OV_DISTRO="ubuntu24" ;;
+            *) OV_DISTRO="ubuntu24" ;;
+          esac
+          echo "deb [signed-by=/etc/apt/keyrings/intel-openvino.gpg] https://apt.repos.intel.com/openvino/2025 $OV_DISTRO main" | sudo tee /etc/apt/sources.list.d/intel-openvino.list 2>/dev/null || true
+          sudo apt-get update -qq 2>/dev/null || true
+          sudo apt-get install -y -qq openvino 2>/dev/null || echo "::warning::OpenVINO auto-install failed"
+        fi
+
+    # ── Accelerator validation ──────────────────────────────────────────
+    - name: Validate accelerator stack
+      if: inputs.onnxruntime == 'true' || inputs.accelerators != 'false'
+      shell: bash
+      run: |
+        echo "=== Accelerator Validation ==="
+        ISSUES=0
+
+        # CUDA validation
+        if [ "${{ steps.hw.outputs.has_cuda }}" = "true" ]; then
+          if command -v nvidia-smi &>/dev/null; then
+            nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null && echo "  CUDA: OK" || { echo "::warning::nvidia-smi query failed"; ISSUES=$((ISSUES+1)); }
+          fi
+          if command -v nvcc &>/dev/null; then
+            echo "  CUDA compiler: $(nvcc --version 2>/dev/null | tail -1)"
+          else
+            echo "  CUDA compiler: not installed (runtime-only is fine for ONNX RT)"
+          fi
+        fi
+
+        # ROCm validation
+        # Also runs for has_amd_gpu, because that is the node the install step
+        # above just ran on -- and `steps.hw.outputs` still holds the detection
+        # from BEFORE that install, so has_rocm is false there. Gating on
+        # has_rocm alone would skip validation on exactly the node whose ROCm is
+        # newest and least proven.
+        if [ "${{ steps.hw.outputs.has_rocm }}" = "true" ] || [ "${{ steps.hw.outputs.has_amd_gpu }}" = "true" ]; then
+          if command -v rocminfo &>/dev/null; then
+            # Same `grep -c` shape as the ANE probe: it prints 0 and exits 1,
+            # so `|| echo "0"` would make this "0\n0".
+            AGENTS=$(rocminfo 2>/dev/null | grep -c "Agent " || true)
+            echo "  ROCm: OK (${AGENTS:-0} agents)"
+          else
+            echo "::warning::ROCm tools not found despite AMD GPU detection"
+            ISSUES=$((ISSUES+1))
+          fi
+        fi
+
+        # Apple Metal validation
+        if [ "${{ runner.os }}" = "macOS" ]; then
+          if xcrun --find metal &>/dev/null; then
+            echo "  Metal compiler: OK"
+          else
+            echo "::error::Metal compiler missing on macOS runner"
+            ISSUES=$((ISSUES+1))
+          fi
+          # Quick Metal GPU smoke test — try to compile a trivial shader
+          TMPSHADER=$(mktemp /tmp/metal_test.XXXXXX)
+          TMPOUT=$(mktemp /tmp/metal_test.XXXXXX)
+          echo 'kernel void test_kernel(device float *out [[buffer(0)]], uint id [[thread_position_in_grid]]) { out[id] = 1.0; }' > "$TMPSHADER"
+          if xcrun metal -c "$TMPSHADER" -o "$TMPOUT" 2>/dev/null; then
+            echo "  Metal shader compile: OK"
+          else
+            echo "::warning::Metal shader compilation failed — non-fatal, continuing"
+          fi
+          rm -f "$TMPSHADER" "$TMPOUT"
+        fi
+
+        if [ $ISSUES -eq 0 ]; then
+          echo "All accelerators validated successfully"
+        else
+          echo "::warning::$ISSUES accelerator issue(s) detected — some benchmarks may be incomplete"
+        fi
+
+    # ── ONNX Runtime (hardware-aware) ───────────────────────────────────
+    - name: Install ONNX Runtime (Unix)
+      id: ort-unix
+      if: inputs.onnxruntime == 'true' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        ORT_VERSION="${{ inputs.onnxruntime-version }}"
+        PLATFORM="${{ steps.detect.outputs.platform }}"
+        HAS_CUDA="${{ steps.hw.outputs.has_cuda }}"
+        HAS_ROCM="${{ steps.hw.outputs.has_rocm }}"
+
+        # Pick the best ORT variant for available hardware
+        case "$PLATFORM" in
+          darwin-arm64)  ORT_ARCH="osx-arm64";      ORT_LIB="lib/libonnxruntime.dylib" ;;
+          darwin-x64)    ORT_ARCH="osx-x86_64";     ORT_LIB="lib/libonnxruntime.dylib" ;;
+          linux-x64)
+            if [ "$HAS_CUDA" = "true" ]; then
+              ORT_ARCH="linux-x64-gpu"
+              ORT_LIB="lib/libonnxruntime.so"
+              echo "::notice::Using ONNX Runtime GPU build (CUDA)"
+            elif [ "$HAS_ROCM" = "true" ]; then
+              ORT_ARCH="linux-x64-rocm"
+              ORT_LIB="lib/libonnxruntime.so"
+              echo "::notice::Using ONNX Runtime ROCm build"
+            else
+              ORT_ARCH="linux-x64"
+              ORT_LIB="lib/libonnxruntime.so"
+            fi
+            ;;
+          linux-arm64)   ORT_ARCH="linux-aarch64";   ORT_LIB="lib/libonnxruntime.so" ;;
+          *)
+            echo "::warning::No ONNX Runtime binary for $PLATFORM"
+            echo "dylib_path=" >> $GITHUB_OUTPUT
+            exit 0
+            ;;
+        esac
+
+        ORT_CACHE="$HOME/.cache/onnxruntime-${ORT_VERSION}-${ORT_ARCH}"
+        if [ ! -f "$ORT_CACHE/$ORT_LIB" ]; then
+          ORT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-${ORT_ARCH}-${ORT_VERSION}.tgz"
+          echo "Downloading ONNX Runtime v${ORT_VERSION} (${ORT_ARCH})..."
+          mkdir -p "$ORT_CACHE"
+          if ! curl -fL "$ORT_URL" | tar xz -C "$ORT_CACHE" --strip-components=1; then
+            echo "::warning::GPU ORT build not available, falling back to CPU"
+            # Fallback to CPU build
+            case "$PLATFORM" in
+              linux-x64) ORT_ARCH="linux-x64" ;;
+              *)         ;; # already CPU
+            esac
+            ORT_CACHE="$HOME/.cache/onnxruntime-${ORT_VERSION}-${ORT_ARCH}"
+            mkdir -p "$ORT_CACHE"
+            ORT_URL="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-${ORT_ARCH}-${ORT_VERSION}.tgz"
+            if ! curl -fL "$ORT_URL" | tar xz -C "$ORT_CACHE" --strip-components=1; then
+              rm -rf "$ORT_CACHE"
+              echo "::error::Failed to download ONNX Runtime fallback build: $ORT_URL"
+              exit 1
+            fi
+          fi
+        fi
+
+        # Fix nested dir if --strip-components didn't fully flatten
+        NESTED="$ORT_CACHE/onnxruntime-${ORT_ARCH}-${ORT_VERSION}"
+        if [ -d "$NESTED" ] && [ ! -f "$ORT_CACHE/$ORT_LIB" ]; then
+          mv "$NESTED"/* "$NESTED"/.* "$ORT_CACHE"/ 2>/dev/null || true
+          rmdir "$NESTED" 2>/dev/null || true
+        fi
+
+        DYLIB_PATH="$ORT_CACHE/$ORT_LIB"
+        if [ ! -f "$DYLIB_PATH" ]; then
+          echo "::error::Failed to stage ONNX Runtime at $DYLIB_PATH"
+          exit 1
+        fi
+        echo "dylib_path=$DYLIB_PATH" >> $GITHUB_OUTPUT
+        echo "ORT_DYLIB_PATH=$DYLIB_PATH" >> $GITHUB_ENV
+        echo "::notice::ONNX Runtime: $DYLIB_PATH"
+
+    - name: Install ONNX Runtime (Windows)
+      id: ort-win
+      if: inputs.onnxruntime == 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $OrtVersion = "${{ inputs.onnxruntime-version }}"
+        $HasCuda = "${{ steps.hw.outputs.has_cuda }}"
+
+        # Pick GPU or CPU build
+        if ($HasCuda -eq "true") {
+          $OrtVariant = "win-x64-gpu"
+          Write-Host "Using ONNX Runtime GPU build (CUDA)"
+        } else {
+          $OrtVariant = "win-x64"
+        }
+
+        $OrtDir = "$env:USERPROFILE\.cache\onnxruntime-$OrtVersion-$OrtVariant"
+        $OrtDll = "$OrtDir\lib\onnxruntime.dll"
+
+        if (-not (Test-Path $OrtDll)) {
+          $ZipName = "onnxruntime-$OrtVariant-$OrtVersion.zip"
+          $OrtUrl = "https://github.com/microsoft/onnxruntime/releases/download/v$OrtVersion/$ZipName"
+          Write-Host "Downloading ONNX Runtime v$OrtVersion ($OrtVariant)..."
+          New-Item -ItemType Directory -Force -Path $OrtDir | Out-Null
+          $ZipPath = "$env:TEMP\$ZipName"
+          try {
+            Invoke-WebRequest -Uri $OrtUrl -OutFile $ZipPath
+            Expand-Archive -Path $ZipPath -DestinationPath "$env:TEMP\ort-extract" -Force
+            $ExtractedDir = Get-ChildItem "$env:TEMP\ort-extract" -Directory | Select-Object -First 1
+            Copy-Item -Recurse "$($ExtractedDir.FullName)\*" $OrtDir -Force
+            Remove-Item $ZipPath, "$env:TEMP\ort-extract" -Recurse -Force -ErrorAction SilentlyContinue
+          } catch {
+            if ($OrtVariant -ne "win-x64") {
+              Write-Host "GPU build failed, falling back to CPU..."
+              $OrtVariant = "win-x64"
+              $OrtDir = "$env:USERPROFILE\.cache\onnxruntime-$OrtVersion-$OrtVariant"
+              $OrtDll = "$OrtDir\lib\onnxruntime.dll"
+              $ZipName = "onnxruntime-$OrtVariant-$OrtVersion.zip"
+              $OrtUrl = "https://github.com/microsoft/onnxruntime/releases/download/v$OrtVersion/$ZipName"
+              New-Item -ItemType Directory -Force -Path $OrtDir | Out-Null
+              Invoke-WebRequest -Uri $OrtUrl -OutFile "$env:TEMP\$ZipName"
+              Expand-Archive -Path "$env:TEMP\$ZipName" -DestinationPath "$env:TEMP\ort-extract" -Force
+              $ExtractedDir = Get-ChildItem "$env:TEMP\ort-extract" -Directory | Select-Object -First 1
+              Copy-Item -Recurse "$($ExtractedDir.FullName)\*" $OrtDir -Force
+            }
+          }
+        }
+
+        if (-not (Test-Path $OrtDll)) {
+          Remove-Item $OrtDir -Recurse -Force -ErrorAction SilentlyContinue
+          throw "Failed to stage ONNX Runtime at $OrtDll"
+        }
+
+        echo "dylib_path=$OrtDll" >> $env:GITHUB_OUTPUT
+        echo "ORT_DYLIB_PATH=$OrtDll" >> $env:GITHUB_ENV
+        Write-Host "ONNX Runtime: $OrtDll"
+
+    # ── Python (lenient: any python3, for existing consumers) ───────────
+    - name: Ensure Python 3
+      if: inputs.python == 'true' && inputs.python-venv != 'true'
+      shell: bash
+      run: |
+        if command -v python3 &>/dev/null; then
+          echo "Python: $(python3 --version)"
+        elif command -v python &>/dev/null; then
+          echo "Python: $(python --version)"
+        else
+          echo "::warning::Python 3 not found — attempting install"
+          if command -v apt-get &>/dev/null; then
+            sudo apt-get install -y -qq python3 python3-pip 2>/dev/null || true
+          elif command -v brew &>/dev/null; then
+            brew install python3 2>/dev/null || true
+          elif command -v nix &>/dev/null; then
+            echo "$(nix build nixpkgs#python311 --no-link --print-out-paths)/bin" >> "$GITHUB_PATH"
+          fi
+        fi
+
+    # ── Python 3.11 venv (+ yt-dlp) ─────────────────────────────────────
+    # The auto-support harness needs tomllib (3.11+). The self-hosted Linux X64
+    # runners are persistent NixOS boxes: no apt/sudo, and `python3` on PATH may
+    # be older. So pick a 3.11 interpreter (machine, else `nix`), build a per-job
+    # venv under RUNNER_TEMP (never mutate the shared machine), and put it FIRST
+    # on PATH so later steps' `python`/`pip` resolve to it. Fails loudly rather
+    # than warning, so the gate/ingest cannot go green on a mis-provisioned box.
+    - name: Provision Python 3.11 venv and yt-dlp
+      if: inputs.python-venv == 'true' || inputs.yt-dlp == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v python3.11 >/dev/null 2>&1; then PY=python3.11
+        elif command -v python3.12 >/dev/null 2>&1; then PY=python3.12
+        elif command -v python3.13 >/dev/null 2>&1; then PY=python3.13
+        elif command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3,11) else 1)'; then PY=python3
+        elif command -v nix >/dev/null 2>&1; then PY="$(nix build nixpkgs#python311 --no-link --print-out-paths)/bin/python3.11"
+        elif command -v brew >/dev/null 2>&1; then HOMEBREW_NO_AUTO_UPDATE=1 brew install --quiet python@3.11 >/dev/null 2>&1 || true; PY="$(command -v python3.11 || true)"
+        elif command -v choco >/dev/null 2>&1; then choco install -y python311 >/dev/null 2>&1 || true; PY="$(command -v python3.11 || command -v python || true)"
+        elif command -v winget >/dev/null 2>&1; then winget install -e --id Python.Python.3.11 --silent >/dev/null 2>&1 || true; PY="$(command -v python3.11 || command -v python || true)"
+        else PY=""; fi
+        if [ -z "${PY:-}" ]; then
+          echo "::error::could not provision Python 3.11 on ${RUNNER_NAME:-this runner} (no python3.11 and no nix/brew/choco/winget)"; exit 1
+        fi
+        echo "Python interpreter: $PY ($("$PY" --version 2>&1))"
+
+        VENV="${RUNNER_TEMP:-/tmp}/maxi-auto-support-venv"
+        rm -rf "$VENV"
+        "$PY" -m venv "$VENV"
+        if [ -d "$VENV/bin" ]; then BIN="$VENV/bin"; else BIN="$VENV/Scripts"; fi
+        echo "$BIN" >> "$GITHUB_PATH"
+        "$BIN/python" -m pip install --quiet --upgrade pip
+        echo "venv python: $("$BIN/python" --version 2>&1) at $BIN"
+
+        if [ "${{ inputs.yt-dlp }}" = "true" ]; then
+          "$BIN/python" -m pip install --quiet yt-dlp
+          "$BIN/yt-dlp" --version >/dev/null 2>&1 || { echo "::error::yt-dlp install failed"; exit 1; }
+          echo "yt-dlp: $("$BIN/yt-dlp" --version 2>&1)"
+        fi
+
+    # ── Node.js ─────────────────────────────────────────────────────────
+    - name: Ensure Node.js
+      if: inputs.node == 'true'
+      shell: bash
+      run: |
+        if command -v node &>/dev/null; then
+          echo "Node: $(node --version)"
+        else
+          echo "::warning::Node.js not found — installing via nvm"
+          if [ ! -d "$HOME/.nvm" ]; then
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+          fi
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+          nvm install --lts
+          echo "$NVM_DIR/versions/node/$(nvm current)/bin" >> "$GITHUB_PATH"
+        fi
+
+    # ── Summary ─────────────────────────────────────────────────────────
+    - name: Runner setup summary
+      shell: bash
+      run: |
+        echo "=== Runner Setup Complete ==="
+        echo "Platform:      ${{ steps.detect.outputs.platform }}"
+        echo "Accelerators:  ${{ steps.hw.outputs.summary }}"
+        [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+        command -v rustc &>/dev/null && echo "Rust:          $(rustc --version)"
+        [ -n "$ORT_DYLIB_PATH" ] && echo "ONNX Runtime:  $ORT_DYLIB_PATH"
+        echo "============================="

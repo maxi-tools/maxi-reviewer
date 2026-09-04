@@ -1,0 +1,214 @@
+# maxi-config-owned CodeQL analysis workflow.
+# Source of truth: maxi-config/security-workflows/codeql.yml
+# Fanned out by scripts/sync-maxi-review.sh; edit it there, not here.
+#
+# CodeQL ADVANCED setup, on the self-hosted fleet.
+#
+# It replaces GitHub's DEFAULT setup, which can only run on GitHub-hosted
+# runners. The 2026-09 hosted-minutes audit (maxi-config#520) found default
+# setup on maxi-config alone had run 799 times in five weeks, four hosted
+# `Analyze (...)` jobs per run -- rust ~3.2 min, python 1.4, javascript-
+# typescript 1.2, actions 1.0 -- about 7,000 hosted Linux minutes a month and
+# ~70% of the repo's hosted bill. The other five audited repos had CodeQL
+# registered and zero runs. The owner's decision was: keep CodeQL, move it to
+# the fleet, and ship it to every member repo through the fan-out.
+#
+# ONE FILE FOR EVERY REPO. The languages are detected per repo at run time
+# from the tracked file tree, so a Rust repo gets `rust`, a repo of nothing
+# but workflows gets `actions`, and a language with no files gets no job. The
+# set is deliberately the four default setup was billing for. `swift` and
+# `c-cpp` are not detected: swift needs a macOS lane, c-cpp needs a real
+# build, and neither was running under default setup anywhere in the org,
+# so leaving them out loses no coverage that existed.
+#
+# `actions` is always present, because this file is itself a workflow in the
+# repo that runs it. That is what lets the analyze job key on the matrix
+# without a separate empty-matrix guard.
+#
+# NIXOS. The Linux X64 pool is the NixOS fleet (maxibaobab-1..6, ml-node-1..4;
+# maxi-nix modules/github-runner.nix). The CodeQL bundle is FHS glibc
+# binaries -- the `codeql` launcher, a bundled JDK, the per-language
+# extractors -- and it runs there because the runner unit exports NIX_LD and
+# NIX_LD_LIBRARY_PATH (same module, "allow downloaded FHS binaries ... to
+# find glibc"), which is the mechanism cargo-nextest and actions/setup-node
+# binaries already ride. Nothing here has to be unset or patched; contrast
+# maxi-ui's leptos.yml, which must drop LD_LIBRARY_PATH for a nixpkgs
+# chromium because that closure carries its OWN glibc. The bundle lands in
+# the runner tool cache under /data/ci/<runner>/_work/_tool and is reused
+# across jobs on the same slot.
+#
+# BUILD MODE. Every language here is analysed with `build-mode: none`: rust
+# and actions support only that mode, python and javascript-typescript never
+# needed a build. So there is no autobuild step and no compiler runs -- but
+# the rust extractor does resolve the crate graph through cargo, and a crate
+# graph in this org reaches private git dependencies. The `Fetch private
+# dependencies` step below is clippy.yml's, verbatim in shape: an org app
+# token, a throwaway gitconfig, `cargo fetch`, and the gitconfig removed
+# before anything else runs. Same-repo PRs only, so the token is never
+# minted for fork code.
+
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Sunday 03:17 UTC. Off the Monday-morning window the maxi-config
+    # distributors use, and outside working hours in every fleet timezone.
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+# One in-flight analysis per PR or branch; a superseded push cancels the older
+# run rather than queueing a stale result behind it on a shared fleet.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege at the top; each job declares exactly what it needs.
+permissions: {}
+
+jobs:
+  detect:
+    # ci/check-naming.md: `<tier>: <subject> [<os>-<arch>]`. `check`, not
+    # `gate` -- no ruleset requires this context; a finding is a verdict, not
+    # a block.
+    name: 'check: codeql languages [linux-x64]'
+    # This DOES execute pull-request code, and maxi-config has a written
+    # posture against that on persistent boxes (ci/runner-routing.toml,
+    # [lanes.linux-x64-ephemeral-review]; docs/claude-review-routing.md).
+    # The posture leaned on hosted runners being ephemeral, and CodeQL is
+    # the one workflow whose hosted-only form was the biggest single hosted
+    # consumer in the audit. Moving here is a deliberate decision by the
+    # repository owner, not a precedent set quietly by this file -- the same
+    # decision 5062804 already took for clippy, maxi-review, qodana and
+    # rust-ci, and verify-fanout-tests took after it.
+    #
+    # The `if` below is the mitigation those carry: same-repo pull requests
+    # only. A fork's pull request skips this job rather than running its code
+    # on a box that keeps a shared cargo directory, a shared sccache and a
+    # docker socket between jobs. Push, schedule and workflow_dispatch are
+    # unaffected -- `github.event_name != 'pull_request'` short-circuits.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      languages: ${{ steps.detect.outputs.languages }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Nothing here pushes, and the job runs PR code: no credential on
+          # disk beside it.
+          persist-credentials: false
+
+      - name: Detect the CodeQL languages this repository has files for
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Tracked files only. A git pathspec `*` crosses directory
+          # boundaries, so '*.py' is every Python file at any depth and
+          # '*Cargo.toml' is the root manifest and every workspace member.
+          has() { [ -n "$(git ls-files -- "$@" | head -n 1)" ]; }
+          langs=()
+          has '*Cargo.toml' && langs+=(rust)
+          has '*.py' && langs+=(python)
+          has '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx' '*.mts' '*.cts' \
+            && langs+=(javascript-typescript)
+          has '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+              '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
+            && langs+=(actions)
+          json="[]"
+          if [ "${#langs[@]}" -gt 0 ]; then
+            printf -v joined '"%s",' "${langs[@]}"
+            json="[${joined%,}]"
+          fi
+          echo "languages=${json}" >> "$GITHUB_OUTPUT"
+          echo "CodeQL languages: ${json}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  analyze:
+    name: 'check: codeql ${{ matrix.language }} [linux-x64]'
+    needs: detect
+    # Same guard as `detect`, restated rather than inherited: a reader of the
+    # job that runs the extractors should not have to trace `needs` to learn
+    # what keeps fork code off the fleet.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64]
+    # Default setup's slowest analyzer was rust at ~3.2 min on a hosted
+    # 2-core box, on this repo. maxi-core's crate graph is an order of
+    # magnitude larger, and the first run on a slot also downloads the
+    # bundle. Generous, and still a bound: queue time is not counted.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # Upload of the SARIF results; without it `analyze` fails at the end.
+      security-events: write
+      # Lets the action read the workflow run for its own status reporting.
+      actions: read
+    strategy:
+      # One language failing must not cancel the others' results.
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.detect.outputs.languages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Generate private dependency token
+        if: matrix.language == 'rust'
+        id: private-deps-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: maxi-tools
+
+      - name: Fetch private dependencies
+        if: matrix.language == 'rust'
+        shell: bash
+        env:
+          GH_APP_TOKEN: ${{ steps.private-deps-token.outputs.token }}
+          # The rewrite below is git configuration, so cargo has to fetch
+          # through the git CLI for it to apply.
+          CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+        run: |
+          set -euo pipefail
+          # The rust extractor resolves the crate graph with cargo, and a
+          # crate graph in this org reaches private maxi-tools git
+          # dependencies. Resolve them once, here, with the token in a
+          # throwaway gitconfig that is removed before the extractor runs.
+          # No `--locked`: a library repo without a Cargo.lock is still a
+          # repo worth analysing, and the lockfile cargo writes stays in the
+          # scratch checkout.
+          gitconfig="$RUNNER_TEMP/codeql-gitconfig-private-deps"
+          # Removed on EVERY exit, not only the happy path: under `set -e` a
+          # failing `cargo fetch` would otherwise return before the `rm` and
+          # leave a file holding the token on a persistent box. (Codacy, #525)
+          trap 'rm -f "$gitconfig"' EXIT
+          git config --file "$gitconfig" \
+            url."https://x-access-token:${GH_APP_TOKEN}@github.com/maxi-tools/".insteadOf \
+            https://github.com/maxi-tools/
+          GIT_CONFIG_GLOBAL="$gitconfig" cargo fetch
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          # One category per language so the four uploads for one commit are
+          # kept apart in code scanning instead of overwriting each other.
+          category: /language:${{ matrix.language }}

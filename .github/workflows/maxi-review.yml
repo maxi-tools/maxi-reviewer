@@ -140,6 +140,47 @@ jobs:
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
 
+      # Refuses a PR that edits a file the distributor overwrites. Deterministic,
+      # so it belongs in this job rather than the AI lane -- and this job is the
+      # one repos can require as a merge gate.
+      #
+      # The file list comes from the API, not `git diff`: the PR head above is
+      # checked out at depth 1, so the base commit is absent and a diff would
+      # fail. Widening the clone for every repo on every PR is a real cost for
+      # a list the API already holds.
+      #
+      # --paginate matters. Without it a PR over 100 files is judged on its
+      # first page and the gate passes on files it never saw -- silently, which
+      # is the exact failure mode it exists to catch.
+      - name: Refuse edits to centrally-owned files
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        shell: bash
+        working-directory: pr-code
+        run: |
+          set -euo pipefail
+          # The .maxi-config checkout above takes maxi-config's DEFAULT branch,
+          # so this helper is whatever main holds right now -- deliberately, as
+          # a pinned ref would freeze a centrally-owned check in 46 repos. The
+          # cost is that a rollback of maxi-config main removes it under us, and
+          # `python3 <missing>` fails with a bare ENOENT and no hint of why.
+          helper="$GITHUB_WORKSPACE/.maxi-config/maxi-review/check-owned-files.py"
+          if [ ! -f "$helper" ]; then
+            echo "::error::$helper is missing from maxi-config's default" \
+              "branch. This gate fails closed rather than passing a PR it" \
+              "never checked; restore the helper on maxi-config main."
+            exit 1
+          fi
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename' > "$RUNNER_TEMP/changed-files.txt"
+          # --labels=VALUE, not --labels VALUE: a label beginning with '-' is
+          # parsed as an option in the separated form and argparse exits 2.
+          python3 "$helper" \
+            --files="$RUNNER_TEMP/changed-files.txt" \
+            --labels="$PR_LABELS"
+
       - name: Run maxi-lint deny gate
         id: maxilint
         env:
@@ -637,9 +678,10 @@ jobs:
           # under the 30-minute budget were 30.7, 30.8, 30.8, 41.1, 50.3, 50.3
           # and 59.0 minutes -- and THREE OF THE SEVEN produced no verdict at
           # all. Those three are the 30-minute cluster: they spent the whole
-          # budget and returned nothing, then set `jules/review` red for having
-          # failed to work. On a gate every push to every PR in ~90 repos waits
-          # for, that is half an hour of dead wall-clock per bad run.
+          # budget and returned nothing, then set `advisory: maxi reviewer`
+          # red for having failed to work. On a gate every push to every PR in
+          # ~90 repos waits for, that is half an hour of dead wall-clock per
+          # bad run.
           #
           # Back up from 10: the premise behind 10 was "a review that has
           # produced no agent message in ten minutes is not about to". MEASURED
@@ -664,5 +706,5 @@ jobs:
           # must clear it by ~5 minutes of cleanup headroom.
           timeout_minutes: "15"
           fail_on: "blocking"
-          status_context: jules/review
+          status_context: 'advisory: maxi reviewer'
           analyzer_mode: "off"

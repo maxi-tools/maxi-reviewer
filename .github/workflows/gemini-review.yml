@@ -1,0 +1,392 @@
+# maxi-config-owned Gemini PR review workflow.
+# Source of truth: maxi-config/workflows/gemini-review.yml
+# Fanned out by scripts/sync-maxi-review.sh; edit it there, not here.
+#
+# The ownership marker on line 1 is not decoration. Until 2026-09 this file
+# had no distributor at all, so the header above claimed a source of truth
+# that nothing enforced -- and the copies duly forked. maxi-core landed three
+# fixes on its own copy (Linux lane, SHA-pinned checkout, $RUNNER_TEMP scratch)
+# and maxi-terminal two (SHA-pinned checkout, persist-credentials: false),
+# none of which could ever reach the other 25 repos. Those changes are
+# reconciled HERE, into the template -- the two aimed at the checkout step by
+# removing it outright, see below -- and the marker is what lets
+# maxi-review/check-owned-files.py fail the next PR that edits a copy instead
+# of the source. See maxi-core#3881.
+#
+# On-demand PR review by Gemini. Triggered by writing `/gemini-review` as a
+# PR comment, or via workflow_dispatch with a pr_number input from the
+# Actions tab. It calls the Gemini REST API directly with curl -- the
+# `gemini` CLI dependency was dropped in 3f6278d -- so the job needs nothing
+# installed beyond curl, jq, python3 and gh, which is why it is no longer
+# pinned to the macOS lane.
+#
+# Posts a single review with a top-level summary body plus inline
+# line-level comments, all in one API call so the review appears as
+# one unit in the PR conversation.
+#
+# Auth: needs `GEMINI_API_KEYS` (newline-separated, tried in order) or
+# `GEMINI_API_KEY` in repo or org secrets. A repo with neither gets an
+# inert workflow: nothing runs until somebody types `/gemini-review`, and
+# that run fails loudly at the key check rather than silently reviewing
+# nothing.
+#
+# Security: untrusted-input fields (workflow_dispatch inputs, step
+# outputs, comment IDs) are NEVER interpolated directly with `${{ }}`
+# into a `run:` block. They flow through `env:` so the shell sees a
+# safely-quotable variable. See:
+#   https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
+
+name: Gemini Review
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  review:
+    # Only run on PR comments that contain `/gemini-review`, and only when
+    # the commenter is trusted. Manual workflow_dispatch is always allowed
+    # because the Actions UI is gated by repo write access.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       contains(github.event.comment.body, '/gemini-review') &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    # Linux, not macOS -- agent workflow driven by an API, nothing Darwin-specific.
+    # Measured 2026-08-24: macOS 9/9 busy, Linux X64 10/10 idle. The same
+    # class of work (Maxi Review / Fix / Apply) already runs on that lane
+    # from maxi-config's templates, so this is not a new bet.
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Setup PATH
+        # Different self-hosted runners have brew installed under
+        # different prefixes (Apple Silicon → /opt/homebrew, Intel →
+        # /usr/local). Probe both rather than hard-coding one — without
+        # this, jobs that land on the "wrong" runner fail at the first
+        # `gh` invocation with "command not found".
+        run: |
+          for d in /opt/homebrew/bin /usr/local/bin; do
+            if [[ -x "$d/gh" ]]; then
+              echo "$d" >> "$GITHUB_PATH"
+              break
+            fi
+          done
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          # workflow_dispatch input is arbitrary text — must be validated
+          # before being written to GITHUB_OUTPUT, otherwise a value like
+          # `1\nfoo=bar` would inject extra outputs.
+          DISPATCH_PR: ${{ inputs.pr_number }}
+          COMMENT_PR: ${{ github.event.issue.number }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$DISPATCH_PR" =~ ^[0-9]+$ ]]; then
+              echo "Invalid pr_number input (must be positive integer): $DISPATCH_PR" >&2
+              exit 1
+            fi
+            echo "number=$DISPATCH_PR" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=$COMMENT_PR" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch PR metadata
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          # commit_id is required so GitHub knows which commit the inline
+          # comments anchor to; using the latest head ensures the line
+          # numbers match what's currently on the branch.
+          SHA=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid -q .headRefOid)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      # THERE IS DELIBERATELY NO CHECKOUT STEP.
+      #
+      # One stood here from the first version and was vestigial from 3f6278d
+      # onward, when the `gemini` CLI was replaced by a direct REST call: no
+      # step in this job reads the working tree. `gh pr diff` fetches the diff
+      # over the API and the review's `commit_id` comes from steps.meta, not
+      # from git.
+      #
+      # Vestigial, and not harmless. `issue_comment` is a PRIVILEGED trigger --
+      # the job holds GEMINI_API_KEYS and a write-capable GITHUB_TOKEN -- and
+      # the checkout took PR HEAD, which on a fork PR is attacker-controlled.
+      # The author-association gate above tests the COMMENTER, not the PR
+      # author, so a member typing `/gemini-review` on an untrusted fork PR was
+      # enough. The `python3 - <<'PY'` heredocs below then ran with the
+      # workspace as cwd, and `python3 -` puts cwd first on sys.path: a PR
+      # adding a `json.py` at the repo root would have been imported in place
+      # of the stdlib module, with the secrets in scope. CodeQL flags the shape
+      # as actions/untrusted-checkout/high; the import path is why it is right
+      # to.
+      #
+      # maxi-core SHA-pinned this step and maxi-terminal added
+      # persist-credentials: false (maxi-core#3881). Both were correct hardening
+      # of a step that should not exist, and deleting it subsumes both -- there
+      # is no third-party action left in this workflow to pin.
+
+      - name: React to triggering comment
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          # Drop a 👀 reaction so the requester sees we picked up the
+          # trigger; the review itself lands as a separate review block.
+          gh api -X POST \
+            "/repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
+            -f content=eyes || true
+
+      - name: Run Gemini review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Newline-separated list of Gemini API keys (preferred). The
+          # workflow tries each key in order, advancing on quota/auth
+          # 4xx so a single PR review can ride out one project hitting
+          # its daily cap. Each key fronts a separate AI Studio project
+          # with its own quota bucket.
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          # Backward-compat fallback: if GEMINI_API_KEYS isn't set,
+          # treat GEMINI_API_KEY as a single-key list. New deployments
+          # should populate GEMINI_API_KEYS.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR: ${{ steps.pr.outputs.number }}
+        # Belt to the removed checkout's braces. Self-hosted runners reuse a
+        # slot's workspace between jobs, so $GITHUB_WORKSPACE can hold another
+        # job's leftovers even with no checkout here -- and `python3 -` reads
+        # cwd before the stdlib. Running from runner.temp means the two
+        # heredocs below have nothing to shadow `json` or `os` with.
+        working-directory: ${{ runner.temp }}
+        # Calls the Gemini REST API directly (no `gemini` CLI dep) so
+        # the workflow runs on any self-hosted runner that has curl +
+        # jq + python3 — no per-runner CLI install or login state. Asks
+        # the model for `responseMimeType: application/json` so the
+        # response is guaranteed-parseable JSON, no fence-stripping.
+        run: |
+          set -euo pipefail
+
+          # $RUNNER_TEMP, not /tmp. The Linux boxes run several runner SLOTS on
+          # one machine, and every slot is a separate runner install with its
+          # own _work/_temp -- so two concurrent reviews on the same box shared
+          # each fixed /tmp path here, and one job could overwrite another's
+          # diff or API response and post a review for the wrong PR (codex P2,
+          # #3764). The macOS boxes host one slot each, which is why this never
+          # bit there. RUNNER_TEMP isolates by construction and the runner
+          # cleans it up.
+          gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" > "$RUNNER_TEMP"/pr.diff
+
+          cat > "$RUNNER_TEMP"/prompt.txt <<'PROMPT'
+          You are a senior code reviewer for the maxi-tools monorepo.
+          Review the PR diff that follows for substantive issues:
+
+          - Bugs, logic errors, off-by-ones
+          - Security issues (injection, path traversal, auth bypass, etc.)
+          - Concurrency / async correctness (lock ordering, blocking-in-async,
+            stale receivers, dropped guards, etc.)
+          - API contract violations or breaking changes
+          - Missing error handling at trust boundaries
+          - Performance problems with concrete impact
+
+          Skip pure style nits. Skip "consider adding a doc comment"
+          unless the absent doc actively misleads.
+
+          Output a JSON object with this exact shape:
+
+          {
+            "summary": "<1-3 sentence overall assessment>",
+            "comments": [
+              {
+                "path": "<path relative to repo root>",
+                "line": <integer line number on the NEW side of the diff (RIGHT)>,
+                "body": "<concise actionable comment, markdown ok>"
+              }
+            ]
+          }
+
+          Rules:
+          - If the change looks fine overall, return {"summary":"...","comments":[]}.
+          - Each comment.line MUST be a line number that appears in the
+            diff hunks (an added or context line on the new side). If you
+            can't pin a finding to a specific line, fold it into the
+            summary instead of inventing a line.
+          PROMPT
+
+          # Build the API request: prompt + diff joined as a single
+          # text part, plus a JSON-mode response constraint. `--rawfile`
+          # protects against any shell metacharacters in the diff.
+          jq -n \
+            --rawfile prompt "$RUNNER_TEMP"/prompt.txt \
+            --rawfile diff "$RUNNER_TEMP"/pr.diff \
+            '{
+              contents: [{parts: [{text: ($prompt + "\n\n--- DIFF ---\n" + $diff)}]}],
+              generationConfig: {
+                responseMimeType: "application/json"
+              }
+            }' > "$RUNNER_TEMP"/req.json
+
+          # gemini-2.5-flash: Flash family has a much higher AI Studio
+          # free-tier RPD ceiling than Pro (Pro exhausts on first use).
+          # Quality is more than sufficient for code-review tasks.
+          # Manual retry loop because curl's `--retry-all-errors` also
+          # retries on 4xx — including 429 (rate limit) and 403 (quota
+          # exhausted). Retrying those just burns more requests against
+          # an already-exhausted bucket, making the rate-limit problem
+          # strictly worse. We retry ONLY on 5xx (transient backend
+          # issues like 503 UNAVAILABLE) and bail fast on 4xx with the
+          # API's response body so the operator sees the real error.
+          #
+          # gemini-2.0-flash chosen over 2.5-flash because 2.5-flash
+          # has been returning persistent 503 UNAVAILABLE for our key;
+          # 2.0-flash has a more mature backend with stable capacity.
+          # gemini-2.5-flash-lite: confirmed available on the
+          # current project's free tier (gemini-2.0-flash had limit=0
+          # on this project — Google appears to have stopped granting
+          # 2.0-flash free quota for fresh projects). Flash-Lite is
+          # quality-sufficient for review-class tasks.
+          GEMINI_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+
+          # Build the key list: prefer multi-key (newline-separated),
+          # fall back to single-key for backward compat.
+          if [[ -n "${GEMINI_API_KEYS:-}" ]]; then
+            KEY_LIST="$GEMINI_API_KEYS"
+          elif [[ -n "${GEMINI_API_KEY:-}" ]]; then
+            KEY_LIST="$GEMINI_API_KEY"
+          else
+            echo "::error::Neither GEMINI_API_KEYS nor GEMINI_API_KEY is set in repo/org secrets." >&2
+            exit 1
+          fi
+
+          # Outer loop: try each key in order. Inner loop: retry 5xx.
+          # 4xx (auth, quota, bad request) advances to the next key —
+          # retry within the same key would just burn more quota.
+          HTTP=
+          KEY_INDEX=0
+          while IFS= read -r KEY; do
+            [[ -z "$KEY" ]] && continue
+            KEY_INDEX=$((KEY_INDEX + 1))
+            for attempt in 1 2 3 4; do
+              HTTP=$(curl -sS -X POST \
+                -o "$RUNNER_TEMP"/api.json \
+                -w '%{http_code}' \
+                -H "Content-Type: application/json" \
+                -H "x-goog-api-key: ${KEY}" \
+                -d @"$RUNNER_TEMP"/req.json \
+                "$GEMINI_URL")
+              if [[ "$HTTP" == "200" ]]; then
+                break 2
+              fi
+              echo "::warning::Gemini HTTP $HTTP (key #$KEY_INDEX ...${KEY: -4}, attempt $attempt)" >&2
+              if [[ "$HTTP" -ge 400 && "$HTTP" -lt 500 ]]; then
+                # Quota/auth/bad-request — surface body, advance to next key.
+                echo "Response body:" >&2
+                cat "$RUNNER_TEMP"/api.json >&2
+                break
+              fi
+              # 5xx — backoff and retry with the SAME key (transient
+              # backend issue, not a quota problem).
+              if [[ $attempt -lt 4 ]]; then
+                sleep $((attempt * 5))
+              fi
+            done
+          done <<< "$KEY_LIST"
+
+          if [[ "$HTTP" != "200" ]]; then
+            echo "::error::All keys exhausted; last HTTP=$HTTP" >&2
+            echo "Last response body:" >&2
+            cat "$RUNNER_TEMP"/api.json >&2
+            exit 1
+          fi
+
+          # Extract the model's text. With responseMimeType=application/
+          # json the text is guaranteed valid JSON, so this becomes
+          # "$RUNNER_TEMP"/review.raw which downstream validation parses.
+          jq -r '.candidates[0].content.parts[0].text' "$RUNNER_TEMP"/api.json > "$RUNNER_TEMP"/review.raw
+
+          # Schema-validate per-comment field types. With JSON-mode the
+          # model can't emit prose or fences, but it CAN still get the
+          # types wrong (e.g. line as a string), so the per-field check
+          # remains. On failure, fall back to a plain comment carrying
+          # the raw text so a reviewer still sees something.
+          if ! python3 - <<'PY'
+          import json
+          import os
+          raw = open(os.path.join(os.environ["RUNNER_TEMP"], "review.raw")).read().strip()
+          data = json.loads(raw)
+          assert isinstance(data, dict), "top-level must be a JSON object"
+          assert isinstance(data.get("summary"), str), "summary must be a string"
+          comments = data.get("comments")
+          assert isinstance(comments, list), "comments must be a list"
+          for i, c in enumerate(comments):
+              assert isinstance(c, dict), f"comment[{i}] must be an object"
+              assert isinstance(c.get("path"), str), f"comment[{i}].path must be a string"
+              assert isinstance(c.get("line"), int) and not isinstance(c.get("line"), bool), \
+                  f"comment[{i}].line must be an int"
+              assert isinstance(c.get("body"), str), f"comment[{i}].body must be a string"
+          json.dump(data, open(os.path.join(os.environ["RUNNER_TEMP"], "review.json"), "w"))
+          PY
+          then
+            echo "Gemini output failed schema validation; falling back to plain comment." >&2
+            python3 - <<'PY'
+          import json
+          import os
+          raw = open(os.path.join(os.environ["RUNNER_TEMP"], "review.raw")).read()
+          json.dump(
+              {"summary": "Gemini review (raw output, parse failed):\n\n" + raw,
+               "comments": []},
+              open(os.path.join(os.environ["RUNNER_TEMP"], "review.json"), "w"),
+          )
+          PY
+          fi
+
+      - name: Post review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.pr.outputs.number }}
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          # Build the create-review payload: top-level body + inline
+          # comments in one POST. event=COMMENT means non-blocking
+          # (no approve/request-changes), per project policy.
+          PAYLOAD=$(jq -n \
+            --arg sha "$SHA" \
+            --slurpfile review "$RUNNER_TEMP"/review.json \
+            '{
+              commit_id: $sha,
+              body: $review[0].summary,
+              event: "COMMENT",
+              comments: ($review[0].comments | map({path, line, side: "RIGHT", body}))
+            }')
+
+          if ! echo "$PAYLOAD" | gh api -X POST \
+              "/repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --input -; then
+            # Inline comment line was probably outside the diff hunks.
+            # Fall back to a plain comment with summary only so the
+            # operator still sees the review. Use --body-file (not
+            # --body) because Gemini's raw-output fallback can exceed
+            # gh's argv length limit otherwise.
+            echo "Inline review POST failed; falling back to issue comment." >&2
+            jq -r '.summary' "$RUNNER_TEMP"/review.json > "$RUNNER_TEMP"/review-body.md
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP"/review-body.md
+          fi

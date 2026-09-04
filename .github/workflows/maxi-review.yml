@@ -22,8 +22,70 @@ jobs:
     # Same-repository only: this job uses org app credentials to install the
     # private maxi-lint scanner. It checks changed files only and fails solely
     # on deny-level deterministic findings.
+    #
+    # NOT maxi-config's own fan-out. Every branch the distributor pushes is
+    # named maxi-config-sync/<manifest> (scripts/sync-maxi-review.sh), and what
+    # it carries is a byte-for-byte copy of a payload already reviewed on the
+    # maxi-config PR that changed it -- including this very file. The fan-out
+    # reaches ~31 repos, so without this the org re-derives one verdict
+    # thirty-one times per change, on the same self-hosted lane the repos' real
+    # CI is queued on.
+    #
+    # `github.head_ref` and not `github.event.pull_request.head.ref`: they
+    # agree on pull_request events, and head_ref is the spelling every other
+    # branch guard in this fleet already uses (`startsWith(github.head_ref,
+    # 'salvage/') == false`), so a reader recognises the shape.
+    #
+    # THE AUTHOR IS CHECKED TOO, and the condition is the De Morgan of "skip
+    # when it is the fan-out": run unless the branch prefix AND the identity
+    # both say fan-out. A head ref is chosen by whoever pushes the branch, so
+    # the prefix alone would let anyone opt out of the org's review lanes by
+    # naming a branch. This matches pr_review_gate.py, which gates its bypass
+    # on the same pair -- and the two must not disagree, or the gate and the
+    # reviewers it counts would classify the same PR differently.
+    #
+    # Spelled `maxi-tools-auth[bot]` WITH the suffix, unlike the Python gate's
+    # bare slug. `github.event.*` is the raw webhook payload, i.e. REST shape,
+    # and REST spells a Bot actor with the suffix -- confirmed on a live
+    # fan-out PR (maxi-kvm#24: `user.login = "maxi-tools-auth[bot]"`, `type =
+    # "Bot"`), where the same actor reads as `maxi-tools-auth` over GraphQL.
+    # The two literals differ because the two APIs differ, not by accident.
+    #
+    # NOR A DEPENDABOT RUN, for a different reason: it cannot work at all.
+    # `secrets.APP_ID` / `APP_PRIVATE_KEY` are ordinary Actions secrets, and a
+    # Dependabot-triggered run gets the DEPENDABOT secrets scope instead --
+    # which this org has never populated. So both arrive as empty strings and
+    # the app-token step below dies with `The 'client-id' (or deprecated
+    # 'app-id') input must be set to a non-empty string`, ~5s in, having
+    # scanned nothing. That is maxi-kvm#4-#7 exactly. A job that cannot reach
+    # its scanner should SKIP and say so, not report the PR broken.
+    #
+    # Keyed on `github.actor`, not on the PR author, because the actor is what
+    # GitHub keys the secrets restriction on: when a human pushes to a
+    # dependabot/* branch the actor becomes that human, ordinary secrets ARE
+    # available, and this lane should run normally. maxi-core's ci.yml keys its
+    # eleven dependabot guards the same way, for the same reason.
+    #
+    # The review gate's non-author-review leg is what makes this safe to skip
+    # rather than merely quiet: pr_review_gate.py waives THAT CONDITION ONLY on
+    # a dependabot/* PR, because these two jobs are the only non-author
+    # reviewers such a PR ever gets and no push can summon them -- the next
+    # push is Dependabot's too. It does NOT waive the unresolved-threads
+    # condition, which stays measurable via the human-push case above.
+    #
+    # This exclusion is only half of the change. `review-gate`'s
+    # non-author-review leg counts DISTINCT NON-AUTHOR reviewers, and on a
+    # fan-out PR those reviewers were maxi-reviewer and CodeRabbit -- exactly
+    # what is being suppressed. maxi-config's pr_review_gate.py therefore
+    # bypasses the same branch prefix, and MUST be deployed first, or every
+    # fan-out PR is gate-red with no push that can fix it.
     if: >
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      (
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      ) &&
       (
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
@@ -51,7 +113,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
           private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: |
@@ -77,6 +139,47 @@ jobs:
           sparse-checkout: maxi-review
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
+
+      # Refuses a PR that edits a file the distributor overwrites. Deterministic,
+      # so it belongs in this job rather than the AI lane -- and this job is the
+      # one repos can require as a merge gate.
+      #
+      # The file list comes from the API, not `git diff`: the PR head above is
+      # checked out at depth 1, so the base commit is absent and a diff would
+      # fail. Widening the clone for every repo on every PR is a real cost for
+      # a list the API already holds.
+      #
+      # --paginate matters. Without it a PR over 100 files is judged on its
+      # first page and the gate passes on files it never saw -- silently, which
+      # is the exact failure mode it exists to catch.
+      - name: Refuse edits to centrally-owned files
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        shell: bash
+        working-directory: pr-code
+        run: |
+          set -euo pipefail
+          # The .maxi-config checkout above takes maxi-config's DEFAULT branch,
+          # so this helper is whatever main holds right now -- deliberately, as
+          # a pinned ref would freeze a centrally-owned check in 46 repos. The
+          # cost is that a rollback of maxi-config main removes it under us, and
+          # `python3 <missing>` fails with a bare ENOENT and no hint of why.
+          helper="$GITHUB_WORKSPACE/.maxi-config/maxi-review/check-owned-files.py"
+          if [ ! -f "$helper" ]; then
+            echo "::error::$helper is missing from maxi-config's default" \
+              "branch. This gate fails closed rather than passing a PR it" \
+              "never checked; restore the helper on maxi-config main."
+            exit 1
+          fi
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename' > "$RUNNER_TEMP/changed-files.txt"
+          # --labels=VALUE, not --labels VALUE: a label beginning with '-' is
+          # parsed as an option in the separated form and argparse exits 2.
+          python3 "$helper" \
+            --files="$RUNNER_TEMP/changed-files.txt" \
+            --labels="$PR_LABELS"
 
       - name: Run maxi-lint deny gate
         id: maxilint
@@ -272,9 +375,18 @@ jobs:
 
   review:
     needs: lint-gate
+    # Same fan-out exclusion as lint-gate, restated rather than inherited:
+    # `always()` here means a SKIPPED lint-gate does not skip this job, so
+    # excluding only lint-gate would leave the AI reviewer -- the expensive
+    # half -- running on all ~31 copies anyway.
     if: >
       always() &&
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      (
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      ) &&
       (
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
@@ -286,20 +398,22 @@ jobs:
     # single line. Same-repository PRs only (the `if` above), so this is org
     # code on the org's own fleet, not fork code.
     runs-on: [self-hosted, Linux, X64]
-    # Must exceed the step's 55, or the job cap fires first and the step bound
-    # — the actual runner-release watchdog — can never take effect. README:
-    # "use a step timeout-minutes of at least 55 and a job timeout above that."
+    # Must exceed the reviewer step's 40, or the job cap fires first and the
+    # step bound — the actual runner-release watchdog — can never take effect.
+    # README: "use a step timeout-minutes of at least [hard deadline + cleanup
+    # headroom] and a job timeout above that."
     #
-    # 70, not 65, because this cap covers the WHOLE job, and everything ahead of
-    # the reviewer step here is network-bound: two app-token mints, the
-    # maxi-lint findings artifact download, the rules fetch, the per-language
-    # rule selection, the PR-head checkout, and the built-in rules fetch and
+    # 70 because this cap covers the WHOLE job, and everything ahead of the
+    # reviewer step here is network-bound: two app-token mints, the maxi-lint
+    # findings artifact download, the rules fetch, the per-language rule
+    # selection, the PR-head checkout, and the built-in rules fetch and
     # staging. (The pinned maxi-lint cargo install is NOT in this job — it runs
-    # in lint-gate, under its own 10-minute cap.) At 60 only five minutes covers
-    # all of that before the cap starts eating the reviewer's own budget, and a
-    # job cancellation kills the action mid-run, skipping exactly the graceful
-    # status cleanup the 55 exists to preserve. 70 leaves 15 minutes of setup
-    # headroom above the step bound and still releases the runner.
+    # in lint-gate, under its own 10-minute cap.) A job cancellation kills the
+    # action mid-run, skipping exactly the graceful status cleanup the step
+    # bound exists to preserve, so this cap must never be the one that fires.
+    # 70 leaves 30 minutes of setup headroom above the 40-minute step bound,
+    # and bounds the job far below GitHub's 6-hour default, which is what would
+    # otherwise hold the runner if both inner bounds failed to fire.
     timeout-minutes: 70
     permissions:
       pull-requests: write
@@ -311,7 +425,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
           private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: |
@@ -395,15 +509,60 @@ jobs:
             echo "JULES_RULES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # Looks ACROSS review rounds, which no single review can do. A
+      # line-level reviewer is very good at "this line is wrong" and
+      # structurally unable to say "this approach guarantees more of these" --
+      # every finding is correct, every fix is correct, and the next round
+      # produces another of the same shape. Emits nothing on a converging PR,
+      # which is almost all of them.
+      - name: Detect review churn
+        id: churn
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH"
+          # PIPED, not passed as an argument. One real PR's comment payload
+          # measured 910 KB against a 1 MB ARG_MAX on these runners, and the
+          # PRs this step targets are the ones with the most comments -- so
+          # argv would have failed to exec exactly where it is needed.
+          #
+          # `|| true` and the empty default below: this step may only ever ADD a
+          # question to the review. A rate-limited call or a parse failure must
+          # leave the review exactly as it would have been and never fail the
+          # job -- the review is the product, this is a footnote on it.
+          text=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
+            | python3 .maxi-config/maxi-review/detect-review-churn.py 2>/dev/null \
+            || true)
+          # A RANDOM DELIMITER, because `$text` is PR comment bodies -- data an
+          # attacker controls. With a fixed `CHURN_EOF`, a comment containing
+          # that word on a line of its own closes the heredoc early, and every
+          # line after it is parsed as a fresh `$GITHUB_OUTPUT` assignment:
+          # arbitrary step outputs, set by anyone who can comment on a PR.
+          # GitHub's own guidance for untrusted multiline output is a delimiter
+          # the writer cannot predict. (maxi-reviewer, seen on the fan-out.)
+          delim="CHURN_EOF_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+          {
+            printf '%s\n' "text<<$delim"
+            printf '%s\n' "$text"
+            printf '%s\n' "$delim"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Prepare lint findings context
         id: maxilint
         run: |
+          # Random for the same reason as the churn block above. This one is
+          # findings text produced from the PR's own source, so it is one
+          # remove from attacker-controlled rather than two -- a lint message
+          # can quote the code that triggered it.
+          delim="MAXI_LINT_EOF_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
           {
-            echo "text<<MAXI_LINT_EOF"
+            printf '%s\n' "text<<$delim"
             if [ -s .maxi-lint-findings/maxi-lint-findings.md ]; then
               cat .maxi-lint-findings/maxi-lint-findings.md
             fi
-            echo "MAXI_LINT_EOF"
+            printf '%s\n' "$delim"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR head
@@ -417,7 +576,7 @@ jobs:
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: reviewer-token
         with:
-          app-id: ${{ secrets.APP_ID }}
+          client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: maxi-reviewer
@@ -433,7 +592,7 @@ jobs:
           # runs the action that consumes them. Split them and the reviewer
           # grades with one revision's code against another revision's rules —
           # a mismatch nothing else in this workflow would surface.
-          ref: ae2700a9171b4204bbd5416d17e90910ace4c128
+          ref: f772893df470bf0749e32ba6e916fad1166d3d63
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -455,36 +614,97 @@ jobs:
       # Evaluating a newer head is a deliberate follow-up, not a drive-by bump
       # inside the PR whose job is to stop unreviewed drift.
       #
-      # ae2700a is the previous pin, 6fe937d (2026-07-22), plus exactly one
-      # commit: the fix that stops an artifact-storage outage from failing a
-      # completed review (maxi-reviewer ae2700a). It was cut FROM 6fe937d and
-      # then merged to main precisely so this pin could move by that one commit
-      # rather than by the 41 of unrelated drift that separate 6fe937d from
-      # maxi-reviewer's head.
+      # f772893 is maxi-reviewer#92's merge commit, and it is main's head as
+      # this moves -- a deliberate exception to "ancestor, not head", argued
+      # rather than assumed. Six commits touch src/ or action.yml since the
+      # previous pin ae2700a (2026-08-19): the in-process hard deadline
+      # (862f1aa), the empty-review failure and explicit review outcomes
+      # (ebdb6b4), the pending-status heartbeat and its two follow-ups
+      # (04aa040, a2729c5, b4f67fe), and the timeout message this pin exists to
+      # ship (a80aec7). The other 92 are workflow syncs and dependabot bumps
+      # that never reach the action.
+      #
+      # The dogfood evidence the old wording asked for did not exist before
+      # now. maxi-reviewer's "Verify checked-in dist" gate had been red on
+      # every PR since at least 2026-08-26: it installed with npm against a
+      # pnpm lockfile, so ncc rebuilt ~27k lines of different module
+      # bookkeeping and the diff never had anything to do with the change under
+      # review. 9b7b57f, inside this range, fixes it. f772893 is the first
+      # commit whose dist has actually been verified against its own source.
+      #
+      # Advancing this also activates `hard_timeout_minutes`, a new input
+      # defaulting to timeout_minutes + 20 = 35. Nothing in this file moves for
+      # it: the step bound below is already 40, picked so this pin could
+      # advance without dragging the timeout arithmetic behind it.
       - name: Run maxi-reviewer
         # ~37% of invocations used to hang with no step output and hold a scarce
         # self-hosted runner until the job timeout (maxi-reviewer#53).
         #
-        # 55, not 35. The action enforces its own hard deadline in-process at
-        # `hard_timeout_minutes`, which defaults to `timeout_minutes + 20` — so
-        # 50 with the 30-minute Jules budget set below. maxi-reviewer's README
-        # requires the step bound to sit ABOVE that, at 55 or more, plus cleanup
-        # headroom: a blocked Node event loop can stop the in-process timers
-        # firing, which is exactly why this outer bound is the real
-        # runner-release watchdog. A 35-minute bound fires FIRST and kills a
-        # review still legitimately inside its own deadline, defeating the
-        # graceful status cleanup this is meant to preserve.
-        timeout-minutes: 55
-        uses: maxi-tools/maxi-reviewer@ae2700a9171b4204bbd5416d17e90910ace4c128
+        # 40, derived — do not tune it on its own. The action enforces a hard
+        # deadline in-process at `hard_timeout_minutes`, defaulting to
+        # `timeout_minutes + 20`, and maxi-reviewer's README requires this step
+        # bound to sit ABOVE that plus a few minutes of cleanup headroom.
+        # 15 + 20 = 35, + 5 = 40 — the same five-minute margin the documented
+        # 30-minute default gets (50, step 55). A bound AT 35 fires at the same
+        # instant as the in-process deadline and can kill a review still
+        # legitimately inside it, defeating the graceful status cleanup this
+        # exists to preserve. A blocked Node event loop can stop the in-process
+        # timers firing, which is why this outer bound is the real
+        # runner-release watchdog.
+        #
+        # That arithmetic only became true of the FLEET when the pin advanced
+        # to f772893 above. The previous pin, ae2700a, predated
+        # src/hard-deadline.ts entirely — no `hard_timeout_minutes` input, no
+        # deadline timer in its dist — so this bound was the only thing
+        # releasing the runner, and it had to cover setup plus the whole poll
+        # rather than merely outlive a timer at 35. 40 was chosen to be correct
+        # under both regimes precisely so the pin could move without this
+        # number moving with it. Whenever `timeout_minutes` moves, this does:
+        # timeout_minutes + 25.
+        timeout-minutes: 40
+        uses: maxi-tools/maxi-reviewer@f772893df470bf0749e32ba6e916fad1166d3d63
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}
           rules_file: ""
           extra_instructions: |
             ${{ steps.rules.outputs.text }}
+            ${{ steps.churn.outputs.text }}
 
             ${{ steps.maxilint.outputs.text }}
-          timeout_minutes: "30"
+          # 15 — twice measured, from both directions.
+          #
+          # Down from 30: MEASURED on maxi-nix, the last seven completed runs
+          # under the 30-minute budget were 30.7, 30.8, 30.8, 41.1, 50.3, 50.3
+          # and 59.0 minutes -- and THREE OF THE SEVEN produced no verdict at
+          # all. Those three are the 30-minute cluster: they spent the whole
+          # budget and returned nothing, then set `advisory: maxi reviewer`
+          # red for having failed to work. On a gate every push to every PR in
+          # ~90 repos waits for, that is half an hour of dead wall-clock per
+          # bad run.
+          #
+          # Back up from 10: the premise behind 10 was "a review that has
+          # produced no agent message in ten minutes is not about to". MEASURED
+          # 2026-08-30, that is false. `pollForReview` in maxi-reviewer's
+          # src/jules.ts sleeps 20s between attempts, so 10 minutes is ~30
+          # attempts -- and two real reviews landed that day on attempt 26
+          # (~8.7 min) and attempt 29 (~9.7 min), inside the budget by seconds.
+          # maxi-reviewer's own action.yml warns that non-trivial PRs often
+          # take 15-25 minutes. 15 keeps half the saving over 30 while putting
+          # the observed successes comfortably inside the budget instead of on
+          # the cliff edge.
+          #
+          # NOT per-repository: that theory came from bootstrap and maxi-kvm
+          # being absent from Jules' connected Codebases list, and one run
+          # killed it -- bootstrap#68, still absent, came back `verdict:
+          # approve`. One observation rules the theory out without explaining
+          # the variance. Response latency looks independent of anything we
+          # send, which leaves this number as the only lever we control.
+          #
+          # Changing this number changes `timeout-minutes` on this step: the
+          # in-process hard deadline is timeout_minutes + 20 and the step bound
+          # must clear it by ~5 minutes of cleanup headroom.
+          timeout_minutes: "15"
           fail_on: "blocking"
-          status_context: jules/review
+          status_context: 'advisory: maxi reviewer'
           analyzer_mode: "off"

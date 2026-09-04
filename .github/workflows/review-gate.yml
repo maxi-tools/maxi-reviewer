@@ -43,6 +43,44 @@ on:
   pull_request_review_comment:
     types: [created, deleted]
 
+# Without this, every trigger above stacks a run that is never superseded, and
+# `pull_request_review_comment` fires once per individual comment. A reviewer
+# filing eighteen comments in a round therefore queues eighteen gate runs, none
+# of which cancels the others. Measured on maxi-config#412: 24 queued
+# review-gate jobs on one SHA -- 12 copies of `resolve-review-threads` and 12 of
+# `get-a-non-author-review` -- with not one of them started, on a self-hosted
+# pool at zero idle. The gate could not reach a verdict because it was waiting
+# behind eleven stale copies of itself.
+#
+# `maxi-review.yml` -- fanned out by the same script, from this directory -- has
+# had this since it was written. This file never did.
+#
+# THIS BLOCK LIVES IN THE TEMPLATE, NOT ONLY IN maxi-config's applied copy.
+# It was first added to `.github/workflows/review-gate.yml` alone, and the next
+# fan-out (#436, "sync Maxi review workflows from maxi-config") copied this
+# template straight over it and deleted all thirty lines -- in maxi-config and
+# in every consumer at once. Re-measured after that revert: 73 queued runs org
+# wide on SHAs that were no longer any branch tip or open-PR head, 10 of them
+# `Review Gate`. tests/test_review_gate_workflow.py pins it here now.
+#
+# Cancelling is safe here, and the distinction matters: the approach withdrawn
+# above left verdicts PENDING, which is not neutral in a rollup that aggregates
+# across suites. A cancelled run is *terminal*, not pending. No `review-gate`
+# context is in any repo's required set (checked across the org: rulesets
+# require `merge-gate/*` only), so a cancelled check-run cannot block a merge,
+# and the authoritative signal is the commit status the reusable workflow
+# publishes, which is last-write-wins per context. The newest run always
+# survives to write it.
+#
+# This also removes the reason for the soft-supersede branch in
+# review-gate-reusable.yml ("run N started while M was publishing; yielding the
+# context back to pending") -- that exists to compensate for stacking rather
+# than prevent it. Leave it in place: it is now belt-and-braces, and removing it
+# is a separate change that should be measured on its own.
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:

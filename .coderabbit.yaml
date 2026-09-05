@@ -91,7 +91,13 @@ reviews:
           because a byte parser corrupts emoji.
         - No ZWJ emoji in tool or category definitions; they break across
           serialization and byte parsing.
-        - Internal git dependencies track `branch = "main"`, not pinned revs.
+        - Dependency pins live in Cargo.toml and the rule for them is in that
+          block. What reaches Rust is the test that ENFORCES a pin:
+          voicemaci's `waterui_family_is_pinned_to_a_single_rev` in
+          tests/feature_defaults.rs asserts every waterui dependency carries
+          the one explicit `rev` and none tracks a branch. That assertion is
+          correct and load-bearing -- do not propose relaxing it to
+          `branch = "main"`.
         YOUR LANE on Rust: whether the TESTS prove what they claim. Does the
         fixture resemble input the code will really see, or was it shaped to
         make the assertion pass? Does the test fail if the behaviour it covers
@@ -114,6 +120,36 @@ reviews:
         security hole, or a CI gate that passes without doing its work --
         raise it whatever lane it belongs to, and say you are raising it
         out-of-lane. A missed P1 costs far more than a duplicate comment.
+    # The dependency-pin rule is SPLIT across this entry and the Rust one above
+    # rather than stated once, because the two blocks need different halves of
+    # it. Pins are DECLARED here, so this block carries the policy; Rust only
+    # ever sees a test ASSERTING a pin, so that block carries the assertion.
+    # Stating it only under `**/*.rs` is what produced the finding this entry
+    # exists to prevent: voicemaci#44 drew a Major "dependency-policy conflict"
+    # against tests/feature_defaults.rs -- a Rust file reasoning about pins --
+    # while the Cargo.toml that actually declares them was reviewed with no
+    # knowledge of the policy at all. A rule scoped to the file type that
+    # cannot contain the construct is not a rule that fires.
+    - path: "**/Cargo.toml"
+      instructions: |
+        Settled decision across this org -- do not re-litigate it:
+        - Internal git dependencies track `branch = "main"` by default, except
+          where type identity must match across crates: the WaterUI family
+          shared by maxi-ui, maxi-tray and voicemaci is pinned to one explicit
+          `rev`, because Cargo keys a git source on URL AND rev, so two revs
+          resolve two `waterui-core`s and one's `View` is not the other's. An
+          explicit `rev` on a waterui dependency is CORRECT -- do not raise it
+          as a dependency-policy conflict, and do not propose replacing it
+          with `branch = "main"`.
+
+        What is worth a comment here: a waterui dependency added at a rev the
+        other waterui entries do not carry, or added as branch-tracked, in ANY
+        table -- `[dependencies]`, `[dev-dependencies]`,
+        `[build-dependencies]`, `[patch.*]` or a `[target.*]` table. That is
+        the drift the single-rev pin exists to prevent.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
     - path: "**/*.py"
       instructions: |
         Mostly CI-critical scripts. Prioritise exit codes and error propagation:

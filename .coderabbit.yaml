@@ -46,11 +46,38 @@ reviews:
     - "!**/dist/**"
     - "!**/*.wasm"
     - "!**/*.bin"
-    - "!**/fixtures/**"
+    # Fixture directories are ENUMERATED, not matched by a blanket
+    # `!**/fixtures/**`. Codacy (.codacy.yml), qlty (.qlty/qlty.toml) and cubic
+    # (cubic.yaml) all deliberately enumerate them for the same reason, and
+    # CodeRabbit was the only reviewer still hiding the class wholesale.
+    #
+    # The blanket glob swallows directories that are not test data at all. The
+    # worked example is maxi-core's src/daemon/fixtures/continuation_parity.json:
+    # it is `include_str!`d into src/brain_parity.rs as DEFAULT_FIXTURES and
+    # decides model accuracy and promotion. It is a production input whose
+    # directory happens to be named `fixtures`, and CodeRabbit was skipping
+    # review of it on the strength of the name alone.
+    - "!**/.github/**/fixtures/**"
+    - "!**/benches/**/fixtures/**"
+    - "!**/benchmarks/**/fixtures/**"
+    - "!**/tests/**/fixtures/**"
     # Retired by design. In maxi-core this single path accounted for 37 of one
     # PR's 38 unresolved threads, none of them high severity.
     - "!docs/archive/**"
 
+  # LANES. Six reviewers run on these repos -- CodeRabbit, cubic, Codacy, Qlty,
+  # Qodana and maxi-reviewer (Jules) -- and they were duplicating each other. On
+  # maxi-core#3513 four independently reported the same worktree-dedup bug; on
+  # #3455 two independently found the same two bugs. The org merge bar requires
+  # zero unresolved threads, so a duplicate finding is not extra confidence, it
+  # is an extra merge gate for a defect already reported.
+  #
+  # CodeRabbit leads on TEST-FIXTURE REALISM and WORKFLOW/YAML CORRECTNESS. It
+  # is demonstrably the only reviewer here attacking whether a test actually
+  # proves what it claims, which is why that lane is its own.
+  #
+  # The lane is a priority, not a blindfold -- every block below carries the
+  # same escape hatch, and it must stay.
   path_instructions:
     - path: "**/*.rs"
       instructions: |
@@ -64,9 +91,65 @@ reviews:
           because a byte parser corrupts emoji.
         - No ZWJ emoji in tool or category definitions; they break across
           serialization and byte parsing.
-        - Internal git dependencies track `branch = "main"`, not pinned revs.
-        Do flag: unwrap/expect reachable from user input, blocking calls inside
-        async fns, and a lock held across an await.
+        - Dependency pins live in Cargo.toml and the rule for them is in that
+          block. What reaches Rust is the test that ENFORCES a pin:
+          voicemaci's `waterui_family_is_pinned_to_a_single_rev` in
+          tests/feature_defaults.rs asserts every waterui dependency carries
+          the one explicit `rev` and none tracks a branch. That assertion is
+          correct and load-bearing -- do not propose relaxing it to
+          `branch = "main"`.
+        YOUR LANE on Rust: whether the TESTS prove what they claim. Does the
+        fixture resemble input the code will really see, or was it shaped to
+        make the assertion pass? Does the test fail if the behaviour it covers
+        regresses? Is a new branch, error path or state transition reachable by
+        any test at all? Spend the budget there.
+
+        Leave these to the reviewer that leads on them, unless you believe the
+        finding is P1:
+        - Daemon panic paths, async cancellation-safety in `tokio::select!`,
+          DashMap lock discipline, unbounded allocation -- maxi-reviewer
+          (Jules) leads.
+        - Cross-target `src/lib.rs` / `src/main.rs` module parity and
+          feature/`cfg(target_os)` gating -- cubic leads.
+        - Complexity, function length, parameter counts, nesting, duplication
+          -- Qlty leads, with metric history.
+        - Style and naming -- rustfmt, clippy and Qodana lead.
+
+        ESCAPE HATCH: if you find a defect you believe is P1 -- data loss, an
+        exposed credential or token, a daemon-wide panic or deadlock, a
+        security hole, or a CI gate that passes without doing its work --
+        raise it whatever lane it belongs to, and say you are raising it
+        out-of-lane. A missed P1 costs far more than a duplicate comment.
+    # The dependency-pin rule is SPLIT across this entry and the Rust one above
+    # rather than stated once, because the two blocks need different halves of
+    # it. Pins are DECLARED here, so this block carries the policy; Rust only
+    # ever sees a test ASSERTING a pin, so that block carries the assertion.
+    # Stating it only under `**/*.rs` is what produced the finding this entry
+    # exists to prevent: voicemaci#44 drew a Major "dependency-policy conflict"
+    # against tests/feature_defaults.rs -- a Rust file reasoning about pins --
+    # while the Cargo.toml that actually declares them was reviewed with no
+    # knowledge of the policy at all. A rule scoped to the file type that
+    # cannot contain the construct is not a rule that fires.
+    - path: "**/Cargo.toml"
+      instructions: |
+        Settled decision across this org -- do not re-litigate it:
+        - Internal git dependencies track `branch = "main"` by default, except
+          where type identity must match across crates: the WaterUI family
+          shared by maxi-ui, maxi-tray and voicemaci is pinned to one explicit
+          `rev`, because Cargo keys a git source on URL AND rev, so two revs
+          resolve two `waterui-core`s and one's `View` is not the other's. An
+          explicit `rev` on a waterui dependency is CORRECT -- do not raise it
+          as a dependency-policy conflict, and do not propose replacing it
+          with `branch = "main"`.
+
+        What is worth a comment here: a waterui dependency added at a rev the
+        other waterui entries do not carry, or added as branch-tracked, in ANY
+        table -- `[dependencies]`, `[dev-dependencies]`,
+        `[build-dependencies]`, `[patch.*]` or a `[target.*]` table. That is
+        the drift the single-rev pin exists to prevent.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
     - path: "**/*.py"
       instructions: |
         Mostly CI-critical scripts. Prioritise exit codes and error propagation:
@@ -88,6 +171,18 @@ reviews:
         `github.event_name != 'pull_request' || (head.repo.full_name ==
         github.repository && ...)`. A `head.repo.full_name != github.repository`
         term inside an OR admits fork PRs.
+
+        This is YOUR LANE -- workflow and YAML correctness is yours to lead on,
+        so review it thoroughly rather than deferring. Two failure modes seen
+        in practice and worth naming: a required check that is ABSENT is not a
+        required check that PASSED, and grepping a job log for `::error::`
+        matches the guard scripts' echoed error TEMPLATES rather than real
+        emissions. Also check that the subcommand list a workflow gates on
+        covers what its config declares -- a `cargo deny check` that omits
+        `licenses` leaves deny.toml's allow-list enforced by nothing.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
     - path: "**/*.md"
       instructions: |
         Review prose for accuracy against the code it describes, not for style.
@@ -106,6 +201,44 @@ reviews:
     # nothing" rather than "CodeRabbit never looked".
     base_branches:
       - "^(main|master|dev)$"
+    # maxi-config's own fan-out. These PRs carry a byte-for-byte copy of a diff
+    # that was already reviewed on the maxi-config PR that changed it, opened
+    # into ~31 repos at once -- so reviewing them spends this org's whole rate
+    # limit re-deriving one verdict thirty-one times, and denies review to PRs
+    # that have not been reviewed anywhere.
+    #
+    # BOTH keys, deliberately, because each is one rename away from failing
+    # open and failing open here is SILENT -- 31 unwanted reviews and no error.
+    # ignore_usernames is an EXACT match on the login, so it stops matching the
+    # day the distributor's app identity changes; ignore_title_keywords is a
+    # case-insensitive substring of the title, so it stops matching if
+    # $pr_title in sync-maxi-review.sh is reworded. Two independent covers for
+    # one PR, not one cover stated twice.
+    #
+    # Know what the username key costs: maxi-tools-auth[bot] is the org's
+    # general automation identity, not the fan-out's alone -- it also opens the
+    # `ci-budgets-sync` PRs that regenerate runner budgets. Those lose
+    # CodeRabbit too. That is judged acceptable rather than overlooked: they
+    # are generated files with no reviewable logic, and they keep maxi-reviewer
+    # (whose head_ref guard excludes only maxi-config-sync/), so the review
+    # gate still has a non-author reviewer on them and does not wedge. If a
+    # future automation on this identity DOES want CodeRabbit, drop this key
+    # and rely on the title key alone rather than widening the bypass.
+    #
+    # `ignore_labels` is NOT the third cover, because CodeRabbit has no such
+    # key (checked against schema.v2.json); the label-shaped control is
+    # `labels`, an allow/deny list evaluated for EVERY PR, and the fan-out
+    # applies no labels anyway.
+    #
+    # The head branch would be the sharpest key of the three -- the fan-out
+    # always pushes maxi-config-sync/<manifest> -- but auto_review filters on
+    # BASE branches only, so it is not expressible here. maxi-review.yml and
+    # the review gate key off it directly instead.
+    ignore_usernames:
+      - "maxi-tools-auth[bot]"
+    ignore_title_keywords:
+      - "sync maxi-review from maxi-config"
+      - "sync review-configs from maxi-config"
 
 chat:
   auto_reply: true

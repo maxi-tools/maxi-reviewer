@@ -53,10 +53,18 @@ permissions: {}
 jobs:
   review:
     # Only run on PR comments that contain `/gemini-review`, and only when
-    # the commenter is trusted. Manual workflow_dispatch is always allowed
-    # because the Actions UI is gated by repo write access.
+    # the commenter is trusted.
+    #
+    # Manual workflow_dispatch used to be allowed unconditionally, on the
+    # reasoning that "the Actions UI is gated by repo write access". Write
+    # access is the wrong bound: `gh workflow run --ref` accepts ANY branch, so
+    # any collaborator could dispatch this at a branch of their own and have
+    # the fleet execute that branch's agent configuration beside the org token
+    # this job holds. Pinned to the owner by numeric id, the identity
+    # ci/review-trusted-actors.toml already uses.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.sender.id == 874012) ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
        contains(github.event.comment.body, '/gemini-review') &&
@@ -276,7 +284,7 @@ jobs:
             exit 1
           fi
 
-          # Outer loop: try each key in order. Inner loop: retry 5xx.
+          # Outer loop: try each key in order. Inner loop: retry transport errors/5xx.
           # 4xx (auth, quota, bad request) advances to the next key —
           # retry within the same key would just burn more quota.
           HTTP=
@@ -285,13 +293,22 @@ jobs:
             [[ -z "$KEY" ]] && continue
             KEY_INDEX=$((KEY_INDEX + 1))
             for attempt in 1 2 3 4; do
-              HTTP=$(curl -sS -X POST \
+              # Clear any previous response before a transport failure can leave it stale.
+              : > "$RUNNER_TEMP"/api.json
+              if HTTP=$(curl -sS --connect-timeout 10 --max-time 120 -X POST \
                 -o "$RUNNER_TEMP"/api.json \
                 -w '%{http_code}' \
                 -H "Content-Type: application/json" \
                 -H "x-goog-api-key: ${KEY}" \
                 -d @"$RUNNER_TEMP"/req.json \
-                "$GEMINI_URL")
+                "$GEMINI_URL"); then
+                :
+              else
+                # curl failure is transient too; keep errexit from bypassing retries.
+                CURL_STATUS=$?
+                HTTP=000
+                echo "::warning::Gemini transport error $CURL_STATUS (key #$KEY_INDEX, attempt $attempt)" >&2
+              fi
               if [[ "$HTTP" == "200" ]]; then
                 break 2
               fi
@@ -302,7 +319,7 @@ jobs:
                 cat "$RUNNER_TEMP"/api.json >&2
                 break
               fi
-              # 5xx — backoff and retry with the SAME key (transient
+              # Transport errors/5xx — backoff and retry with the SAME key (transient
               # backend issue, not a quota problem).
               if [[ $attempt -lt 4 ]]; then
                 sleep $((attempt * 5))

@@ -194,6 +194,20 @@ jobs:
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: maxi-tools
+          # This token exists for one step: the `insteadOf` rewrite that lets
+          # `cargo fetch` resolve private maxi-tools git dependencies so the
+          # Rust extractor can build a crate graph. A read of contents.
+          #
+          # Unscoped it inherited the whole installation -- contents, workflows
+          # and actions write across all 73 org repos, plus
+          # organization_self_hosted_runners write -- for a scan that writes
+          # nothing but a SARIF upload (done with the job's own GITHUB_TOKEN).
+          # See maxi-config#581.
+          #
+          # Permissions only, no `repositories:`: this file is distributed to
+          # consumer repos whose private-dependency sets differ, and a list
+          # derived from one strands the rest (maxi-config#557).
+          permission-contents: read
 
       - name: Fetch private dependencies
         if: matrix.language == 'rust'

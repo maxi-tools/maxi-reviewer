@@ -25,12 +25,37 @@ jobs:
     # step is green on x86_64, which is what the checked-in bundle was built
     # on, so the lane is pinned to the architecture the artifact came from
     # rather than to whichever box is free.
-    runs-on: ${{ github.event.pull_request.head.repo.full_name == github.repository
+    #
+    # Dependabot is excluded by name, not covered by the comparison above.
+    # Its branches live in THIS repository, so the same-repo test is true for
+    # them, and the payload of a dependabot pull request is a third-party
+    # version bump whose package lifecycle scripts this job then runs. That is
+    # code from outside the owner's control on a persistent box, which is the
+    # one thing this migration must not do. self-test.yml already screens the
+    # same actor for the same reason.
+    #
+    # This job is safe to route on a repository comparison alone, unlike
+    # self-test.yml next door, because it holds NO credential: its permissions
+    # are `contents: read`, it references no `secrets.*`, and the checkout
+    # below no longer persists a token. maxi-core#3913 drew that line -- a fork
+    # guard is enough for a job that builds pull-request code with nothing in
+    # scope to steal.
+    runs-on: ${{ github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
       && fromJSON('["self-hosted", "Linux", "X64"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          # checkout v6 still defaults this to true, which writes the job's
+          # GITHUB_TOKEN into .git/config -- on a persistent runner, readable
+          # by the dependency lifecycle scripts the next step executes. Nothing
+          # here pushes or fetches a private sibling, so the credential has no
+          # purpose; dropping it is what leaves this job with no credential in
+          # scope at all, which is the premise the `runs-on` routing above
+          # relies on. ci.yml and self-test.yml already do this.
+          persist-credentials: false
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:

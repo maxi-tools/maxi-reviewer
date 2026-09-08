@@ -1,13 +1,80 @@
 # maxi-config-owned ShellCheck configuration.
 #
-# Distributed to every org repo as .shellcheckrc by scripts/sync-maxi-review.sh
-# --manifest review-configs. Edit it HERE, not in the target repo.
+# Distributed as .shellcheckrc by scripts/sync-maxi-review.sh --manifest
+# review-configs. Edit it HERE, not in the target repo.
+#
+# NOT every org repo, despite what this header used to say. The push inventory
+# is the DECLARED repo list unioned with repos DISCOVERED by already carrying an
+# owned maxi-fix.yml. Declared repos are included unconditionally; having no
+# default-branch workflow only makes a repo undiscoverable, not excluded. What
+# is excluded is a repo that is neither declared nor discoverable -- a newly
+# created one, until someone adds it to the list. Such a repo gets neither these
+# settings nor the warning below. See maxi-tools/maxi-config#319.
 #
 # Lives at the repo ROOT because Codacy detects ShellCheck config by that name.
-# Kept identical to .qlty/configs/.shellcheckrc so qlty, the Codacy CLI, the
-# Codacy PR bot and a bare local `shellcheck` all behave the same way.
+# The SETTINGS below are kept identical to maxi-config's own
+# .qlty/configs/.shellcheckrc so qlty, the Codacy CLI, the Codacy PR bot and a
+# bare local `shellcheck` all behave the same way. Most consumer repos have no
+# .qlty directory; the settings here stand on their own and that file is named
+# only to say where the pair is kept in step.
 
 # Resolve `source`/`.` relative to the script being checked rather than the
-# invoking directory. Without this, every script sourcing a sibling helper
-# reports SC1091 (not following: file not found).
+# invoking directory.
 source-path=SCRIPTDIR
+
+# source-path alone does not suppress SC1091. Measured on shellcheck 0.11.0,
+# a script sourcing a sibling, invoked from outside its directory:
+#
+#   (no config)                  SC1091 not following: ./lib.sh was not
+#                                       specified as input (see -x)
+#   source-path=SCRIPTDIR        SC1091 not following: ./lib.sh was not
+#                                       specified as input (see -x)
+#   both settings                clean -- PROVIDED the sourced file exists on
+#                                       disk when shellcheck runs
+#
+# The first two are byte-identical: source-path lets shellcheck FIND a sourced
+# file, external-sources is what lets it FOLLOW one.
+#
+# That precondition is not a footnote. For anything generated at run time -- a
+# venv activate script, a file a build step writes -- external-sources changes
+# only the WORDING of SC1091, from "was not specified as input" to
+# "openBinaryFile: does not exist (No such file or directory)". The finding
+# stays. Silence those at the call site with `# shellcheck source=/dev/null`,
+# not by expecting this file to do it.
+#
+# What external-sources actually costs, stated plainly because the previous
+# version of this comment got it wrong: it lets shellcheck OPEN ANY FILE a
+# script names in a `source` line -- absolute paths and upward traversal
+# included. source-path does NOT confine that. It adds search directories for
+# resolving RELATIVE sources; it is not a sandbox. Verified on 0.11.0 with both
+# settings on: a script under inner/ sourcing `/tmp/outside.sh` and
+# `../sibling.sh` reports no SC1091 for either, which is to say it followed
+# both. This is why shellcheck keeps the setting off by default and refuses to
+# honour it from inside a script -- it is a trust boundary, not a convenience.
+#
+# The trade is acceptable where the scripts are first-party and the machine
+# running shellcheck holds nothing the repo does not: opening a sourced path
+# then discloses nothing that reading the checkout already would.
+#
+# Note it is NOT justified by "CI runs these scripts anyway". In maxi-config it
+# does not: hooks/pre-push and hooks/pre-commit-lint there are the LOCAL half
+# of the lint policy and no job invokes them. Check your own repo rather than
+# assuming either way.
+#
+# It is NOT made acceptable by a same-repo guard. A branch in the same repo can
+# still edit a `source` line to name an arbitrary host file, and this fleet's
+# written posture is that persistent self-hosted machines never execute
+# pull-request code AT ALL -- including pull requests from trusted repository
+# members -- because the threat is persistence, not token scope or fork origin:
+#
+#   maxi-config: ci/runner-routing.toml, [lanes.linux-x64-ephemeral-review]
+#   maxi-config: docs/claude-review-routing.md
+#
+# (Both paths are in maxi-config, not in the repo you are reading this from.
+# Same reason the issue reference above is spelled out in full: this file is
+# copied into other repos, where a bare path or #number resolves locally and
+# points at nothing.)
+#
+# So keep shellcheck off the pull-request path on persistent runners, or on an
+# ephemeral lane. Do not read the same-repo predicate as sufficient.
+external-sources=true

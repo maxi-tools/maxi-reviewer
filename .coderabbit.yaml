@@ -130,6 +130,14 @@ reviews:
     # while the Cargo.toml that actually declares them was reviewed with no
     # knowledge of the policy at all. A rule scoped to the file type that
     # cannot contain the construct is not a rule that fires.
+    - path: "**/deny.toml"
+      instructions: |
+        Respect the repository's documented dependency policy and executable
+        dependency gate. A required audited rev takes precedence over the
+        default of tracking internal dependencies on main. Check policy
+        changes against the manifests and gate; do not weaken the gate
+        or replace a required rev with a branch to satisfy the default.
+
     - path: "**/Cargo.toml"
       instructions: |
         Settled decision across this org -- do not re-litigate it:
@@ -141,6 +149,13 @@ reviews:
           explicit `rev` on a waterui dependency is CORRECT -- do not raise it
           as a dependency-policy conflict, and do not propose replacing it
           with `branch = "main"`.
+
+        - A repository's explicit audited dependency boundary also takes
+          precedence over the branch-tracking default. Check the repository's
+          documented policy and executable dependency gate before proposing a
+          pin change. Do not replace a required rev with a branch or weaken the
+          gate to satisfy this default. A pin update must deliberately update
+          and pass the relevant gate.
 
         What is worth a comment here: a waterui dependency added at a rev the
         other waterui entries do not carry, or added as branch-tracked, in ANY

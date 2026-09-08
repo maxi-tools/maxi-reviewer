@@ -8,8 +8,26 @@
 name: Review Gate
 
 on:
+  # `labeled`/`unlabeled` are here for ONE reason: `review-infra-unavailable`.
+  # That label waives the non-author-review condition, and a label-dependent
+  # verdict that is not recomputed when the label moves is the same defect
+  # class as the bug that produced this waiver (#555) -- an escape hatch that
+  # appears not to work at the moment somebody reaches for it. Both directions
+  # matter, and they fail differently:
+  #
+  #   labeled     without it, applying the label during an outage changes
+  #               nothing. The red verdict stands until someone pushes or
+  #               re-runs, which is precisely the "the override made it worse"
+  #               experience this whole change exists to remove.
+  #   unlabeled   without it, REMOVING the label leaves the waived green
+  #               status standing, and the PR merges with neither the label
+  #               nor a review. That one is a correctness hole, not friction.
+  #
+  # This is not the `pull_request_review_thread` situation below: label events
+  # ARE real workflow triggers, so the gap is closable and is closed.
+  # `maxi-review.yml` has carried `labeled` since it was written.
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed]
   # Resolving a conversation emits NO pull_request or pull_request_review

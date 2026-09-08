@@ -17,8 +17,16 @@ jobs:
     # scheduler has to evaluate it to pick a runner, so unlike the guard in
     # maxi-config#345/#346 there is no arrangement of events that reaches the
     # job while skipping the check.
+    #
+    # X64, unlike ci.yml's ARM64 lane. On [self-hosted, Linux, ARM64] this
+    # job's "Verify checked-in dist" step failed: ncc rebuilt dist/index.js as
+    # 646 lines of `eval("require")("@actions/exec")` externals instead of the
+    # 58941-line bundle that is committed, so the diff gate tripped. The same
+    # step is green on x86_64, which is what the checked-in bundle was built
+    # on, so the lane is pinned to the architecture the artifact came from
+    # rather than to whichever box is free.
     runs-on: ${{ github.event.pull_request.head.repo.full_name == github.repository
-      && fromJSON('["self-hosted", "Linux", "ARM64"]') || 'ubuntu-latest' }}
+      && fromJSON('["self-hosted", "Linux", "X64"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - name: Checkout repository

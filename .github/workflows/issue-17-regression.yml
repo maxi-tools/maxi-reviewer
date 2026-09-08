@@ -8,7 +8,18 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Same routing as self-test.yml, and for the same reason: this job checks
+    # out the pull request head, installs dependencies and runs the test
+    # suite, i.e. it executes the PR's own code. Same-repo pull requests go to the fleet;
+    # fork pull requests stay on a hosted VM, where untrusted code belongs.
+    #
+    # A `runs-on` expression rather than an `if`-gated pair of jobs: the
+    # scheduler has to evaluate it to pick a runner, so unlike the guard in
+    # maxi-config#345/#346 there is no arrangement of events that reaches the
+    # job while skipping the check.
+    runs-on: ${{ github.event.pull_request.head.repo.full_name == github.repository
+      && fromJSON('["self-hosted", "Linux", "ARM64"]') || 'ubuntu-latest' }}
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6

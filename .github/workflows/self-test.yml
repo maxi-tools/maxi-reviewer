@@ -10,7 +10,25 @@ concurrency:
 jobs:
   review:
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    # Routed, not gated: a pull request whose head is this repository runs on
+    # the fleet; anything from a fork stays on a GitHub-hosted VM. This job
+    # checks out the head ref and installs dependencies, which executes the
+    # PR's own package lifecycle scripts, so fork code must never land on a
+    # persistent box. (Phrased without the literal install command for the same
+    # reason the step below is: tests/action-metadata.test.ts locates that step
+    # by first occurrence in this file, and prose naming it would come first.)
+    #
+    # Written as a `runs-on` expression rather than a second `if`-gated job so
+    # the routing is one line that GitHub MUST evaluate to assign a runner at
+    # all. maxi-config#345/#346 was a same-repo guard that was present but
+    # unreachable; a guard the scheduler cannot skip cannot repeat that.
+    #
+    # Fork behaviour is unchanged by this commit -- forks got ubuntu-latest
+    # before and still do. (They also cannot pass: GitHub withholds
+    # MAXI_REVIEW_APP_PRIVATE_KEY and JULES_API_KEY from a fork-triggered run,
+    # so the app-token step fails. That is pre-existing and left alone.)
+    runs-on: ${{ github.event.pull_request.head.repo.full_name == github.repository
+      && fromJSON('["self-hosted", "Linux", "ARM64"]') || 'ubuntu-latest' }}
     permissions:
       pull-requests: write
       contents: read

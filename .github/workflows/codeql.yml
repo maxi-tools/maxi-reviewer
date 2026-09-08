@@ -85,14 +85,29 @@ jobs:
     # decision 5062804 already took for clippy, maxi-review, qodana and
     # rust-ci, and verify-fanout-tests took after it.
     #
-    # The `if` below is the mitigation those carry: same-repo pull requests
-    # only. A fork's pull request skips this job rather than running its code
-    # on a box that keeps a shared cargo directory, a shared sccache and a
-    # docker socket between jobs. Push, schedule and workflow_dispatch are
-    # unaffected -- `github.event_name != 'pull_request'` short-circuits.
+    # The first `if` below is the mitigation those carry: same-repo pull
+    # requests only. A fork's pull request skips this job rather than running
+    # its code on a box that keeps a shared cargo directory, a shared sccache
+    # and a docker socket between jobs. Push and schedule are unaffected --
+    # `github.event_name != 'pull_request'` short-circuits.
+    #
+    # workflow_dispatch is NOT unaffected, which is what the second clause is
+    # for. That first test admits a dispatch, and `gh workflow run --ref`
+    # accepts any branch -- so without it anyone with write access could point
+    # this workflow at a branch of their own and have the fleet run that
+    # branch's extractor configuration. A dispatch is a trigger, not a
+    # statement about who wrote the tree, so it is pinned to the owner by
+    # numeric id -- ci/review-trusted-actors.toml pins 874012, and an id
+    # cannot be reassigned the way a login can.
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      ) &&
+      (
+        github.event_name != 'workflow_dispatch' ||
+        github.event.sender.id == 874012
+      )
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 5
     permissions:
@@ -137,10 +152,17 @@ jobs:
     needs: detect
     # Same guard as `detect`, restated rather than inherited: a reader of the
     # job that runs the extractors should not have to trace `needs` to learn
-    # what keeps fork code off the fleet.
+    # what keeps fork code -- and branch content dispatched by someone else --
+    # off the fleet.
     if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+      ) &&
+      (
+        github.event_name != 'workflow_dispatch' ||
+        github.event.sender.id == 874012
+      )
     runs-on: [self-hosted, Linux, X64]
     # Default setup's slowest analyzer was rust at ~3.2 min on a hosted
     # 2-core box, on this repo. maxi-core's crate graph is an order of

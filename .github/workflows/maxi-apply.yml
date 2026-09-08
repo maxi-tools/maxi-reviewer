@@ -13,16 +13,92 @@ permissions:
   pull-requests: read
   issues: write
 
+# Trust model:
+# - `issue_comment` runs from the DEFAULT branch with secrets in scope, and
+#   unlike a fork `pull_request` it is NOT covered by the outside-contributor
+#   approval gate. Several repos on this manifest are PUBLIC. Before this gate
+#   existed the content test below was the ONLY filter, so any GitHub user could
+#   comment `/maxi apply` on a same-repository PR, occupy a persistent
+#   self-hosted runner, and have the job push to the PR branch with
+#   `contents: write`. Every maxi-tools org secret is `visibility: all`, so the
+#   blast radius of a foothold here is the whole org secret set, not one repo.
+# - The "Stop on unsafe fork PRs" step below does not close that. It tests the
+#   PR HEAD REPO, which says where the code came from and nothing about who
+#   typed the command; a same-repo PR passes it. It also runs only after the job
+#   has been scheduled onto a runner and after `github.token` has been used.
+# - There is exactly one trigger arm, `issue_comment`, and for that arm
+#   `github.event.comment.author_association` describes the COMMENT AUTHOR --
+#   the account being authorised. That correspondence is per-event and does not
+#   generalise: under `issues: [assigned]`, `issue.author_association` names the
+#   ISSUE author, not the assigner. If a trigger is ever added to this file,
+#   re-derive which account its association actually names.
+# - The gate is TWO layers, because one does not cover what the other does.
+#   The job-level `if:` below is the shape that landed in maxi-tools/coreml-rs
+#   `.github/workflows/claude.yml`; it rejects before a runner is occupied and
+#   before any secret is in scope, which is what stops an anonymous commenter
+#   from tying up the fleet. But `author_association` is not a permission:
+#   MEMBER and COLLABORATOR are both reachable with read or triage access only,
+#   and this job PUSHES. So the first step also asks the API for the
+#   requester's actual permission and requires admin/maintain/write, the same
+#   check `maxi-fix.yml` makes. An account that cannot push to the branch
+#   itself must not be able to make this job push for it.
+# - This authorises the INVOKER, not the REVISION. A trusted member commenting
+#   `/maxi apply` on an outside contributor's pull request still passes, and the
+#   job then handles outsider-authored code on a persistent machine. Runner
+#   placement for that case is a separate change -- see
+#   `ci/runner-routing.toml [lanes.linux-x64-ephemeral-review]`, which reserves
+#   the ephemeral lane for "forks, Dependabot, and any author not in the policy".
+
 jobs:
   apply:
     if: >
+      github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/maxi apply')
+      startsWith(github.event.comment.body, '/maxi apply') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
     # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
     # jobs never get a runner assigned, so this command lane silently did
     # nothing on every invocation. Routed to the self-hosted Linux x64 fleet.
     runs-on: [self-hosted, Linux, X64]
     steps:
+      - name: Authorize requester
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          # Fails CLOSED, and deliberately reports the two failure modes apart.
+          # A 403 (this token may not read collaborator permission) and a 404
+          # (the requester is not a collaborator at all) both arrive here, and
+          # both must refuse: this job PUSHES, so "could not establish write
+          # access" is not the same answer as "has write access". They need
+          # different fixes, so they get different messages.
+          #
+          # `collaborators/{user}` (204/404) is NOT a substitute for
+          # `collaborators/{user}/permission`, though it needs a weaker token:
+          # for an org-owned repository the collaborator list includes members
+          # with READ access, so a 204 does not mean push access and would let
+          # back in exactly the accounts this step exists to exclude.
+          err="$RUNNER_TEMP/maxi-apply-permission-error"
+          if ! permission="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/collaborators/$REQUESTER/permission" \
+              --jq '.permission' 2>"$err")"; then
+            echo "::error::could not read $REQUESTER's permission on" \
+              "$GITHUB_REPOSITORY; refusing rather than assuming write access." \
+              "$(tr '\n' ' ' < "$err")"
+            exit 1
+          fi
+          case "$permission" in
+            admin|maintain|write)
+              ;;
+            *)
+              echo "::error::/maxi apply requires write permission;" \
+                "$REQUESTER has '$permission'"
+              exit 1
+              ;;
+          esac
+
       - name: Read PR metadata
         id: pr
         env:

@@ -708,3 +708,41 @@ jobs:
           fail_on: "blocking"
           status_context: 'advisory: maxi reviewer'
           analyzer_mode: "off"
+          # Explicit, and empty. maxi-reviewer's action.yml defaults
+          # `bypass_label` to "maxi-review-override", so leaving this unset does
+          # NOT mean "no bypass" -- it means a bypass this repository never
+          # spells anywhere, which is why `grep maxi-review-override` finds
+          # nothing in any of the ~31 repos this file lands in.
+          #
+          # Measured on maxi-config#536 (issue #555). With the label applied,
+          # `Run maxi-reviewer` logged one line -- `Bypass label
+          # "maxi-review-override" present - skipping review.` -- returned in
+          # ~0.1s, published NO `advisory: maxi reviewer` status at all, and
+          # concluded `success` under this job's `continue-on-error: true`. An
+          # invisible skip, not a red one: on the PR page it is indistinguishable
+          # from a lane that has not reported yet.
+          #
+          # And it skipped the wrong half of the system. `maxi-reviewer[bot]` is
+          # one of the non-author reviewers that satisfies
+          # `review-gate/non-author-review`, and the gate reads reviews, never
+          # labels -- so the documented escape hatch ("Bypass Maxi Review when
+          # review infrastructure is unavailable") removed a reviewer while
+          # leaving intact the requirement that a reviewer exist. A PR carrying
+          # it was STRICTLY LESS mergeable, in exactly the situation the label
+          # was built for.
+          #
+          # The capability is not deleted, it moved to the half that is
+          # load-bearing: `review-infra-unavailable` is honoured by
+          # .github/actions/pr-review-gate. Suppressing the reviewer never
+          # helped anyway -- a reviewer that RUNS and fails publishes `advisory:
+          # maxi reviewer` red, which is the evidence that the infrastructure is
+          # down; skipping it destroys that evidence.
+          #
+          # An explicitly supplied empty string overrides an action.yml default:
+          # `rules_file: ""` three lines up already relies on that, and
+          # maxi-reviewer's action.yml documents it ("Set to empty string to
+          # disable"). No label is named "", so no label bypasses.
+          # tests/ci_economy_assets.rs pins this line in BOTH copies, because
+          # deleting it does not fail anything at runtime -- it silently
+          # reinstates the default.
+          bypass_label: ""

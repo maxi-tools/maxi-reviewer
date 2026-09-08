@@ -14,7 +14,13 @@ jobs:
     #
     # This job mints a MAXI_REVIEW_APP_PRIVATE_KEY app token and puts
     # JULES_API_KEY in scope, then builds the action FROM THE PULL REQUEST and
-    # executes it (`uses: ./`). A same-repo/fork comparison does not cover
+    # runs it as the local-action step at the bottom of this job. (Named that
+    # way rather than by its `uses:` value, for the reason the checkout step
+    # below already documents: tests/action-metadata.test.ts locates each step
+    # by first occurrence in this file, so prose quoting one sorts ahead of the
+    # step and inverts the ordering assertion. This comment did exactly that on
+    # its first push -- "expected 514 to be greater than 2984".)
+    # A same-repo/fork comparison does not cover
     # that: every same-repo pull request, from anyone with write access, also
     # carries author-controlled code, and here that code runs next to two
     # credentials. maxi-core#3913's review made this exact distinction -- a

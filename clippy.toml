@@ -1,0 +1,21 @@
+# Canonical Clippy configuration for the maxi-tools ecosystem.
+# Source of truth: maxi-config/clippy.toml
+#
+# This file configures lint *parameters* only. Lint *levels* (deny / warn /
+# allow) live in hooks/clippy-strict-lints.sh, which both the pre-push hook and
+# workflows/clippy.yml source so local and CI enforcement can never drift.
+# See the "Strict Rust Lint Policy" section of README.md for the full policy.
+
+# MSRV is intentionally NOT pinned here. With no `msrv`, Clippy reads each repo's
+# `rust-version` from its own Cargo.toml, so MSRV-gated lints fit every
+# consumer's toolchain rather than a single hard-coded value baked into config.
+
+# unwrap()/expect()/panic!() are legitimate in test code — a failed assertion
+# *should* abort the test. Keep the panic-safety lints focused on shipping code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+# Long argument lists are a design smell; prefer a config/builder struct. Tunes
+# the default-warn `clippy::too_many_arguments` lint.
+too-many-arguments-threshold = 8

@@ -11,7 +11,13 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-latest
+    # Self-hosted: `on:` is `push` to main only. A push to main is a merge the
+    # owner made, so there is no path by which unreviewed code reaches this
+    # job -- the fork-PR hazard that keeps ci.yml's `ci-fork` lane hosted does
+    # not exist here. Same label set as ci.yml's trusted `ci` job, and the only
+    # one this repo's .github/actionlint.yaml declares.
+    runs-on: [self-hosted, Linux, ARM64]
+    timeout-minutes: 20
     steps:
       - uses: googleapis/release-please-action@v5
         id: release

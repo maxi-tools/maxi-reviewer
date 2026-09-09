@@ -636,6 +636,69 @@ jobs:
       # defaulting to timeout_minutes + 20 = 35. Nothing in this file moves for
       # it: the step bound below is already 40, picked so this pin could
       # advance without dragging the timeout arithmetic behind it.
+      # Which Jules account reviews this PR.
+      #
+      # maxi-reviewer takes ONE jules_api_key, so alternating has to happen
+      # here. Two accounts exist, and until now every review across ~90 repos
+      # went to the same one -- which is the shape of the failure this workflow
+      # keeps reporting: "No review after 15 min: Jules never replied."
+      #
+      # The index is (PR number + run attempt), for two properties:
+      #
+      #   - Deterministic per PR per attempt, so every job in a run agrees on
+      #     the account and one review is never split across two sessions.
+      #   - A RE-RUN LANDS ON THE OTHER ACCOUNT. That is the point. The advice
+      #     attached to a timeout is "re-runs often pass", and re-running
+      #     against the account that just failed to answer is the weakest
+      #     version of that. Incrementing on run_attempt makes a retry a real
+      #     retry rather than the same request again.
+      #
+      # Degrades to one account: with JULES_API_KEY_2 unset this always picks
+      # primary, so the file is unchanged in behaviour for an org with one key.
+      - name: Choose a Jules account
+        id: jules_account
+        # Explicit, not inherited. The script uses `set -o pipefail` and shell
+        # arithmetic; the default shell is bash on these runners today, but a
+        # step that only works because of a default is a step that breaks when
+        # the default moves.
+        shell: bash
+        env:
+          # Comparing to '' proves the secret EXISTS without reading it; only a
+          # boolean reaches the script.
+          HAVE_SECOND: ${{ secrets.JULES_API_KEY_2 != '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          if [ "$HAVE_SECOND" != "true" ]; then
+            echo "use=primary" >> "$GITHUB_OUTPUT"
+            echo "one Jules key configured; using it"
+            exit 0
+          fi
+          # Both values come from GitHub and are integers, but they are read
+          # from the environment rather than interpolated into this script: a
+          # run block is not where you want to discover an expression was not
+          # what you assumed.
+          # Each value checked SEPARATELY. Concatenating them hid the case
+          # that actually occurs: on a non-pull_request event PR_NUMBER is
+          # empty, so "$PR_NUMBER$RUN_ATTEMPT" is just "1" -- numeric, guard
+          # passes, and the arithmetic below then runs with a missing operand.
+          for v in "$PR_NUMBER" "$RUN_ATTEMPT"; do
+            case "$v" in
+              *[!0-9]*|"")
+                echo "use=primary" >> "$GITHUB_OUTPUT"
+                echo "no usable index (pr='$PR_NUMBER' attempt='$RUN_ATTEMPT'); using primary"
+                exit 0 ;;
+            esac
+          done
+          if [ $(( (PR_NUMBER + RUN_ATTEMPT) % 2 )) -eq 0 ]; then
+            use=primary
+          else
+            use=secondary
+          fi
+          echo "use=$use" >> "$GITHUB_OUTPUT"
+          echo "PR $PR_NUMBER attempt $RUN_ATTEMPT -> $use"
+
       - name: Run maxi-reviewer
         # ~37% of invocations used to hang with no step output and hold a scarce
         # self-hosted runner until the job timeout (maxi-reviewer#53).
@@ -664,7 +727,10 @@ jobs:
         timeout-minutes: 40
         uses: maxi-tools/maxi-reviewer@f772893df470bf0749e32ba6e916fad1166d3d63
         with:
-          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          # Which account, chosen by the step above. The KEY itself is read
+          # straight from `secrets` here rather than passed through a step
+          # output, so the value never becomes an output that could be printed.
+          jules_api_key: ${{ steps.jules_account.outputs.use == 'secondary' && secrets.JULES_API_KEY_2 || secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}
           rules_file: ""
           extra_instructions: |

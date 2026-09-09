@@ -10,7 +10,35 @@ concurrency:
 jobs:
   review:
     if: github.actor != 'dependabot[bot]'
+    # STILL HOSTED, deliberately, and not merely because forks exist.
+    #
+    # This job mints a MAXI_REVIEW_APP_PRIVATE_KEY app token and puts
+    # JULES_API_KEY in scope, then builds the action FROM THE PULL REQUEST and
+    # runs it as the local-action step at the bottom of this job. (Named that
+    # way rather than by its `uses:` value, for the reason the checkout step
+    # below already documents: tests/action-metadata.test.ts locates each step
+    # by first occurrence in this file, so prose quoting one sorts ahead of the
+    # step and inverts the ordering assertion. This comment did exactly that on
+    # its first push -- "expected 514 to be greater than 2984".)
+    # A same-repo/fork comparison does not cover
+    # that: every same-repo pull request, from anyone with write access, also
+    # carries author-controlled code, and here that code runs next to two
+    # credentials. maxi-core#3913's review made this exact distinction -- a
+    # fork guard suffices for a job that builds pull-request code with no
+    # secrets, and does not for one holding a credential while doing it.
+    #
+    # The bar for such a job is an identity test (a `synchronize` sent by the
+    # owner, or push/workflow_dispatch), not a repository comparison. Adopting
+    # it here is a policy decision for this repo rather than a side effect of a
+    # runner migration, so this lane stays where it is until that is taken
+    # deliberately. ci.yml's `ci` job is the one that moved, and it holds no
+    # app token.
     runs-on: ubuntu-latest
+    # The outer runner-release watchdog README.md:174-180 asks for: the
+    # action's own hard_timeout_minutes is enforced by in-process timers, which
+    # a blocked Node event loop can stop from ever firing. Absent here until
+    # now, so a hung dogfood run held a runner to the platform limit.
+    timeout-minutes: 70
     permissions:
       pull-requests: write
       contents: read
@@ -55,6 +83,12 @@ jobs:
           permission-statuses: write
 
       - uses: ./
+        # README.md:174-180: the action's hard deadline is enforced by
+        # in-process timers, and a blocked Node event loop stops them firing.
+        # This outer bound is the real watchdog. 55 is the documented floor for
+        # the default 30-minute Jules budget (a 50-minute process deadline plus
+        # cleanup headroom); the job cap above it is 70.
+        timeout-minutes: 55
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}

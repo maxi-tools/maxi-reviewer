@@ -8,16 +8,76 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Same routing as self-test.yml, and for the same reason: this job checks
+    # out the pull request head, installs dependencies and runs the test
+    # suite, i.e. it executes the PR's own code. Same-repo pull requests go to the fleet;
+    # fork pull requests stay on a hosted VM, where untrusted code belongs.
+    #
+    # A `runs-on` expression rather than an `if`-gated pair of jobs: the
+    # scheduler has to evaluate it to pick a runner, so unlike the guard in
+    # maxi-config#345/#346 there is no arrangement of events that reaches the
+    # job while skipping the check.
+    #
+    # X64, unlike ci.yml's ARM64 lane. On [self-hosted, Linux, ARM64] this
+    # job's "Verify checked-in dist" step failed: ncc rebuilt dist/index.js as
+    # 646 lines of `eval("require")("@actions/exec")` externals instead of the
+    # 58941-line bundle that is committed, so the diff gate tripped. The same
+    # step is green on x86_64, which is what the checked-in bundle was built
+    # on, so the lane is pinned to the architecture the artifact came from
+    # rather than to whichever box is free.
+    #
+    # Dependabot is excluded by name, not covered by the comparison above.
+    # Its branches live in THIS repository, so the same-repo test is true for
+    # them, and the payload of a dependabot pull request is a third-party
+    # version bump whose package lifecycle scripts this job then runs. That is
+    # code from outside the owner's control on a persistent box, which is the
+    # one thing this migration must not do. self-test.yml already screens the
+    # same actor for the same reason.
+    #
+    # This job is safe to route on a repository comparison alone, unlike
+    # self-test.yml next door, because it holds NO credential: its permissions
+    # are `contents: read`, it references no `secrets.*`, and the checkout
+    # below no longer persists a token. maxi-core#3913 drew that line -- a fork
+    # guard is enough for a job that builds pull-request code with nothing in
+    # scope to steal.
+    runs-on: ${{ github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && fromJSON('["self-hosted", "Linux", "X64"]') || 'ubuntu-latest' }}
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          # checkout v6 still defaults this to true, which writes the job's
+          # GITHUB_TOKEN into .git/config -- on a persistent runner, readable
+          # by the dependency lifecycle scripts the next step executes. Nothing
+          # here pushes or fetches a private sibling, so the credential has no
+          # purpose; dropping it is what leaves this job with no credential in
+          # scope at all, which is the premise the `runs-on` routing above
+          # relies on. ci.yml and self-test.yml already do this.
+          persist-credentials: false
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install dependencies
-        run: npm install
+        # pnpm, not npm, because the "Verify checked-in dist" step below cannot
+        # work otherwise. ncc bakes node_modules paths and webpack chunk ids
+        # into the bundle, and pnpm's isolated layout
+        # (node_modules/.pnpm/@google+jules-sdk@0.2.0/...) is not npm's flat one
+        # (node_modules/@google/jules-sdk/...). The tree's dist is built by the
+        # pre-commit hook, which runs `pnpm build`, so a bundle rebuilt here
+        # under npm differed on every line that names a module — the diff was
+        # ~27k lines and had nothing to do with the change under review.
+        #
+        # It had been red on every pull request since at least 2026-08-26,
+        # including maxi-config-sync branches that touch no source at all. A
+        # gate that cannot pass is not a gate; it just trains people to merge
+        # past it. Same package manager and the same lockfile, or this step
+        # verifies nothing.
+        run: |
+          npm install -g pnpm@10
+          pnpm install --frozen-lockfile
       - name: Run review-outcome regression tests
         run: npm test -- tests/review-pr.test.ts tests/calibration.test.ts tests/schema.test.ts tests/index.test.ts
       - name: Prettier check changed files

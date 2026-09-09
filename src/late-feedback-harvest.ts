@@ -7,6 +7,19 @@ export interface ReviewArtifactInput {
   baseSha: string;
   outcomeSchema: "maxi.review.v1.review-outcome";
   outcome: ReviewOutcome;
+  /**
+   * The configured Jules budget, in minutes, that `outcome` was judged against.
+   * A harvested `TIMED_OUT_NO_CONTENT` is meaningless without it: the budget has
+   * already moved 30 -> 10 -> 15, so "timed out" alone does not say whether the
+   * run was cut short or genuinely stalled.
+   */
+  timeoutMinutes: number;
+  /**
+   * Why the run ended this way, in words, for outcomes a reader would otherwise
+   * misread as a verdict on the code. Set for `TIMED_OUT_NO_CONTENT`; omitted
+   * when the outcome speaks for itself.
+   */
+  outcomeReason?: string;
   reviewOutputChars: number;
   runIdentity: ReviewRunIdentity;
   analyzerFindings: unknown[];

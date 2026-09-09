@@ -100,6 +100,7 @@ as the GitHub App's bot user instead of `github-actions[bot]`.
 - Posts actionable GitHub review comments and uses suggested-change format when a fix is mechanically applicable.
 - Builds `maxi.review.v1.review-artifact` JSON so review feedback remains harvestable even if PR review submission is unavailable or late.
 - Records review artifacts as hidden PR comments for later harvesting.
+- Publishes each artifact over both channels — the Actions artifact store and the hidden PR comment — and tolerates the loss of either. The verdict is decided before publication, so an artifact-storage outage (the org-wide quota is shared) is warned about, not reported as a failed review. Losing **both** channels still fails the step: nothing was recorded and there is nothing left to harvest.
 - Handles `/maxi apply-all` and `/maxi fix <finding-id>` on `issue_comment` events.
 
 ## Analyzer Posture

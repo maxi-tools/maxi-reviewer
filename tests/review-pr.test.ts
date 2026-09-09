@@ -8,6 +8,8 @@ import * as github from "@actions/github";
 import {
   buildArtifactCommentContent,
   fetchPullRequestContext,
+  reviewTimeoutExplanation,
+  reviewTimeoutStatus,
   runAnalyzers,
   runReviewPr,
   uploadReviewArtifact,
@@ -53,6 +55,41 @@ name: maxi-review-7-${input.headSha}.json
 encoding: base64
 ${encoded}
 -->`;
+}
+
+// A run in which Jules returned a clean, valid review. Only the artifact
+// transport varies in the tests that use this.
+function completedReviewDeps() {
+  return {
+    fetchPullRequestContext: vi.fn().mockResolvedValue({
+      diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+      changedFiles: ["src/a.ts"],
+      files: new Map([["src/a.ts", "new\n"]]),
+      changedLines: new Map([["src/a.ts", new Set([1])]]),
+      rulesFromFile: undefined,
+      openThreads: [],
+      linkedIssues: [],
+    }),
+    selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+    loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+    runAnalyzers: vi.fn().mockResolvedValue([]),
+    buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+    runJulesReview: vi.fn().mockResolvedValue({
+      reviewResult: {
+        verdict: "approve",
+        summary: "Looks okay.",
+        resolvedCommentIds: [],
+        newComments: [],
+      },
+      sessionId: "session-1",
+    }),
+    submitReview: vi.fn().mockResolvedValue(undefined),
+    resolveThreads: vi.fn().mockResolvedValue(undefined),
+    setStatus: vi.fn().mockResolvedValue(undefined),
+    uploadArtifact: vi.fn().mockResolvedValue(undefined),
+    recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+    wrapPermissionError: vi.fn((err: unknown) => err),
+  };
 }
 
 describe("runReviewPr orchestration", () => {
@@ -363,6 +400,86 @@ describe("runReviewPr orchestration", () => {
     );
   });
 
+  it("continues when artifact storage is unavailable", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      uploadArtifact: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            "Failed to CreateArtifact: Artifact storage quota has been hit."
+          )
+        ),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await runReviewPr(deps);
+
+    // The verdict still reaches the PR: storage capacity is not a property of
+    // the code under review.
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review complete (verdict: approve)"
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to upload review artifact")
+    );
+  });
+
+  it("fails when neither artifact channel records the review", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      uploadArtifact: vi
+        .fn()
+        .mockRejectedValue(new Error("Artifact storage quota has been hit.")),
+      recordReviewArtifact: vi.fn().mockRejectedValue(new Error("too large")),
+    };
+
+    await runReviewPr(deps);
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("could not be recorded")
+    );
+    expect(deps.submitReview).not.toHaveBeenCalled();
+  });
+
+  it("still fails a review that could not be produced, artifacts aside", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: undefined,
+        sessionId: "session-1",
+      }),
+      uploadArtifact: vi
+        .fn()
+        .mockRejectedValue(new Error("Artifact storage quota has been hit.")),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await runReviewPr(deps);
+
+    // Tolerating the transport must never tolerate a missing review: the
+    // no-review verdict still reaches the commit status unchanged, and no
+    // review is submitted as if one had been produced.
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
+    );
+    expect(deps.submitReview).not.toHaveBeenCalled();
+  });
+
   it("passes the latest recorded Jules session id into the review request", async () => {
     const deps = {
       fetchPullRequestContext: vi.fn().mockResolvedValue({
@@ -466,6 +583,11 @@ describe("runReviewPr orchestration", () => {
       validatedReview: null,
       outcomeSchema: "maxi.review.v1.review-outcome",
       outcome: "TIMED_OUT_NO_CONTENT",
+      // A harvested timeout is unreadable without the budget it was judged
+      // against, and "timed out" alone reads as a verdict on the code.
+      timeoutMinutes: 30,
+      outcomeReason:
+        "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds.",
       reviewOutputChars: 0,
       runIdentity: {
         workflowRunId: 101,
@@ -496,14 +618,57 @@ describe("runReviewPr orchestration", () => {
       "head-sha",
       "",
       "failure",
-      "Review timed out; see harvested artifact"
+      "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
     );
     expect(core.warning).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
+      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds. Recorded a harvestable review artifact."
     );
     expect(core.setFailed).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes."
+      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds."
     );
+  });
+});
+
+describe("review timeout wording", () => {
+  // The budget has already moved 30 -> 10 -> 15. A minute count written as a
+  // literal on any of these surfaces would have been wrong twice over, on the
+  // one line a blocked author actually reads.
+  it.each([10, 15, 30, 45])(
+    "states the configured %i-minute budget everywhere it appears",
+    (minutes) => {
+      const status = reviewTimeoutStatus(minutes);
+      const explanation = reviewTimeoutExplanation(minutes);
+
+      expect(status).toContain(`${minutes} min`);
+      expect(explanation).toContain(`within ${minutes} minutes`);
+      expect(explanation).toContain(`${minutes}-minute budget`);
+
+      // And no other budget survives from a copied literal.
+      for (const stale of [10, 15, 30, 45].filter((m) => m !== minutes)) {
+        expect(status).not.toContain(String(stale));
+        expect(explanation).not.toContain(String(stale));
+      }
+    }
+  );
+
+  it("says no review exists, that this is not a finding, and that re-running helps", () => {
+    const status = reviewTimeoutStatus(15);
+    expect(status).toContain("No review");
+    expect(status).toContain("not a code finding");
+    expect(status).toContain("re-runs often pass");
+
+    const explanation = reviewTimeoutExplanation(15);
+    expect(explanation).toContain("no review was produced");
+    expect(explanation).toContain("not a verdict on the code");
+    expect(explanation).toContain("re-running this job often succeeds");
+  });
+
+  it("keeps the status line inside GitHub's 140-character limit", () => {
+    // Silent truncation past 140 would eat the tail of the sentence — which is
+    // where "re-runs often pass", the only actionable part, lives.
+    for (const minutes of [1, 15, 1440, 35791]) {
+      expect(reviewTimeoutStatus(minutes).length).toBeLessThanOrEqual(140);
+    }
   });
 });
 

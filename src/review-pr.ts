@@ -72,6 +72,44 @@ interface ArtifactUploader {
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 
+/**
+ * GitHub silently truncates commit status descriptions past 140 characters, so
+ * the status line is the constrained surface of the three below.
+ */
+const STATUS_DESCRIPTION_MAX = 140;
+
+/**
+ * Wording for the one outcome that is not about the code: Jules never sent an
+ * agent message before the budget ran out.
+ *
+ * `Review timed out; see harvested artifact` said neither how long it waited
+ * nor that nothing had been reviewed, so it read as a verdict. It is not one —
+ * no review exists to disagree with. And it is worth re-running rather than
+ * investigating: replies cluster against the deadline (two real reviews on
+ * 2026-08-30 arrived on poll attempts 26 and 29 of ~30), so the next attempt
+ * frequently lands inside the budget.
+ *
+ * Every number here is threaded through from the configured `timeout_minutes`
+ * and never written as a literal. The budget has already moved twice (30 -> 10
+ * -> 15); a hardcoded minute count on a status line nobody re-reads would have
+ * been wrong twice. `tests/review-pr.test.ts` pins that it tracks the input.
+ */
+export function reviewTimeoutStatus(timeoutMinutes: number): string {
+  return truncate(
+    `No review after ${timeoutMinutes} min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass.`,
+    STATUS_DESCRIPTION_MAX
+  );
+}
+
+/** Long-form of {@link reviewTimeoutStatus} for the log and the job failure. */
+export function reviewTimeoutExplanation(timeoutMinutes: number): string {
+  return [
+    `Jules returned no review message within ${timeoutMinutes} minutes, so no review was produced and there are no findings to read.`,
+    "This is a reviewer-infrastructure timeout, not a verdict on the code.",
+    `Replies cluster near the end of the ${timeoutMinutes}-minute budget, so re-running this job often succeeds.`,
+  ].join(" ");
+}
+
 export interface PullRequestContext {
   diff: string;
   changedFiles: string[];
@@ -490,6 +528,11 @@ export async function runReviewPr(
       baseSha,
       outcomeSchema: "maxi.review.v1.review-outcome",
       outcome,
+      timeoutMinutes,
+      outcomeReason:
+        outcome === "TIMED_OUT_NO_CONTENT"
+          ? reviewTimeoutExplanation(timeoutMinutes)
+          : undefined,
       reviewOutputChars,
       runIdentity,
       analyzerFindings,
@@ -554,15 +597,13 @@ export async function runReviewPr(
         headSha,
         statusContext,
         "failure",
-        "Review timed out; see harvested artifact"
+        reviewTimeoutStatus(timeoutMinutes)
       );
       core.warning(
-        `Jules returned no review message within ${timeoutMinutes} minutes; recorded a harvestable review artifact.`
+        `${reviewTimeoutExplanation(timeoutMinutes)} Recorded a harvestable review artifact.`
       );
       await deps.writeJobSummary(0);
-      core.setFailed(
-        `Jules returned no review message within ${timeoutMinutes} minutes.`
-      );
+      core.setFailed(reviewTimeoutExplanation(timeoutMinutes));
       return;
     }
 

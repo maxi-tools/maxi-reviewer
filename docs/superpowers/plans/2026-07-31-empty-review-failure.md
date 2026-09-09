@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Preserve the harvestable artifact and PR artifact comment.
-- Keep the legacy commit status state `failure` with description `Review timed out; see harvested artifact`.
+- Keep the legacy commit status state `failure` with description `Review timed out; see harvested artifact`. **(Superseded: the `failure` state stands, but the description is now built by `reviewTimeoutStatus()` in `src/review-pr.ts` so it names the configured budget and says the outcome is infrastructure, not a code finding. Do not restore the literal.)**
 - The Actions step/job must be nonpassing through `core.setFailed`.
 - The job summary must contain exactly `Collected characters: 0`.
 - Do not submit an empty PR review.

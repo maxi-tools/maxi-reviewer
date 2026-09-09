@@ -283,16 +283,16 @@ describe("index.ts", () => {
         "headSHA",
         expect.anything(),
         "failure",
-        "Review timed out; see harvested artifact"
+        "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
       )
     );
     expect(mockGithubHelper.submitReview).not.toHaveBeenCalled();
     expect(mockArtifact.default.uploadArtifact).toHaveBeenCalled();
     expect(mockWarning).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes; recorded a harvestable review artifact."
+      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds. Recorded a harvestable review artifact."
     );
     expect(mockSetFailed).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes."
+      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds."
     );
   });
 

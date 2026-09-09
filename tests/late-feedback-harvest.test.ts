@@ -11,6 +11,7 @@ describe("late feedback harvest artifacts", () => {
         baseSha: "base-sha",
         outcomeSchema: "maxi.review.v1.review-outcome",
         outcome: "REVIEWED_NO_FINDINGS",
+        timeoutMinutes: 30,
         reviewOutputChars: 0,
         runIdentity: {
           workflowRunId: 101,

@@ -35,6 +35,10 @@ import {
   wrapPermissionError,
   RunJulesReviewOptions,
 } from "./jules.js";
+import {
+  planAttempts,
+  runReviewWithSetupEscalation,
+} from "./jules-escalation.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { fetchCiSignal } from "./ci-signal.js";
 import { enrichCommentsWithAnchors } from "./anchor.js";
@@ -85,9 +89,16 @@ const STATUS_DESCRIPTION_MAX = 140;
  * `Review timed out; see harvested artifact` said neither how long it waited
  * nor that nothing had been reviewed, so it read as a verdict. It is not one —
  * no review exists to disagree with. And it is worth re-running rather than
- * investigating: replies cluster against the deadline (two real reviews on
- * 2026-08-30 arrived on poll attempts 26 and 29 of ~30), so the next attempt
- * frequently lands inside the budget.
+ * investigating: measured across 26 reviews, a reply that is coming arrives in
+ * 21-190s, slowest 546s, or never -- so a job that spent its whole budget did
+ * not have a slow reviewer, it had none, and the next attempt frequently gets
+ * one.
+ *
+ * An earlier version of this comment read that reply times "cluster against
+ * the deadline", from two reviews on 2026-08-30 landing on poll attempts 26
+ * and 29 of ~30. Those are the same ~550s replies -- they only looked like
+ * clustering because the budget was 10 minutes at the time. Against 15 they
+ * are early, and the shape of the distribution never changed.
  *
  * Every number here is threaded through from the configured `timeout_minutes`
  * and never written as a literal. The budget has already moved twice (30 -> 10
@@ -106,7 +117,7 @@ export function reviewTimeoutExplanation(timeoutMinutes: number): string {
   return [
     `Jules returned no review message within ${timeoutMinutes} minutes, so no review was produced and there are no findings to read.`,
     "This is a reviewer-infrastructure timeout, not a verdict on the code.",
-    `Replies cluster near the end of the ${timeoutMinutes}-minute budget, so re-running this job often succeeds.`,
+    `Measured across 26 reviews, a reply that comes arrives in 21-190s (slowest 546s), so spending the whole ${timeoutMinutes}-minute budget means none came rather than that one was slow, and re-running this job often succeeds.`,
   ].join(" ");
 }
 
@@ -224,6 +235,10 @@ export async function runReviewPr(
   const deps = { ...defaultDeps, ...overrides };
   const apiKey = core.getInput("jules_api_key", { required: true });
   core.setSecret(apiKey);
+  // Optional second Jules account. A session that never finishes cloning is
+  // recreated here rather than waited out; see jules-escalation.ts.
+  const fallbackApiKey = core.getInput("jules_api_key_fallback");
+  if (fallbackApiKey) core.setSecret(fallbackApiKey);
 
   const token = core.getInput("github_token", { required: true });
   const failOnRaw = core.getInput("fail_on");
@@ -488,13 +503,14 @@ export async function runReviewPr(
     });
 
     const { reviewResult, sessionId, rawResponses, validationErrors } =
-      await deps.runJulesReview(
-        apiKey,
+      await runReviewWithSetupEscalation({
+        run: deps.runJulesReview,
+        attempts: planAttempts(apiKey, fallbackApiKey),
         prompt,
-        { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
+        source: { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
         timeoutMinutes,
-        julesOptions
-      );
+        options: julesOptions,
+      });
     const outcome: ReviewOutcome = !reviewResult
       ? "TIMED_OUT_NO_CONTENT"
       : (reviewResult.newComments?.length ?? 0) > 0

@@ -63,7 +63,23 @@ export interface RunJulesReviewOptions {
    * one that merely started recently. Errors are swallowed.
    */
   onProgress?: (progress: ReviewProgress) => void | Promise<void>;
+  /**
+   * How long the first poll tolerates a session that has not started work
+   * before declaring it stuck in repository setup. Defaults to
+   * {@link DEFAULT_SETUP_BUDGET_MS}.
+   */
+  setupBudgetMs?: number;
 }
+
+/**
+ * Five minutes, against measured replies of 21-190s (slowest 546s).
+ *
+ * The budget is deliberately longer than the slowest observed reply even
+ * though it only ever applies to a session that has NOT started work: the
+ * cost of being wrong is asymmetric. Abandoning a live session throws away a
+ * review; waiting an extra few minutes on a dead one costs a few minutes.
+ */
+export const DEFAULT_SETUP_BUDGET_MS = 300_000;
 
 export async function runJulesReview(
   apiKey: string,
@@ -96,7 +112,8 @@ export async function runJulesReview(
     session,
     timeoutMinutes * 60 * 1000,
     afterMessage,
-    options.onProgress
+    options.onProgress,
+    options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS
   );
   core.info(`Collected review (${reviewMessage.length} chars)`);
 
@@ -588,11 +605,91 @@ async function waitUntilSessionReady(session: {
   throw new Error("Session did not become ready within timeout.");
 }
 
+/**
+ * A session that never left repository setup, distinguished from one that
+ * worked and stayed silent.
+ *
+ * Observed directly on 2026-09-10: session 9532304781847968824, created for
+ * maxi-core#3942, sat on "Cloning maxi-tools/maxi-core / Setting up the
+ * repository..." for over two hours. The full prompt had been delivered; no
+ * agent turn ever began, so `agentMessaged` never appeared and the poll below
+ * spent its entire budget waiting for something that was never coming.
+ *
+ * That is not the same failure as "the reviewer had nothing to say", and the
+ * caller has to be able to tell them apart: this one is worth retrying on
+ * another account at once. Measured across 26 reviews, replies arrive in
+ * 21-190s (slowest 546s) or never -- so waiting out the budget buys nothing
+ * here, and the timeout text claiming replies "cluster near the end of the
+ * budget" is wrong about this case in particular.
+ */
+export class SessionStuckInSetupError extends Error {
+  readonly sessionId: string;
+  readonly state: string;
+  constructor(sessionId: string, state: string, waitedMs: number) {
+    super(
+      `Jules session ${sessionId} never left ${state} after ` +
+        `${Math.round(waitedMs / 1000)}s: repository clone/setup did not ` +
+        "finish, so no review was ever started. Retry on another account " +
+        "rather than waiting out the review budget."
+    );
+    this.name = "SessionStuckInSetupError";
+    this.sessionId = sessionId;
+    this.state = state;
+  }
+}
+
+/**
+ * States meaning the agent has not begun work yet.
+ *
+ * `IN_PROGRESS` and everything after it are deliberately absent: a session
+ * that is working may legitimately be slow, and the slowest real reply
+ * measured took 546s. The discriminator is the STATE, not the clock -- a
+ * session queued for five minutes is stuck; one in progress for nine minutes
+ * is thinking.
+ */
+const PRE_WORK_STATES = new Set(["STATE_UNSPECIFIED", "QUEUED", ""]);
+
+/** The session's state, or "" when it cannot be read. */
+export function readSessionState(info: unknown): string {
+  if (typeof info !== "object" || info === null) return "";
+  const raw = (info as { state?: unknown }).state;
+  return typeof raw === "string" ? raw : "";
+}
+
+/**
+ * The session's state, or "" when it cannot be read.
+ *
+ * Never throws. A poll that could not read the state has to behave exactly
+ * like one taken before this check existed -- an API blip must not abandon a
+ * session, and must not skip the hydrate/history poll that collects the
+ * review. An auth failure still surfaces: `session.hydrate()` runs moments
+ * later on the same credentials and raises it there.
+ */
+async function readStateOrBlank(
+  session: JulesSession,
+  attempt: number
+): Promise<string> {
+  try {
+    return readSessionState(await session.info());
+  } catch (err) {
+    core.info(
+      `session.info() unreadable (attempt ${attempt}): ${errorMessage(err)}`
+    );
+    return "";
+  }
+}
+
 async function pollForReview(
   session: JulesSession,
   timeoutMs: number,
   afterMessage?: string,
-  onProgress?: (progress: ReviewProgress) => void | Promise<void>
+  onProgress?: (progress: ReviewProgress) => void | Promise<void>,
+  // Off unless a caller opts in. Only the first poll of a session is watching
+  // for a setup that never finished; by the time a repair or retrieval prompt
+  // is sent the session has already worked, and it may legitimately re-enter
+  // QUEUED while it picks that prompt up. Defaulting this on would abandon
+  // those sessions for doing something normal.
+  setupBudgetMs = 0
 ): Promise<string> {
   const startedAt = Date.now();
   const deadline = startedAt + timeoutMs;
@@ -603,8 +700,43 @@ async function pollForReview(
   // status would appear to go backwards. Having seen agent output is a fact
   // about the session, not about the current poll.
   let sawAgentOutput = false;
+  // Sticky for the same reason as `sawAgentOutput`: once the session has been
+  // seen working, a later unreadable state must not retract that and abandon
+  // a session that is mid-review.
+  let sawWorkStart = false;
+  let lastState = "";
   while (Date.now() < deadline) {
     attempt++;
+    // Outside the try below on purpose: reading the state must not be able to
+    // cancel the hydrate/history poll that actually collects the review, and
+    // SessionStuckInSetupError is a verdict about the session rather than a
+    // poll hiccup, so it must not land in a catch that resumes waiting.
+    const state = await readStateOrBlank(session, attempt);
+    if (state && state !== lastState) {
+      core.info(`Jules session state: ${lastState || "?"} -> ${state}`);
+      lastState = state;
+    }
+    if (state && !PRE_WORK_STATES.has(state)) sawWorkStart = true;
+    // Abandoned only on POSITIVE evidence of a pre-work state: `state` must be
+    // non-empty, so an unreadable state leaves this loop exactly as it behaved
+    // before the check existed -- waiting -- because being wrong here throws
+    // away a review that would have arrived, and a real reply is cheap to wait
+    // for. There is deliberately no `PRE_WORK_STATES.has(state)` clause here:
+    // `sawWorkStart` was just set from this same state, so `!sawWorkStart`
+    // already says it, and repeating it would be a condition no test could
+    // ever distinguish.
+    if (
+      setupBudgetMs > 0 &&
+      !sawWorkStart &&
+      state &&
+      Date.now() - startedAt > setupBudgetMs
+    ) {
+      throw new SessionStuckInSetupError(
+        session.id,
+        state,
+        Date.now() - startedAt
+      );
+    }
     try {
       await session.hydrate();
       let last = "";

@@ -10,6 +10,12 @@ inputs:
   jules_api_key:
     description: "Jules API key (create one at jules.google.com)."
     required: true
+  jules_api_key_fallback:
+    description: >-
+      Optional Jules API key for a second account. Used only when a session
+      never leaves repository setup: the review is recreated on this account
+      instead of waiting out a budget that cannot produce one.
+    required: false
   github_token:
     description: "GitHub token with pull-requests:write, statuses:write, issues:read (the review fetches linked-issue acceptance criteria), and checks:read (when ci_signal is enabled) for reviews, plus contents:write and issues:write for /maxi commands. Usually the default GITHUB_TOKEN secret."
     required: true

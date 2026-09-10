@@ -14,6 +14,7 @@ import {
   runReviewPr,
   uploadReviewArtifact,
 } from "../src/review-pr.js";
+import { SessionStuckInSetupError } from "../src/jules.js";
 
 vi.mock("@actions/core");
 vi.mock("@actions/github");
@@ -543,6 +544,53 @@ describe("runReviewPr orchestration", () => {
     );
   });
 
+  it("reports a stuck session as its own failure, not as a timeout", async () => {
+    // The two look identical from the PR page today -- both end as "no review"
+    // -- and they call for opposite responses: a timeout is worth re-running,
+    // a session that never finished cloning is worth recreating elsewhere.
+    // Observed 2026-09-10: session 9532304781847968824 sat in `Cloning
+    // maxi-tools/maxi-core` for over two hours on an unthrottled account.
+    const stuck = new SessionStuckInSetupError("sess-9", "QUEUED", 300_000);
+    const deps = {
+      fetchPullRequestContext: vi.fn().mockResolvedValue({
+        diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+        changedFiles: ["src/a.ts"],
+        files: new Map([["src/a.ts", "new\n"]]),
+        changedLines: new Map([["src/a.ts", new Set([1])]]),
+        rulesFromFile: undefined,
+        openThreads: [],
+        linkedIssues: [],
+      }),
+      selectRuleFiles: vi.fn().mockReturnValue(["rules/typescript.md"]),
+      loadSelectedRules: vi.fn().mockReturnValue("# TypeScript"),
+      runAnalyzers: vi.fn().mockResolvedValue([]),
+      buildReviewPrompt: vi.fn().mockReturnValue("prompt"),
+      runJulesReview: vi.fn().mockRejectedValue(stuck),
+      submitReview: vi.fn().mockResolvedValue(undefined),
+      resolveThreads: vi.fn().mockResolvedValue(undefined),
+      setStatus: vi.fn().mockResolvedValue(undefined),
+      uploadArtifact: vi.fn().mockResolvedValue(undefined),
+      recordReviewArtifact: vi.fn().mockResolvedValue(undefined),
+      wrapPermissionError: vi.fn((err: unknown) => err),
+    };
+
+    await runReviewPr(deps);
+
+    // Both planned attempts were spent before giving up.
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(2);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+
+    const failure = vi.mocked(core.setFailed).mock.calls.at(-1)?.[0] as string;
+    expect(failure).toContain("never left QUEUED");
+    expect(failure).toContain("clone/setup did not finish");
+    expect(failure).not.toContain(reviewTimeoutExplanation(30));
+
+    // "error", not "failure": the reviewer never ran, so there is no verdict.
+    const status = deps.setStatus.mock.calls.at(-1);
+    expect(status?.[5]).toBe("error");
+    expect(status?.[6]).toContain("never left QUEUED");
+  });
+
   it("records a harvestable artifact without failing when Jules times out", async () => {
     const deps = {
       fetchPullRequestContext: vi.fn().mockResolvedValue({
@@ -586,8 +634,13 @@ describe("runReviewPr orchestration", () => {
       // A harvested timeout is unreadable without the budget it was judged
       // against, and "timed out" alone reads as a verdict on the code.
       timeoutMinutes: 30,
-      outcomeReason:
-        "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds.",
+      // Tracks the function rather than restating it: the point of this
+      // assertion is that the harvested artifact carries the SAME explanation
+      // the failing job and the commit status carry, not that the sentence
+      // reads any particular way. Copying the prose here just meant editing it
+      // in two places and calling that a test. `review timeout wording` below
+      // is what pins the content.
+      outcomeReason: reviewTimeoutExplanation(30),
       reviewOutputChars: 0,
       runIdentity: {
         workflowRunId: 101,
@@ -621,11 +674,9 @@ describe("runReviewPr orchestration", () => {
       "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
     );
     expect(core.warning).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds. Recorded a harvestable review artifact."
+      `${reviewTimeoutExplanation(30)} Recorded a harvestable review artifact.`
     );
-    expect(core.setFailed).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds."
-    );
+    expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(30));
   });
 });
 

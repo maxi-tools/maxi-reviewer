@@ -5,6 +5,8 @@ import {
   isAuthError,
   wrapPermissionError,
   startJulesHandsOnFix,
+  SessionStuckInSetupError,
+  readSessionState,
 } from "../src/jules.js";
 import { jules } from "@google/jules-sdk";
 import * as core from "@actions/core";
@@ -23,6 +25,31 @@ const mockSessionWithHistory = (historyEvents: any[]) => {
       }
     },
   };
+};
+
+/**
+ * A session that never produces agent output, reporting `state` every poll.
+ * `states` is consumed one entry per `info()` call; the last entry sticks.
+ */
+const mockSessionInState = (states: string[]) => {
+  let i = 0;
+  return {
+    id: "test-session-id",
+    info: vi.fn().mockImplementation(async () => {
+      const state = states[Math.min(i, states.length - 1)];
+      i++;
+      return { state };
+    }),
+    hydrate: vi.fn().mockResolvedValue(1),
+    prompt: vi.fn().mockResolvedValue({}),
+    history: async function* () {},
+  };
+};
+
+const withSession = (session: unknown) => {
+  (jules as any).with = vi.fn().mockReturnValue({
+    session: vi.fn().mockResolvedValue(session),
+  });
 };
 
 describe("jules.ts", () => {
@@ -575,7 +602,185 @@ describe("jules.ts", () => {
       await vi.advanceTimersByTimeAsync(2000);
 
       await promise;
-      expect(sessionInfoMock).toHaveBeenCalledTimes(2);
+      // Three, broken down: waitUntilSessionReady's 404 and its retry, then
+      // one read of the session state on the first poll attempt. Only the
+      // first two are this test's subject -- drop the 404 retry and the
+      // rejection escapes runJulesReview instead of being counted here.
+      expect(sessionInfoMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("abandons a session still QUEUED past the setup budget", async () => {
+      withSession(mockSessionInState(["QUEUED"]));
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      const assertion = expect(promise).rejects.toThrow(
+        SessionStuckInSetupError
+      );
+      await vi.advanceTimersByTimeAsync(90_000);
+      await assertion;
+    });
+
+    it("keeps waiting past the setup budget once work has started", async () => {
+      // Same clock, same budget as the test above -- the ONLY difference is
+      // that this session reached IN_PROGRESS, so elapsed time alone must not
+      // be what abandons a session.
+      withSession(mockSessionInState(["QUEUED", "IN_PROGRESS"]));
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      let settled = false;
+      void promise.then(
+        () => (settled = true),
+        () => (settled = true)
+      );
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      // Let it run out its real review budget so the test does not leak a
+      // pending timer.
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      await expect(promise).resolves.toMatchObject({ reviewResult: null });
+    });
+
+    it("keeps waiting after a state flap back to QUEUED", async () => {
+      // Having started work is a fact about the session, not about this poll.
+      // A session that reports QUEUED again after IN_PROGRESS is flapping, not
+      // stuck in setup.
+      withSession(mockSessionInState(["QUEUED", "IN_PROGRESS", "QUEUED"]));
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      let settled = false;
+      void promise.then(
+        () => (settled = true),
+        () => (settled = true)
+      );
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      await expect(promise).resolves.toMatchObject({ reviewResult: null });
+    });
+
+    it("keeps waiting when the state cannot be read at all", async () => {
+      // The pre-existing mock resolves info() to `{}` -- no state field. An
+      // unreadable state must never abandon a session, or an API blip costs a
+      // review that was on its way.
+      withSession(mockSessionWithHistory([]));
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      let settled = false;
+      void promise.then(
+        () => (settled = true),
+        () => (settled = true)
+      );
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      await expect(promise).resolves.toMatchObject({ reviewResult: null });
+    });
+
+    it("does not abandon a session whose info() keeps throwing", async () => {
+      const session = mockSessionWithHistory([]);
+      session.info = vi
+        .fn()
+        .mockResolvedValueOnce({})
+        .mockRejectedValue(new Error("503 upstream"));
+      withSession(session);
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(90_000);
+
+      let settled = false;
+      void promise.then(
+        () => (settled = true),
+        () => (settled = true)
+      );
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      await expect(promise).resolves.toMatchObject({ reviewResult: null });
+    });
+
+    it("still collects a review when info() throws every poll", async () => {
+      // The state read must not be able to cancel the hydrate/history poll
+      // that actually collects the review.
+      const session = mockSessionWithHistory([
+        {
+          type: "agentMessaged",
+          message: '{"summary":"test","verdict":"approve"}',
+        },
+      ]);
+      session.info = vi
+        .fn()
+        .mockResolvedValueOnce({})
+        .mockRejectedValue(new Error("503 upstream"));
+      withSession(session);
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(25_000);
+      await expect(promise).resolves.toMatchObject({
+        reviewResult: { verdict: "approve" },
+      });
+    });
+
+    it("leaves the setup budget off for follow-up polls", async () => {
+      // A repair prompt puts the session back through QUEUED, and picking that
+      // prompt up can take longer than the first poll's setup budget. That is
+      // normal, and must not be read as a setup that never finished -- so the
+      // follow-up poll stays QUEUED here for longer than the DEFAULT budget,
+      // not just longer than the one this test passes in.
+      const REPAIR_DELAY_MS = 400_000;
+      let sentRepairAt: number | null = null;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({ state: "QUEUED" }),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(async () => {
+          sentRepairAt = Date.now();
+          return {};
+        }),
+        history: async function* () {
+          if (sentRepairAt === null) {
+            yield { type: "agentMessaged", message: "not json at all" };
+            return;
+          }
+          const ready = Date.now() - sentRepairAt >= REPAIR_DELAY_MS;
+          yield {
+            type: "agentMessaged",
+            message: ready
+              ? '{"summary":"repaired","verdict":"approve"}'
+              : "not json at all",
+          };
+        },
+      };
+      withSession(session);
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(REPAIR_DELAY_MS + 60_000);
+      await expect(promise).resolves.toMatchObject({
+        reviewResult: { summary: "repaired" },
+      });
     });
 
     it("fails when session.info() throws auth error", async () => {
@@ -734,6 +939,25 @@ describe("jules.ts", () => {
       );
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe("Just a string error");
+    });
+  });
+
+  describe("readSessionState", () => {
+    it("reads a string state", () => {
+      expect(readSessionState({ state: "IN_PROGRESS" })).toBe("IN_PROGRESS");
+    });
+
+    it('returns "" for shapes that carry no readable state', () => {
+      for (const info of [
+        undefined,
+        null,
+        {},
+        { state: 7 },
+        { state: null },
+        "IN_PROGRESS",
+      ]) {
+        expect(readSessionState(info)).toBe("");
+      }
     });
   });
 });

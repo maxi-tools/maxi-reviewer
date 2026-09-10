@@ -70397,6 +70397,15 @@ function formatInvalidRetrievalRequest(nonce, errors, roundsLeft) {
 
 
 
+/**
+ * Five minutes, against measured replies of 21-190s (slowest 546s).
+ *
+ * The budget is deliberately longer than the slowest observed reply even
+ * though it only ever applies to a session that has NOT started work: the
+ * cost of being wrong is asymmetric. Abandoning a live session throws away a
+ * review; waiting an extra few minutes on a dead one costs a few minutes.
+ */
+const DEFAULT_SETUP_BUDGET_MS = 300_000;
 async function runJulesReview(apiKey, prompt, 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 source, timeoutMinutes, options = {}) {
@@ -70406,7 +70415,7 @@ source, timeoutMinutes, options = {}) {
     if (!afterMessage) {
         await waitUntilSessionReady(session);
     }
-    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress);
+    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress, options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS);
     core/* info */.pq(`Collected review (${reviewMessage.length} chars)`);
     if (!reviewMessage) {
         return { reviewResult: null, sessionId: session.id };
@@ -70742,7 +70751,78 @@ async function waitUntilSessionReady(session) {
     }
     throw new Error("Session did not become ready within timeout.");
 }
-async function pollForReview(session, timeoutMs, afterMessage, onProgress) {
+/**
+ * A session that never left repository setup, distinguished from one that
+ * worked and stayed silent.
+ *
+ * Observed directly on 2026-09-10: session 9532304781847968824, created for
+ * maxi-core#3942, sat on "Cloning maxi-tools/maxi-core / Setting up the
+ * repository..." for over two hours. The full prompt had been delivered; no
+ * agent turn ever began, so `agentMessaged` never appeared and the poll below
+ * spent its entire budget waiting for something that was never coming.
+ *
+ * That is not the same failure as "the reviewer had nothing to say", and the
+ * caller has to be able to tell them apart: this one is worth retrying on
+ * another account at once. Measured across 26 reviews, replies arrive in
+ * 21-190s (slowest 546s) or never -- so waiting out the budget buys nothing
+ * here, and the timeout text claiming replies "cluster near the end of the
+ * budget" is wrong about this case in particular.
+ */
+class SessionStuckInSetupError extends Error {
+    sessionId;
+    state;
+    constructor(sessionId, state, waitedMs) {
+        super(`Jules session ${sessionId} never left ${state} after ` +
+            `${Math.round(waitedMs / 1000)}s: repository clone/setup did not ` +
+            "finish, so no review was ever started. Retry on another account " +
+            "rather than waiting out the review budget.");
+        this.name = "SessionStuckInSetupError";
+        this.sessionId = sessionId;
+        this.state = state;
+    }
+}
+/**
+ * States meaning the agent has not begun work yet.
+ *
+ * `IN_PROGRESS` and everything after it are deliberately absent: a session
+ * that is working may legitimately be slow, and the slowest real reply
+ * measured took 546s. The discriminator is the STATE, not the clock -- a
+ * session queued for five minutes is stuck; one in progress for nine minutes
+ * is thinking.
+ */
+const PRE_WORK_STATES = new Set(["STATE_UNSPECIFIED", "QUEUED", ""]);
+/** The session's state, or "" when it cannot be read. */
+function readSessionState(info) {
+    if (typeof info !== "object" || info === null)
+        return "";
+    const raw = info.state;
+    return typeof raw === "string" ? raw : "";
+}
+/**
+ * The session's state, or "" when it cannot be read.
+ *
+ * Never throws. A poll that could not read the state has to behave exactly
+ * like one taken before this check existed -- an API blip must not abandon a
+ * session, and must not skip the hydrate/history poll that collects the
+ * review. An auth failure still surfaces: `session.hydrate()` runs moments
+ * later on the same credentials and raises it there.
+ */
+async function readStateOrBlank(session, attempt) {
+    try {
+        return readSessionState(await session.info());
+    }
+    catch (err) {
+        core/* info */.pq(`session.info() unreadable (attempt ${attempt}): ${errorMessage(err)}`);
+        return "";
+    }
+}
+async function pollForReview(session, timeoutMs, afterMessage, onProgress, 
+// Off unless a caller opts in. Only the first poll of a session is watching
+// for a setup that never finished; by the time a repair or retrieval prompt
+// is sent the session has already worked, and it may legitimately re-enter
+// QUEUED while it picks that prompt up. Defaulting this on would abandon
+// those sessions for doing something normal.
+setupBudgetMs = 0) {
     const startedAt = Date.now();
     const deadline = startedAt + timeoutMs;
     let attempt = 0;
@@ -70752,8 +70832,38 @@ async function pollForReview(session, timeoutMs, afterMessage, onProgress) {
     // status would appear to go backwards. Having seen agent output is a fact
     // about the session, not about the current poll.
     let sawAgentOutput = false;
+    // Sticky for the same reason as `sawAgentOutput`: once the session has been
+    // seen working, a later unreadable state must not retract that and abandon
+    // a session that is mid-review.
+    let sawWorkStart = false;
+    let lastState = "";
     while (Date.now() < deadline) {
         attempt++;
+        // Outside the try below on purpose: reading the state must not be able to
+        // cancel the hydrate/history poll that actually collects the review, and
+        // SessionStuckInSetupError is a verdict about the session rather than a
+        // poll hiccup, so it must not land in a catch that resumes waiting.
+        const state = await readStateOrBlank(session, attempt);
+        if (state && state !== lastState) {
+            core/* info */.pq(`Jules session state: ${lastState || "?"} -> ${state}`);
+            lastState = state;
+        }
+        if (state && !PRE_WORK_STATES.has(state))
+            sawWorkStart = true;
+        // Abandoned only on POSITIVE evidence of a pre-work state: `state` must be
+        // non-empty, so an unreadable state leaves this loop exactly as it behaved
+        // before the check existed -- waiting -- because being wrong here throws
+        // away a review that would have arrived, and a real reply is cheap to wait
+        // for. There is deliberately no `PRE_WORK_STATES.has(state)` clause here:
+        // `sawWorkStart` was just set from this same state, so `!sawWorkStart`
+        // already says it, and repeating it would be a condition no test could
+        // ever distinguish.
+        if (setupBudgetMs > 0 &&
+            !sawWorkStart &&
+            state &&
+            Date.now() - startedAt > setupBudgetMs) {
+            throw new SessionStuckInSetupError(session.id, state, Date.now() - startedAt);
+        }
         try {
             await session.hydrate();
             let last = "";
@@ -70811,6 +70921,71 @@ function wrapPermissionError(err, needed, op) {
             `(original: ${msg})`);
     }
     return err instanceof Error ? err : new Error(msg);
+}
+
+;// CONCATENATED MODULE: ./src/jules-escalation.ts
+
+
+/**
+ * The order to try credentials in when a session never leaves repository setup.
+ *
+ * Always two attempts. A stuck clone is a property of the session, not of the
+ * prompt, so the recovery is a *new* session -- on the other account when one
+ * is configured, because the failure observed on 2026-09-10 sat in
+ * `🐙 Cloning maxi-tools/maxi-core` for over two hours while the account's own
+ * quota was untouched (11/300), which points at the account's setup path
+ * rather than at load. With only one key there is still a second attempt: a
+ * fresh session on the same account is the cheapest thing that has been seen
+ * to work, and it is what the review would otherwise never get.
+ */
+function planAttempts(primaryKey, fallbackKey) {
+    const fallback = (fallbackKey ?? "").trim();
+    return [
+        { apiKey: primaryKey, label: "primary account" },
+        fallback && fallback !== primaryKey
+            ? { apiKey: fallback, label: "fallback account" }
+            : { apiKey: primaryKey, label: "primary account, fresh session" },
+    ];
+}
+/**
+ * Run a review, recreating the session elsewhere if it never starts work.
+ *
+ * Only {@link SessionStuckInSetupError} is retried. Every other failure --
+ * auth, a parse error, a review that ran and said nothing -- propagates
+ * unchanged, because those are answers, and re-running them would just spend
+ * another review budget arriving at the same one.
+ */
+async function runReviewWithSetupEscalation(args) {
+    const { run, attempts, prompt, source, timeoutMinutes, options } = args;
+    let lastStuck;
+    for (const [index, attempt] of attempts.entries()) {
+        // Resuming is only correct on the first attempt. Every later attempt is
+        // here *because* a session failed to come up, and `previousSessionId`
+        // would hand it straight back to the session that failed.
+        const attemptOptions = index === 0 || !options
+            ? options
+            : { ...options, previousSessionId: undefined };
+        try {
+            return await run(attempt.apiKey, prompt, source, timeoutMinutes, attemptOptions);
+        }
+        catch (err) {
+            if (!(err instanceof SessionStuckInSetupError))
+                throw err;
+            lastStuck = err;
+            core/* warning */.$e(`Jules session ${err.sessionId} never left ${err.state} on the ` +
+                `${attempt.label}; ${index + 1 < attempts.length
+                    ? `recreating it on the ${attempts[index + 1].label}.`
+                    : "no attempts left."}`);
+        }
+    }
+    // Every configured Jules account failed to bring a session up. This is the
+    // seam for a non-Jules reviewer -- a maxi-sandbox VM run against the intra
+    // build account, or a maxi-ml / agent-runner review -- which would slot in
+    // here as a further attempt rather than as a change to the loop above. Until
+    // one exists, the honest thing is to surface *why* no review happened: this
+    // is not "the reviewer had nothing to say", and it must not be reported as a
+    // timeout.
+    throw lastStuck ?? new Error("No review attempts were configured.");
 }
 
 ;// CONCATENATED MODULE: ./src/prompt.ts
@@ -72104,6 +72279,7 @@ function decodeXml(value) {
 
 
 
+
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON = ["never", "blocking", "any"];
 const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
@@ -72121,9 +72297,16 @@ const STATUS_DESCRIPTION_MAX = 140;
  * `Review timed out; see harvested artifact` said neither how long it waited
  * nor that nothing had been reviewed, so it read as a verdict. It is not one —
  * no review exists to disagree with. And it is worth re-running rather than
- * investigating: replies cluster against the deadline (two real reviews on
- * 2026-08-30 arrived on poll attempts 26 and 29 of ~30), so the next attempt
- * frequently lands inside the budget.
+ * investigating: measured across 26 reviews, a reply that is coming arrives in
+ * 21-190s, slowest 546s, or never -- so a job that spent its whole budget did
+ * not have a slow reviewer, it had none, and the next attempt frequently gets
+ * one.
+ *
+ * An earlier version of this comment read that reply times "cluster against
+ * the deadline", from two reviews on 2026-08-30 landing on poll attempts 26
+ * and 29 of ~30. Those are the same ~550s replies -- they only looked like
+ * clustering because the budget was 10 minutes at the time. Against 15 they
+ * are early, and the shape of the distribution never changed.
  *
  * Every number here is threaded through from the configured `timeout_minutes`
  * and never written as a literal. The budget has already moved twice (30 -> 10
@@ -72138,7 +72321,7 @@ function reviewTimeoutExplanation(timeoutMinutes) {
     return [
         `Jules returned no review message within ${timeoutMinutes} minutes, so no review was produced and there are no findings to read.`,
         "This is a reviewer-infrastructure timeout, not a verdict on the code.",
-        `Replies cluster near the end of the ${timeoutMinutes}-minute budget, so re-running this job often succeeds.`,
+        `Measured across 26 reviews, a reply that comes arrives in 21-190s (slowest 546s), so spending the whole ${timeoutMinutes}-minute budget means none came rather than that one was slow, and re-running this job often succeeds.`,
     ].join(" ");
 }
 const defaultDeps = {
@@ -72167,6 +72350,11 @@ async function runReviewPr(overrides = {}) {
     const deps = { ...defaultDeps, ...overrides };
     const apiKey = core/* getInput */.V4("jules_api_key", { required: true });
     core/* setSecret */.Pq(apiKey);
+    // Optional second Jules account. A session that never finishes cloning is
+    // recreated here rather than waited out; see jules-escalation.ts.
+    const fallbackApiKey = core/* getInput */.V4("jules_api_key_fallback");
+    if (fallbackApiKey)
+        core/* setSecret */.Pq(fallbackApiKey);
     const token = core/* getInput */.V4("github_token", { required: true });
     const failOnRaw = core/* getInput */.V4("fail_on");
     if (!VALID_FAIL_ON.includes(failOnRaw)) {
@@ -72354,7 +72542,14 @@ async function runReviewPr(overrides = {}) {
             publish: (description) => deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", description),
             onError: (err) => core/* info */.pq(`Could not refresh review status: ${err instanceof Error ? err.message : String(err)}`),
         });
-        const { reviewResult, sessionId, rawResponses, validationErrors } = await deps.runJulesReview(apiKey, prompt, { github: `${owner}/${repo}`, baseBranch: pr.base.ref }, timeoutMinutes, julesOptions);
+        const { reviewResult, sessionId, rawResponses, validationErrors } = await runReviewWithSetupEscalation({
+            run: deps.runJulesReview,
+            attempts: planAttempts(apiKey, fallbackApiKey),
+            prompt,
+            source: { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
+            timeoutMinutes,
+            options: julesOptions,
+        });
         const outcome = !reviewResult
             ? "TIMED_OUT_NO_CONTENT"
             : (reviewResult.newComments?.length ?? 0) > 0

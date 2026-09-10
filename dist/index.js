@@ -69367,6 +69367,97 @@ const jules = connect();
 
 //# sourceMappingURL=index.mjs.map
 
+;// CONCATENATED MODULE: ./src/evidence.ts
+/**
+ * Evidence classes that a reviewer can point at inside the material it was
+ * given. `memory` is the one that cannot be checked by anyone reading the run.
+ */
+const CHECKABLE_EVIDENCE = [
+    "diff",
+    "context",
+    "retrieval",
+    "analyzer",
+];
+/**
+ * Hold `block` to the rule the prompt already states.
+ *
+ * WHY THIS IS CODE AND NOT MORE PROSE. src/prompt.ts has said for a long time
+ * that for third-party tools and APIs, "if you are relying only on memory of an
+ * external API, mention the uncertainty and do not use `block`". On
+ * maxi-tools/maxi-kvm#85 the reviewer returned severity High, confidence High,
+ * verdict `block`, asserting that actions/create-github-app-token requires
+ * `app-id` and rejects `client-id`. Upstream documents the reverse. Applying
+ * that finding would have broken the step it claimed to repair. The rule was
+ * right and unenforced, and an instruction that has been ignored once will be
+ * ignored again.
+ *
+ * WHY NOT "a block must cite evidence". That over-rejects. The worked example
+ * in the prompt -- an `unwrap()` that panics on external input -- is a
+ * legitimate block resting on nothing but the diff, with no analyzer finding
+ * and no retrieval round. The distinction is not whether evidence exists but
+ * WHERE IT LIVES: the panic is verifiable from the changed line, the input
+ * schema of somebody else's Action is not verifiable from anything in the
+ * review. So the model declares the class and the runner holds it to it.
+ *
+ * DELIBERATELY LENIENT ABOUT AN ABSENT FIELD. A missing `evidenceSource` is
+ * recorded and not enforced. Enforcing it would downgrade every block emitted
+ * by a model that has not yet started filling the field in, turning a
+ * calibration change into an outage of the verdict. The recorded issues make
+ * the omission rate measurable first -- src/calibration.ts already aggregates
+ * these artifacts -- so the decision to enforce can follow a number.
+ */
+function holdBlockToItsEvidence(review) {
+    if (review.verdict !== "block") {
+        return { review, issues: [] };
+    }
+    const high = (review.newComments || []).filter((c) => c.severity === "High");
+    if (high.length === 0) {
+        return { review, issues: [] };
+    }
+    // Normalised here as well as at the parse boundary, so the property belongs
+    // to this function rather than to one caller. Today there is exactly one site
+    // building newComments and it sanitises; that is a fact about the current
+    // tree, not an invariant, and a ReviewResult reaching this function from
+    // anywhere else -- a future parse path, a caller assembling one directly, a
+    // test -- must get the same answer. A label outside the vocabulary counts as
+    // ABSENT: not checkable, and not an admission of `memory` either.
+    const declared = (c) => c.evidenceSource &&
+        CHECKABLE_EVIDENCE
+            .concat("memory")
+            .includes(c.evidenceSource)
+        ? c.evidenceSource
+        : undefined;
+    const undeclared = high.filter((c) => !declared(c));
+    const issues = undeclared.map((c) => `${c.file}:${c.line} is severity High with no evidenceSource; recorded, not enforced.`);
+    // EVERY High finding must have declared `memory` before the verdict moves.
+    //
+    // A mixed set -- one finding saying `memory`, another saying nothing -- has
+    // not told us the block is unsupported. The silent one may well be checkable;
+    // an absent field is recorded and not acted on, and that stance cannot hold
+    // if a single `memory` sibling is enough to drag the verdict down with it.
+    // The earlier version compared undeclared.length against high.length and fell
+    // through to the downgrade on any mix, which both broke that rule and emitted
+    // a message claiming every finding had declared `memory` when one had not.
+    //
+    // A value outside the vocabulary cannot reach here -- the parse boundary in
+    // jules.ts drops unknown labels, so they arrive as absent -- and if one did,
+    // this comparison leaves the verdict alone rather than mislabelling it.
+    const memory = high.filter((c) => declared(c) === "memory");
+    if (memory.length !== high.length) {
+        return { review, issues };
+    }
+    return {
+        review: { ...review, verdict: "comment" },
+        issues: [
+            "verdict downgraded from block to comment: every severity-High finding " +
+                'supporting it declared evidenceSource "memory" ' +
+                `(${memory.map((c) => `${c.file}:${c.line}`).join(", ")}), ` +
+                "which the reviewer's own rule says cannot support a block.",
+            ...issues,
+        ],
+    };
+}
+
 ;// CONCATENATED MODULE: ./src/format.ts
 function findReviewFormatIssues(review) {
     const issues = [];
@@ -70397,6 +70488,7 @@ function formatInvalidRetrievalRequest(nonce, errors, roundsLeft) {
 
 
 
+
 /**
  * Five minutes, against measured replies of 21-190s (slowest 546s).
  *
@@ -70515,6 +70607,12 @@ source, timeoutMinutes, options = {}) {
             validationErrors.push(...verified.validationErrors);
         }
     }
+    // Last, and after every repair round: a repair can change the verdict or the
+    // findings, so holding `block` to its evidence any earlier would judge a
+    // review that is not the one being published.
+    const evidence = holdBlockToItsEvidence(reviewResult);
+    reviewResult = evidence.review;
+    validationErrors.push(...evidence.issues);
     return {
         reviewResult,
         sessionId: session.id,
@@ -70730,6 +70828,17 @@ function convertStructuredReview(review) {
             endLine: comment.endLine ?? comment.suggestion?.endLine,
             severity: comment.severity,
             confidence: comment.confidence,
+            // Validated here, not trusted. The response is JSON at runtime, so the
+            // declared TypeScript type guarantees nothing about what actually
+            // arrives. An unrecognised label is dropped rather than forwarded, so it
+            // reaches the evidence hold as ABSENT -- recorded, not enforced -- which
+            // is the same treatment a model that never emitted the field receives.
+            ...(comment.evidenceSource &&
+                CHECKABLE_EVIDENCE.includes(comment.evidenceSource)
+                ? { evidenceSource: comment.evidenceSource }
+                : comment.evidenceSource === "memory"
+                    ? { evidenceSource: "memory" }
+                    : {}),
             message: comment.message,
             promptForAgents: comment.promptForAgents ?? "",
             suggestedReplacement: comment.suggestion?.replacement,
@@ -71142,6 +71251,15 @@ inside the object):
 - \`verdict\`: one of \`approve\`, \`comment\`, \`block\`.
 - \`severity\`: one of \`Info\`, \`Warning\`, \`High\`.
 - \`confidence\`: one of \`Low\`, \`Medium\`, \`High\`.
+- \`evidenceSource\`: one of \`diff\`, \`context\`, \`retrieval\`, \`analyzer\`, \`memory\`.
+  REQUIRED whenever \`severity\` is \`High\`. It names WHERE the evidence lives,
+  which is a different question from how sure you are: a claim can feel certain
+  and still be uncheckable by anyone reading this run. Use \`memory\` honestly
+  when the support is your own knowledge of an external tool, API or platform
+  rather than something in the material above — that is the accurate answer,
+  not a weak one. A \`block\` whose High findings all declare \`memory\` is
+  downgraded to \`comment\` by the runner, so declaring it costs nothing you
+  were entitled to.
 - \`resolvedCommentIds\`: array of integer indices from "Open Review Comments" now fixed (\`[]\` if none).
 - \`comments\`: \`[]\` when there are no findings.
 - \`sourceFindingIds\`: analyzer finding ids that support the comment, or omit when the finding is purely from code review.
@@ -71165,6 +71283,7 @@ For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }
       "endLine": 2,
       "severity": "High",
       "confidence": "High",
+      "evidenceSource": "diff",
       "message": "\`unwrap()\` on \`parse()\` panics on any non-numeric input; reachable from external input, it crashes the process. Return a \`Result\` instead.\n\`\`\`suggestion\nfn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }\n\`\`\`",
       "promptForAgents": "In src/net.rs around line 2, change \`fn port\` to return \`Result<u16, _>\` and propagate the parse error instead of calling .unwrap().",
       "suggestion": {

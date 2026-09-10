@@ -4,7 +4,13 @@
   "title": "Maxi Jules Review",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "summary", "verdict", "resolvedCommentIds", "comments"],
+  "required": [
+    "schema",
+    "summary",
+    "verdict",
+    "resolvedCommentIds",
+    "comments"
+  ],
   "properties": {
     "schema": {
       "const": "maxi.review.v1.jules-review"
@@ -13,7 +19,11 @@
       "type": "string"
     },
     "verdict": {
-      "enum": ["approve", "comment", "block"]
+      "enum": [
+        "approve",
+        "comment",
+        "block"
+      ]
     },
     "resolvedCommentIds": {
       "type": "array",
@@ -57,10 +67,18 @@
             "minimum": 1
           },
           "severity": {
-            "enum": ["Info", "Warning", "High"]
+            "enum": [
+              "Info",
+              "Warning",
+              "High"
+            ]
           },
           "confidence": {
-            "enum": ["Low", "Medium", "High"]
+            "enum": [
+              "Low",
+              "Medium",
+              "High"
+            ]
           },
           "message": {
             "type": "string",
@@ -79,7 +97,12 @@
           "suggestion": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["path", "startLine", "endLine", "replacement"],
+            "required": [
+              "path",
+              "startLine",
+              "endLine",
+              "replacement"
+            ],
             "properties": {
               "path": {
                 "type": "string",
@@ -97,6 +120,16 @@
                 "type": "string"
               }
             }
+          },
+          "evidenceSource": {
+            "enum": [
+              "diff",
+              "context",
+              "retrieval",
+              "analyzer",
+              "memory"
+            ],
+            "description": "Where this finding's evidence lives. The prompt requires it at severity High; this schema does not enforce that, because a missing value is deliberately recorded rather than rejected during rollout."
           }
         }
       }

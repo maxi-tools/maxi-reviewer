@@ -69414,7 +69414,20 @@ function holdBlockToItsEvidence(review) {
     if (high.length === 0) {
         return { review, issues: [] };
     }
-    const undeclared = high.filter((c) => !c.evidenceSource);
+    // Normalised here as well as at the parse boundary, so the property belongs
+    // to this function rather than to one caller. Today there is exactly one site
+    // building newComments and it sanitises; that is a fact about the current
+    // tree, not an invariant, and a ReviewResult reaching this function from
+    // anywhere else -- a future parse path, a caller assembling one directly, a
+    // test -- must get the same answer. A label outside the vocabulary counts as
+    // ABSENT: not checkable, and not an admission of `memory` either.
+    const declared = (c) => c.evidenceSource &&
+        CHECKABLE_EVIDENCE
+            .concat("memory")
+            .includes(c.evidenceSource)
+        ? c.evidenceSource
+        : undefined;
+    const undeclared = high.filter((c) => !declared(c));
     const issues = undeclared.map((c) => `${c.file}:${c.line} is severity High with no evidenceSource; recorded, not enforced.`);
     // EVERY High finding must have declared `memory` before the verdict moves.
     //
@@ -69429,7 +69442,7 @@ function holdBlockToItsEvidence(review) {
     // A value outside the vocabulary cannot reach here -- the parse boundary in
     // jules.ts drops unknown labels, so they arrive as absent -- and if one did,
     // this comparison leaves the verdict alone rather than mislabelling it.
-    const memory = high.filter((c) => c.evidenceSource === "memory");
+    const memory = high.filter((c) => declared(c) === "memory");
     if (memory.length !== high.length) {
         return { review, issues };
     }

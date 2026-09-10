@@ -96,6 +96,20 @@ describe("holdBlockToItsEvidence", () => {
     expect(out.issues).toEqual([]);
   });
 
+  it("treats a label outside the vocabulary as absent, not as memory", () => {
+    // Defence in depth: the parse boundary drops unknown labels, but this
+    // function must give the same answer for a ReviewResult assembled anywhere
+    // else. An unrecognised value is neither checkable nor an admission.
+    const bogus = {
+      ...finding("High"),
+      evidenceSource: "vibes",
+    } as ReviewComment;
+    const out = holdBlockToItsEvidence(review("block", [bogus]));
+    expect(out.review.verdict).toBe("block");
+    expect(out.issues.join(" ")).toContain("no evidenceSource");
+    expect(out.issues.join(" ")).not.toContain("downgraded");
+  });
+
   it("leaves approve and comment verdicts alone", () => {
     for (const v of ["approve", "comment"] as const) {
       const out = holdBlockToItsEvidence(

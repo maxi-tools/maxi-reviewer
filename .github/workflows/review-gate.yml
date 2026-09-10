@@ -66,7 +66,8 @@ on:
 # filing eighteen comments in a round therefore queues eighteen gate runs, none
 # of which cancels the others. Measured on maxi-config#412: 24 queued
 # review-gate jobs on one SHA -- 12 copies of `resolve-review-threads` and 12 of
-# `get-a-non-author-review` -- with not one of them started, on a self-hosted
+# `awaiting-non-author-review-bots-included` -- with not one of them started,
+# on a self-hosted
 # pool at zero idle. The gate could not reach a verdict because it was waiting
 # behind eleven stale copies of itself.
 #

@@ -90,9 +90,11 @@ const STATUS_DESCRIPTION_MAX = 140;
  * nor that nothing had been reviewed, so it read as a verdict. It is not one —
  * no review exists to disagree with. And it is worth re-running rather than
  * investigating: measured across 26 reviews, a reply that is coming arrives in
- * 21-190s, slowest 546s, or never -- so a job that spent its whole budget did
- * not have a slow reviewer, it had none, and the next attempt frequently gets
- * one.
+ * 21-190s, slowest 546s, or never -- so a job whose budget covers that did not
+ * have a slow reviewer, it had none, and the next attempt frequently gets one.
+ * Stated as a conditional on purpose: `timeout_minutes` is an input, and at a
+ * budget shorter than 546s a reply that WAS coming gets cut off, so the flat
+ * claim would be false exactly where someone had shortened the budget.
  *
  * An earlier version of this comment read that reply times "cluster against
  * the deadline", from two reviews on 2026-08-30 landing on poll attempts 26
@@ -117,7 +119,11 @@ export function reviewTimeoutExplanation(timeoutMinutes: number): string {
   return [
     `Jules returned no review message within ${timeoutMinutes} minutes, so no review was produced and there are no findings to read.`,
     "This is a reviewer-infrastructure timeout, not a verdict on the code.",
-    `Measured across 26 reviews, a reply that comes arrives in 21-190s (slowest 546s), so spending the whole ${timeoutMinutes}-minute budget means none came rather than that one was slow, and re-running this job often succeeds.`,
+    `Across 26 measured reviews a reply that comes arrives in 21-190s, slowest 546s; where the ${timeoutMinutes}-minute budget covers that, running out means none came rather than one being slow.`,
+    // Unconditional on purpose, unlike the sentence above it: whatever the
+    // budget was, another attempt is the cheap thing to try, and this is the
+    // only actionable half of the message.
+    "Either way, re-running this job often succeeds.",
   ].join(" ");
 }
 

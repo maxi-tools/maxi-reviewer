@@ -609,6 +609,124 @@ describe("jules.ts", () => {
       expect(sessionInfoMock).toHaveBeenCalledTimes(3);
     });
 
+    it("never abandons a RESUMED session, however long it stays QUEUED", async () => {
+      // A resumed session went through repository setup runs ago and has
+      // already replied. Sitting in QUEUED while it picks up the new prompt is
+      // the same normal behaviour follow-up polls are not watched for --
+      // watching it would recreate a session that was about to answer.
+      //
+      // It must stay silent PAST the budget for this to test anything: a
+      // resumed session that answers on the first poll never reaches the
+      // check, and an earlier version of this test passed for that reason
+      // alone.
+      const QUIET_MS = 120_000;
+      let sentAt: number | null = null;
+      const resumed = {
+        id: "previous-session-id",
+        info: vi.fn().mockResolvedValue({ state: "QUEUED" }),
+        hydrate: vi.fn().mockResolvedValue(1),
+        send: vi.fn().mockImplementation(async () => {
+          sentAt = Date.now();
+        }),
+        history: async function* () {
+          const answered = sentAt !== null && Date.now() - sentAt >= QUIET_MS;
+          yield {
+            type: "agentMessaged",
+            message: answered
+              ? '{"summary":"continued","verdict":"approve"}'
+              : "the earlier review",
+          };
+        },
+      };
+      (jules as any).with = vi
+        .fn()
+        .mockReturnValue({ session: vi.fn().mockReturnValue(resumed) });
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        previousSessionId: "previous-session-id",
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(QUIET_MS + 60_000);
+      await expect(promise).resolves.toMatchObject({
+        reviewResult: { summary: "continued" },
+      });
+    });
+
+    it("never abandons a resumed session that had never replied", async () => {
+      // The case that separates "resumed" from "has a previous reply": this
+      // session exists and finished setup, but had no agentMessaged yet, so
+      // `afterMessage` is empty. Gating the watch on `afterMessage` would turn
+      // it back ON here and recreate a session that was mid-first-review.
+      const QUIET_MS = 120_000;
+      const startedAt = Date.now();
+      const resumed = {
+        id: "previous-session-id",
+        info: vi.fn().mockResolvedValue({ state: "QUEUED" }),
+        hydrate: vi.fn().mockResolvedValue(1),
+        send: vi.fn().mockResolvedValue({}),
+        history: async function* () {
+          if (Date.now() - startedAt < QUIET_MS) return;
+          yield {
+            type: "agentMessaged",
+            message: '{"summary":"first reply","verdict":"approve"}',
+          };
+        },
+      };
+      (jules as any).with = vi
+        .fn()
+        .mockReturnValue({ session: vi.fn().mockReturnValue(resumed) });
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        previousSessionId: "previous-session-id",
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(QUIET_MS + 60_000);
+      await expect(promise).resolves.toMatchObject({
+        reviewResult: { summary: "first reply" },
+      });
+    });
+
+    it("watches a session created after a resume failed", async () => {
+      // `previousSessionId` is only what the caller ASKED for. When the resume
+      // throws, the review runs on a session created seconds ago -- which is
+      // exactly the kind that gets stuck in setup, so the watch must be on.
+      const fresh = mockSessionInState(["QUEUED"]);
+      const session = vi.fn().mockImplementation((arg: unknown) => {
+        if (typeof arg === "string") throw new Error("410 session gone");
+        return fresh;
+      });
+      (jules as any).with = vi.fn().mockReturnValue({ session });
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        previousSessionId: "previous-session-id",
+        setupBudgetMs: 60_000,
+      });
+      const assertion = expect(promise).rejects.toThrow(
+        SessionStuckInSetupError
+      );
+      await vi.advanceTimersByTimeAsync(90_000);
+      await assertion;
+    });
+
+    it("stops reading the state once the session has started work", async () => {
+      // `sawWorkStart` is sticky, so every later read could only return
+      // without acting. Polling on costs an info() per 20s tick -- ~90 extra
+      // requests over a 30-minute review -- to learn nothing that can change
+      // the outcome.
+      const session = mockSessionInState(["QUEUED", "IN_PROGRESS"]);
+      withSession(session);
+
+      const promise = runJulesReview("api-key", "prompt", {}, 30, {
+        setupBudgetMs: 60_000,
+      });
+      await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+      await expect(promise).resolves.toMatchObject({ reviewResult: null });
+
+      // Two reads: the QUEUED tick, then the IN_PROGRESS one that ends the
+      // watch. Not one per poll for the rest of the review.
+      expect(session.info).toHaveBeenCalledTimes(2);
+    });
+
     it("abandons a session still QUEUED past the setup budget", async () => {
       withSession(mockSessionInState(["QUEUED"]));
 

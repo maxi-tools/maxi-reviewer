@@ -70410,12 +70410,17 @@ async function runJulesReview(apiKey, prompt,
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 source, timeoutMinutes, options = {}) {
     const customJules = jules.with({ apiKey });
-    const { session, afterMessage } = await startReviewSession(customJules, prompt, source, options.previousSessionId);
+    const { session, afterMessage, resumed } = await startReviewSession(customJules, prompt, source, options.previousSessionId);
     core/* info */.pq(`Jules session: ${session.id}`);
     if (!afterMessage) {
         await waitUntilSessionReady(session);
     }
-    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress, options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS);
+    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress, 
+    // A resumed session has already been through repository setup and has
+    // already worked -- it cannot be stuck in a setup it finished runs ago.
+    // It can sit in QUEUED for a while picking up the new prompt, which is the
+    // same normal behaviour the follow-up polls are not watched for.
+    resumed ? 0 : (options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS));
     core/* info */.pq(`Collected review (${reviewMessage.length} chars)`);
     if (!reviewMessage) {
         return { reviewResult: null, sessionId: session.id };
@@ -70578,7 +70583,7 @@ source, previousSessionId) {
             await session.info();
             const afterMessage = await latestAgentMessage(session);
             await sendSessionMessage(session, prompt);
-            return { session, afterMessage };
+            return { session, afterMessage, resumed: true };
         }
         catch (err) {
             core/* warning */.$e(`Could not continue Jules session ${previousSessionId}; starting a new review session: ${String(err)}`);
@@ -70586,7 +70591,7 @@ source, previousSessionId) {
     }
     core/* info */.pq("Creating Jules review session…");
     const rawSession = await createReviewSession(customJules, prompt, source);
-    return { session: rawSession };
+    return { session: rawSession, resumed: false };
 }
 async function createReviewSession(customJules, prompt, 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70816,6 +70821,12 @@ function createSetupWatch(session, startedAt, budgetMs) {
     let lastState = "";
     return {
         async check(attempt) {
+            // Nothing left to decide: `sawWorkStart` is sticky, so from here every
+            // call could only return without acting. Polling on would spend an
+            // `info()` per tick -- ~90 more requests over a 30-minute review -- to
+            // learn something that can no longer change the outcome.
+            if (sawWorkStart)
+                return;
             // Never throws. A poll that could not read the state has to behave
             // exactly like one taken before this check existed -- an API blip must
             // not abandon a session. An auth failure still surfaces:
@@ -72307,9 +72318,11 @@ const STATUS_DESCRIPTION_MAX = 140;
  * nor that nothing had been reviewed, so it read as a verdict. It is not one —
  * no review exists to disagree with. And it is worth re-running rather than
  * investigating: measured across 26 reviews, a reply that is coming arrives in
- * 21-190s, slowest 546s, or never -- so a job that spent its whole budget did
- * not have a slow reviewer, it had none, and the next attempt frequently gets
- * one.
+ * 21-190s, slowest 546s, or never -- so a job whose budget covers that did not
+ * have a slow reviewer, it had none, and the next attempt frequently gets one.
+ * Stated as a conditional on purpose: `timeout_minutes` is an input, and at a
+ * budget shorter than 546s a reply that WAS coming gets cut off, so the flat
+ * claim would be false exactly where someone had shortened the budget.
  *
  * An earlier version of this comment read that reply times "cluster against
  * the deadline", from two reviews on 2026-08-30 landing on poll attempts 26
@@ -72330,7 +72343,11 @@ function reviewTimeoutExplanation(timeoutMinutes) {
     return [
         `Jules returned no review message within ${timeoutMinutes} minutes, so no review was produced and there are no findings to read.`,
         "This is a reviewer-infrastructure timeout, not a verdict on the code.",
-        `Measured across 26 reviews, a reply that comes arrives in 21-190s (slowest 546s), so spending the whole ${timeoutMinutes}-minute budget means none came rather than that one was slow, and re-running this job often succeeds.`,
+        `Across 26 measured reviews a reply that comes arrives in 21-190s, slowest 546s; where the ${timeoutMinutes}-minute budget covers that, running out means none came rather than one being slow.`,
+        // Unconditional on purpose, unlike the sentence above it: whatever the
+        // budget was, another attempt is the cheap thing to try, and this is the
+        // only actionable half of the message.
+        "Either way, re-running this job often succeeds.",
     ].join(" ");
 }
 const defaultDeps = {

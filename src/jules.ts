@@ -96,7 +96,7 @@ export async function runJulesReview(
 }> {
   const customJules = jules.with({ apiKey }) as JulesSessionClient;
 
-  const { session, afterMessage } = await startReviewSession(
+  const { session, afterMessage, resumed } = await startReviewSession(
     customJules,
     prompt,
     source,
@@ -113,7 +113,11 @@ export async function runJulesReview(
     timeoutMinutes * 60 * 1000,
     afterMessage,
     options.onProgress,
-    options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS
+    // A resumed session has already been through repository setup and has
+    // already worked -- it cannot be stuck in a setup it finished runs ago.
+    // It can sit in QUEUED for a while picking up the new prompt, which is the
+    // same normal behaviour the follow-up polls are not watched for.
+    resumed ? 0 : (options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS)
   );
   core.info(`Collected review (${reviewMessage.length} chars)`);
 
@@ -347,7 +351,19 @@ async function startReviewSession(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   source: any,
   previousSessionId?: string
-): Promise<{ session: JulesSession; afterMessage?: string }> {
+): Promise<{
+  session: JulesSession;
+  afterMessage?: string;
+  /**
+   * Whether this is a session that already existed and worked.
+   *
+   * Reported separately from `afterMessage`, which is empty when a resumed
+   * session had never replied, and separately from `previousSessionId`, which
+   * is only what the caller ASKED for -- a resume that throws falls through to
+   * a brand new session below, and that one does need watching.
+   */
+  resumed: boolean;
+}> {
   if (previousSessionId) {
     try {
       core.info(`Continuing Jules review session ${previousSessionId}…`);
@@ -355,7 +371,7 @@ async function startReviewSession(
       await session.info();
       const afterMessage = await latestAgentMessage(session);
       await sendSessionMessage(session, prompt);
-      return { session, afterMessage };
+      return { session, afterMessage, resumed: true };
     } catch (err) {
       core.warning(
         `Could not continue Jules session ${previousSessionId}; starting a new review session: ${String(err)}`
@@ -365,7 +381,7 @@ async function startReviewSession(
 
   core.info("Creating Jules review session…");
   const rawSession = await createReviewSession(customJules, prompt, source);
-  return { session: rawSession as unknown as JulesSession };
+  return { session: rawSession as unknown as JulesSession, resumed: false };
 }
 
 async function createReviewSession(
@@ -693,6 +709,11 @@ function createSetupWatch(
 
   return {
     async check(attempt: number): Promise<void> {
+      // Nothing left to decide: `sawWorkStart` is sticky, so from here every
+      // call could only return without acting. Polling on would spend an
+      // `info()` per tick -- ~90 more requests over a 30-minute review -- to
+      // learn something that can no longer change the outcome.
+      if (sawWorkStart) return;
       // Never throws. A poll that could not read the state has to behave
       // exactly like one taken before this check existed -- an API blip must
       // not abandon a session. An auth failure still surfaces:

@@ -148,6 +148,7 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | Input                | Default                         | Description                                                   |
 | -------------------- | ------------------------------- | ------------------------------------------------------------- |
 | `jules_api_key`      |                                 | Required Jules API key.                                       |
+| `jules_api_key_fallback` |                             | Optional Jules API key for a second account. Used only when a session never leaves repository setup — see [Stuck sessions](#stuck-sessions). |
 | `github_token`       |                                 | Required GitHub token (App installation token preferred). Reviews also read linked issues, so the token needs issues:read; /maxi commands additionally need contents:write and issues:write. Enabling `ci_signal: auto` also needs checks:read. |
 | `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
 | `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
@@ -178,6 +179,33 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 > of cleanup headroom — that outer timeout is the real runner-release watchdog.
 > With the default Jules budget of 30 minutes the process deadline is 50 minutes;
 > use a step `timeout-minutes` of at least 55 and a job timeout above that.
+
+## Stuck Sessions
+
+A Jules session can be created, accept the full prompt, and then never leave
+repository setup — the session page sits on `🐙 Cloning <repo>` with a live
+spinner and no agent turn ever begins. Observed on 2026-09-10: session
+`9532304781847968824` was still cloning over two hours after creation, on an
+account nowhere near its quota (11/300).
+
+That is not the same failure as a review that ran and stayed silent, and
+waiting it out buys nothing: measured across 26 reviews, a reply that is coming
+arrives in 21–190s (slowest 546s), or never. So the review budget is spent
+entirely on a session that cannot produce a review.
+
+The action watches the session's own state rather than the clock. If the
+session has not started work within five minutes — and only on positive
+evidence of a pre-work state, never because the state could not be read — the
+session is abandoned and the review is recreated: on `jules_api_key_fallback`
+when a second account is configured, otherwise as a fresh session on the same
+one. A session that reaches `IN_PROGRESS` is never abandoned, however slow it
+is.
+
+If every configured account fails to bring a session up, the job fails with an
+`error` commit status naming the stuck session and state, rather than reporting
+a review timeout. The two call for opposite responses — a timeout is worth
+re-running, a stuck clone is worth recreating elsewhere — so they are reported
+differently.
 
 ## Outputs
 

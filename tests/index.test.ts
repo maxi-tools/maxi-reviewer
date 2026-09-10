@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { reviewTimeoutExplanation } from "../src/review-pr.js";
 
 // Mock dependencies
 vi.mock("@actions/core");
@@ -288,12 +289,13 @@ describe("index.ts", () => {
     );
     expect(mockGithubHelper.submitReview).not.toHaveBeenCalled();
     expect(mockArtifact.default.uploadArtifact).toHaveBeenCalled();
+    // Tracks the function, not a copy of its prose: this test is about the
+    // timeout reaching the log and the job failure at all. `review timeout
+    // wording` in review-pr.test.ts is what pins what it says.
     expect(mockWarning).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds. Recorded a harvestable review artifact."
+      `${reviewTimeoutExplanation(30)} Recorded a harvestable review artifact.`
     );
-    expect(mockSetFailed).toHaveBeenCalledWith(
-      "Jules returned no review message within 30 minutes, so no review was produced and there are no findings to read. This is a reviewer-infrastructure timeout, not a verdict on the code. Replies cluster near the end of the 30-minute budget, so re-running this job often succeeds."
-    );
+    expect(mockSetFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(30));
   });
 
   it("resolves open threads if resolvedCommentIds provided", async () => {

@@ -70799,22 +70799,55 @@ function readSessionState(info) {
     return typeof raw === "string" ? raw : "";
 }
 /**
- * The session's state, or "" when it cannot be read.
+ * A watch that never fires, for polls that are not watching for setup.
  *
- * Never throws. A poll that could not read the state has to behave exactly
- * like one taken before this check existed -- an API blip must not abandon a
- * session, and must not skip the hydrate/history poll that collects the
- * review. An auth failure still surfaces: `session.hydrate()` runs moments
- * later on the same credentials and raises it there.
+ * Only the first poll of a session watches. By the time a repair or retrieval
+ * prompt is sent the session has already worked, and it may legitimately
+ * re-enter QUEUED while it picks that prompt up; watching there would abandon
+ * sessions for doing something normal.
  */
-async function readStateOrBlank(session, attempt) {
-    try {
-        return readSessionState(await session.info());
-    }
-    catch (err) {
-        core/* info */.pq(`session.info() unreadable (attempt ${attempt}): ${errorMessage(err)}`);
-        return "";
-    }
+const NO_SETUP_WATCH = { check: async () => { } };
+function createSetupWatch(session, startedAt, budgetMs) {
+    if (budgetMs <= 0)
+        return NO_SETUP_WATCH;
+    // Sticky: once the session has been seen working, a later unreadable or
+    // flapping state must not retract that and abandon a session mid-review.
+    let sawWorkStart = false;
+    let lastState = "";
+    return {
+        async check(attempt) {
+            // Never throws. A poll that could not read the state has to behave
+            // exactly like one taken before this check existed -- an API blip must
+            // not abandon a session. An auth failure still surfaces:
+            // `session.hydrate()` runs moments later on the same credentials.
+            let state = "";
+            try {
+                state = readSessionState(await session.info());
+            }
+            catch (err) {
+                core/* info */.pq(`session.info() unreadable (attempt ${attempt}): ${errorMessage(err)}`);
+                return;
+            }
+            if (!state)
+                return;
+            if (state !== lastState) {
+                core/* info */.pq(`Jules session state: ${lastState || "?"} -> ${state}`);
+                lastState = state;
+            }
+            if (!PRE_WORK_STATES.has(state)) {
+                sawWorkStart = true;
+                return;
+            }
+            // Reached only on POSITIVE evidence of a pre-work state, so an
+            // unreadable one leaves the loop waiting, as it did before this existed:
+            // being wrong here throws away a review that would have arrived, and a
+            // real reply is cheap to wait for.
+            const waited = Date.now() - startedAt;
+            if (!sawWorkStart && waited > budgetMs) {
+                throw new SessionStuckInSetupError(session.id, state, waited);
+            }
+        },
+    };
 }
 async function pollForReview(session, timeoutMs, afterMessage, onProgress, 
 // Off unless a caller opts in. Only the first poll of a session is watching
@@ -70832,38 +70865,14 @@ setupBudgetMs = 0) {
     // status would appear to go backwards. Having seen agent output is a fact
     // about the session, not about the current poll.
     let sawAgentOutput = false;
-    // Sticky for the same reason as `sawAgentOutput`: once the session has been
-    // seen working, a later unreadable state must not retract that and abandon
-    // a session that is mid-review.
-    let sawWorkStart = false;
-    let lastState = "";
+    const setupWatch = createSetupWatch(session, startedAt, setupBudgetMs);
     while (Date.now() < deadline) {
         attempt++;
-        // Outside the try below on purpose: reading the state must not be able to
+        // Outside the try below on purpose: the state read must not be able to
         // cancel the hydrate/history poll that actually collects the review, and
         // SessionStuckInSetupError is a verdict about the session rather than a
         // poll hiccup, so it must not land in a catch that resumes waiting.
-        const state = await readStateOrBlank(session, attempt);
-        if (state && state !== lastState) {
-            core/* info */.pq(`Jules session state: ${lastState || "?"} -> ${state}`);
-            lastState = state;
-        }
-        if (state && !PRE_WORK_STATES.has(state))
-            sawWorkStart = true;
-        // Abandoned only on POSITIVE evidence of a pre-work state: `state` must be
-        // non-empty, so an unreadable state leaves this loop exactly as it behaved
-        // before the check existed -- waiting -- because being wrong here throws
-        // away a review that would have arrived, and a real reply is cheap to wait
-        // for. There is deliberately no `PRE_WORK_STATES.has(state)` clause here:
-        // `sawWorkStart` was just set from this same state, so `!sawWorkStart`
-        // already says it, and repeating it would be a condition no test could
-        // ever distinguish.
-        if (setupBudgetMs > 0 &&
-            !sawWorkStart &&
-            state &&
-            Date.now() - startedAt > setupBudgetMs) {
-            throw new SessionStuckInSetupError(session.id, state, Date.now() - startedAt);
-        }
+        await setupWatch.check(attempt);
         try {
             await session.hydrate();
             let last = "";

@@ -177,6 +177,14 @@ export interface FindingAnchor {
   symbol?: string;
 }
 
+/**
+ * Where a finding's evidence lives. Not a confidence score: `memory` can feel
+ * certain and still be uncheckable by anyone reading the run, which is exactly
+ * the case that produced a wrong blocking verdict on maxi-kvm#85.
+ */
+export type EvidenceSource =
+  "diff" | "context" | "retrieval" | "analyzer" | "memory";
+
 export interface ReviewComment {
   file: string;
   line: number;
@@ -185,6 +193,12 @@ export interface ReviewComment {
   severity: "Info" | "Warning" | "High";
   confidence: "Low" | "Medium" | "High";
   message: string;
+  /**
+   * Which material supports this finding. Required by the prompt at severity
+   * High; see holdBlockToItsEvidence in evidence.ts for what the runner does
+   * with it.
+   */
+  evidenceSource?: EvidenceSource;
   promptForAgents: string;
   suggestedReplacement?: string;
   /**
@@ -248,6 +262,7 @@ export interface JulesReviewComment {
   severity: "Info" | "Warning" | "High";
   confidence: "Low" | "Medium" | "High";
   message: string;
+  evidenceSource?: EvidenceSource;
   promptForAgents?: string;
   sourceFindingIds?: string[];
   suggestion?: StructuredSuggestion;

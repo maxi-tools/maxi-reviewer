@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import { jules } from "@google/jules-sdk";
-import { ReviewResult, StructuredFix } from "./types.js";
+import { EvidenceSource, ReviewResult, StructuredFix } from "./types.js";
+import { holdBlockToItsEvidence } from "./evidence.js";
 import {
   buildFormatRepairPrompt,
   buildJsonRepairPrompt,
@@ -249,6 +250,13 @@ export async function runJulesReview(
       validationErrors.push(...verified.validationErrors);
     }
   }
+
+  // Last, and after every repair round: a repair can change the verdict or the
+  // findings, so holding `block` to its evidence any earlier would judge a
+  // review that is not the one being published.
+  const evidence = holdBlockToItsEvidence(reviewResult);
+  reviewResult = evidence.review;
+  validationErrors.push(...evidence.issues);
 
   return {
     reviewResult,
@@ -570,6 +578,7 @@ function convertStructuredReview(review: {
     severity: "Info" | "Warning" | "High";
     confidence: "Low" | "Medium" | "High";
     message: string;
+    evidenceSource?: EvidenceSource;
     promptForAgents?: string;
     suggestion?: {
       path?: string;
@@ -591,6 +600,9 @@ function convertStructuredReview(review: {
       endLine: comment.endLine ?? comment.suggestion?.endLine,
       severity: comment.severity,
       confidence: comment.confidence,
+      ...(comment.evidenceSource
+        ? { evidenceSource: comment.evidenceSource }
+        : {}),
       message: comment.message,
       promptForAgents: comment.promptForAgents ?? "",
       suggestedReplacement: comment.suggestion?.replacement,

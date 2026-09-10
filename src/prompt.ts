@@ -159,6 +159,15 @@ inside the object):
 - \`verdict\`: one of \`approve\`, \`comment\`, \`block\`.
 - \`severity\`: one of \`Info\`, \`Warning\`, \`High\`.
 - \`confidence\`: one of \`Low\`, \`Medium\`, \`High\`.
+- \`evidenceSource\`: one of \`diff\`, \`context\`, \`retrieval\`, \`analyzer\`, \`memory\`.
+  REQUIRED whenever \`severity\` is \`High\`. It names WHERE the evidence lives,
+  which is a different question from how sure you are: a claim can feel certain
+  and still be uncheckable by anyone reading this run. Use \`memory\` honestly
+  when the support is your own knowledge of an external tool, API or platform
+  rather than something in the material above — that is the accurate answer,
+  not a weak one. A \`block\` whose High findings all declare \`memory\` is
+  downgraded to \`comment\` by the runner, so declaring it costs nothing you
+  were entitled to.
 - \`resolvedCommentIds\`: array of integer indices from "Open Review Comments" now fixed (\`[]\` if none).
 - \`comments\`: \`[]\` when there are no findings.
 - \`sourceFindingIds\`: analyzer finding ids that support the comment, or omit when the finding is purely from code review.

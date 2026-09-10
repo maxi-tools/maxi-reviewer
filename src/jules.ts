@@ -697,7 +697,7 @@ function createSetupWatch(
       // exactly like one taken before this check existed -- an API blip must
       // not abandon a session. An auth failure still surfaces:
       // `session.hydrate()` runs moments later on the same credentials.
-      let state = "";
+      let state: string;
       try {
         state = readSessionState(await session.info());
       } catch (err) {

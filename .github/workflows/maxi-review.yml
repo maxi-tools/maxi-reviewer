@@ -771,7 +771,44 @@ jobs:
           # in-process hard deadline is timeout_minutes + 20 and the step bound
           # must clear it by ~5 minutes of cleanup headroom.
           timeout_minutes: "15"
-          fail_on: "blocking"
+          # NEVER, and the context name is the short version of why: a status
+          # called `advisory:` that fails the check is not advisory. These two
+          # lines sat adjacent and contradicting for as long as they have both
+          # existed, and unlike every other input in this block, neither
+          # carried a reason.
+          #
+          # Three things this lane reports are not verdicts on the code:
+          #
+          #   1. Its own timeouts. The comment above measures three runs in
+          #      seven that spent the whole budget and returned nothing, then
+          #      "set `advisory: maxi reviewer` red for having failed to work".
+          #      Reviewer infrastructure failing is not a finding.
+          #   2. Blocking verdicts its own rules forbid. maxi-reviewer's
+          #      src/prompt.ts already says that for claims about third-party
+          #      tools and APIs, "if you are relying only on memory of an
+          #      external API, mention the uncertainty and do not use `block`".
+          #      Observed 2026-09-09 on maxi-kvm#85: High severity, High
+          #      confidence, verdict `block`, asserting that
+          #      actions/create-github-app-token requires `app-id` and rejects
+          #      `client-id`. Upstream documents the opposite -- `client-id` is
+          #      recommended and `app-id` is the legacy input -- so applying
+          #      that finding would have broken the token step it claimed to
+          #      repair. The rule is right; nothing enforces it.
+          #   3. Verdicts about a diff it did not read. The same run recorded
+          #      the new head SHA against a review of superseded content.
+          #
+          # Nothing is lost by going advisory in fact as well as in name. The
+          # findings still publish as PR review comments, and `maxi-reviewer[bot]`
+          # still counts for `review-gate/non-author-review`, which reads
+          # reviews rather than statuses. What goes away is a red check that
+          # ~90 repositories' pull requests wait on, which is red for reasons
+          # its own precision does not support.
+          #
+          # The condition for returning this to "blocking" is a measurement,
+          # not a feeling: maxi-reviewer/src/calibration.ts already aggregates
+          # per-rule precision from harvested artifacts. Point it at the block
+          # verdicts and raise this again when that number justifies a gate.
+          fail_on: "never"
           status_context: 'advisory: maxi reviewer'
           analyzer_mode: "off"
           # Explicit, and empty. maxi-reviewer's action.yml defaults

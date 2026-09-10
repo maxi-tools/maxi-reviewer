@@ -81,6 +81,22 @@ export interface RunJulesReviewOptions {
  */
 export const DEFAULT_SETUP_BUDGET_MS = 300_000;
 
+/**
+ * How long the first poll may wait on a session that has not started work.
+ *
+ * Zero -- no watch at all -- for a resumed session: it went through repository
+ * setup runs ago and has already worked, so it cannot be stuck in a setup it
+ * finished. It can sit in QUEUED for a while picking up the new prompt, which
+ * is the same normal behaviour the follow-up polls are not watched for.
+ */
+function setupBudgetFor(
+  resumed: boolean,
+  options: RunJulesReviewOptions
+): number {
+  if (resumed) return 0;
+  return options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS;
+}
+
 export async function runJulesReview(
   apiKey: string,
   prompt: string,
@@ -113,11 +129,7 @@ export async function runJulesReview(
     timeoutMinutes * 60 * 1000,
     afterMessage,
     options.onProgress,
-    // A resumed session has already been through repository setup and has
-    // already worked -- it cannot be stuck in a setup it finished runs ago.
-    // It can sit in QUEUED for a while picking up the new prompt, which is the
-    // same normal behaviour the follow-up polls are not watched for.
-    resumed ? 0 : (options.setupBudgetMs ?? DEFAULT_SETUP_BUDGET_MS)
+    setupBudgetFor(resumed, options)
   );
   core.info(`Collected review (${reviewMessage.length} chars)`);
 

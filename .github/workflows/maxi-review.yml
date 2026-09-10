@@ -592,7 +592,7 @@ jobs:
           # runs the action that consumes them. Split them and the reviewer
           # grades with one revision's code against another revision's rules —
           # a mismatch nothing else in this workflow would surface.
-          ref: f772893df470bf0749e32ba6e916fad1166d3d63
+          ref: c6dcc726ae8aeffc316ba1951b670db4c69ec0d5
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -715,8 +715,11 @@ jobs:
         # timers firing, which is why this outer bound is the real
         # runner-release watchdog.
         #
-        # That arithmetic only became true of the FLEET when the pin advanced
-        # to f772893 above. The previous pin, ae2700a, predated
+        # That arithmetic first became true of the FLEET at pin f772893, and it
+        # still holds at the pin below: both carry src/hard-deadline.ts and the
+        # `hard_timeout_minutes` input, checked against each revision before
+        # moving the pin, so advancing it changes nothing about the timeout
+        # regime. The pin BEFORE f772893, ae2700a, predated
         # src/hard-deadline.ts entirely — no `hard_timeout_minutes` input, no
         # deadline timer in its dist — so this bound was the only thing
         # releasing the runner, and it had to cover setup plus the whole poll
@@ -725,12 +728,35 @@ jobs:
         # number moving with it. Whenever `timeout_minutes` moves, this does:
         # timeout_minutes + 25.
         timeout-minutes: 40
-        uses: maxi-tools/maxi-reviewer@f772893df470bf0749e32ba6e916fad1166d3d63
+        uses: maxi-tools/maxi-reviewer@c6dcc726ae8aeffc316ba1951b670db4c69ec0d5
         with:
           # Which account, chosen by the step above. The KEY itself is read
           # straight from `secrets` here rather than passed through a step
           # output, so the value never becomes an output that could be printed.
           jules_api_key: ${{ steps.jules_account.outputs.use == 'secondary' && secrets.JULES_API_KEY_2 || secrets.JULES_API_KEY }}
+          # The OTHER account -- the inverse of the line above -- used only
+          # when a session never leaves repository setup. The reviewer
+          # recreates it there rather than waiting out a budget that cannot
+          # produce a review; see maxi-reviewer#100.
+          #
+          # Degrades to a same-account recreate in BOTH directions, which is
+          # still the cheapest thing that recovers a clone that never finished:
+          #
+          #  - JULES_API_KEY_2 unset: this renders empty, and the reviewer
+          #    reads an empty fallback as "no second account".
+          #  - JULES_API_KEY unset while the selection picked secondary: a
+          #    GitHub `A && B || C` yields C whenever B is falsy, so this
+          #    renders as JULES_API_KEY_2 -- the key already in use. There is
+          #    no expression that preserves an empty string here instead;
+          #    adding a second condition renders the literal "false", which is
+          #    worse. The reviewer covers it: `planAttempts` takes the
+          #    fallback only when it is non-empty AND differs from the active
+          #    key, so an identical one plans a fresh session on the same
+          #    account rather than a pointless switch to itself.
+          #
+          # Read straight from `secrets` for the same reason as the primary:
+          # the value never becomes a step output that could be printed.
+          jules_api_key_fallback: ${{ steps.jules_account.outputs.use == 'secondary' && secrets.JULES_API_KEY || secrets.JULES_API_KEY_2 }}
           github_token: ${{ steps.app-token.outputs.token }}
           rules_file: ""
           extra_instructions: |

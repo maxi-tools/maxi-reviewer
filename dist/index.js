@@ -69414,39 +69414,33 @@ function holdBlockToItsEvidence(review) {
     if (high.length === 0) {
         return { review, issues: [] };
     }
-    const checkable = high.filter((c) => c.evidenceSource && CHECKABLE_EVIDENCE.includes(c.evidenceSource));
-    if (checkable.length > 0) {
-        // At least one High finding the reader can check. The verdict stands, and
-        // an unsupported sibling finding is not grounds to discard a supported one.
-        const undeclared = high.filter((c) => !c.evidenceSource);
-        return {
-            review,
-            issues: undeclared.map((c) => `${c.file}:${c.line} is severity High with no evidenceSource; ` +
-                "recorded, not enforced."),
-        };
-    }
     const undeclared = high.filter((c) => !c.evidenceSource);
-    if (undeclared.length === high.length) {
-        // Nothing declared at all: record it and leave the verdict alone.
-        return {
-            review,
-            issues: high.map((c) => `${c.file}:${c.line} is severity High with no evidenceSource; ` +
-                "recorded, not enforced."),
-        };
+    const issues = undeclared.map((c) => `${c.file}:${c.line} is severity High with no evidenceSource; recorded, not enforced.`);
+    // EVERY High finding must have declared `memory` before the verdict moves.
+    //
+    // A mixed set -- one finding saying `memory`, another saying nothing -- has
+    // not told us the block is unsupported. The silent one may well be checkable;
+    // an absent field is recorded and not acted on, and that stance cannot hold
+    // if a single `memory` sibling is enough to drag the verdict down with it.
+    // The earlier version compared undeclared.length against high.length and fell
+    // through to the downgrade on any mix, which both broke that rule and emitted
+    // a message claiming every finding had declared `memory` when one had not.
+    //
+    // A value outside the vocabulary cannot reach here -- the parse boundary in
+    // jules.ts drops unknown labels, so they arrive as absent -- and if one did,
+    // this comparison leaves the verdict alone rather than mislabelling it.
+    const memory = high.filter((c) => c.evidenceSource === "memory");
+    if (memory.length !== high.length) {
+        return { review, issues };
     }
-    // Every High finding that declared a class declared `memory`, and none is
-    // checkable. That is the case the prompt forbids, said in the model's own
-    // words, so it is enforced rather than recorded.
-    const memoryFindings = high.filter((c) => c.evidenceSource === "memory");
     return {
         review: { ...review, verdict: "comment" },
         issues: [
             "verdict downgraded from block to comment: every severity-High finding " +
                 'supporting it declared evidenceSource "memory" ' +
-                `(${memoryFindings.map((c) => `${c.file}:${c.line}`).join(", ")}), ` +
+                `(${memory.map((c) => `${c.file}:${c.line}`).join(", ")}), ` +
                 "which the reviewer's own rule says cannot support a block.",
-            ...undeclared.map((c) => `${c.file}:${c.line} is severity High with no evidenceSource; ` +
-                "recorded, not enforced."),
+            ...issues,
         ],
     };
 }
@@ -70821,9 +70815,17 @@ function convertStructuredReview(review) {
             endLine: comment.endLine ?? comment.suggestion?.endLine,
             severity: comment.severity,
             confidence: comment.confidence,
-            ...(comment.evidenceSource
+            // Validated here, not trusted. The response is JSON at runtime, so the
+            // declared TypeScript type guarantees nothing about what actually
+            // arrives. An unrecognised label is dropped rather than forwarded, so it
+            // reaches the evidence hold as ABSENT -- recorded, not enforced -- which
+            // is the same treatment a model that never emitted the field receives.
+            ...(comment.evidenceSource &&
+                CHECKABLE_EVIDENCE.includes(comment.evidenceSource)
                 ? { evidenceSource: comment.evidenceSource }
-                : {}),
+                : comment.evidenceSource === "memory"
+                    ? { evidenceSource: "memory" }
+                    : {}),
             message: comment.message,
             promptForAgents: comment.promptForAgents ?? "",
             suggestedReplacement: comment.suggestion?.replacement,
@@ -71268,6 +71270,7 @@ For a diff that adds \`fn port(raw: &str) -> u16 { raw.trim().parse().unwrap() }
       "endLine": 2,
       "severity": "High",
       "confidence": "High",
+      "evidenceSource": "diff",
       "message": "\`unwrap()\` on \`parse()\` panics on any non-numeric input; reachable from external input, it crashes the process. Return a \`Result\` instead.\n\`\`\`suggestion\nfn port(raw: &str) -> Result<u16, std::num::ParseIntError> { raw.trim().parse() }\n\`\`\`",
       "promptForAgents": "In src/net.rs around line 2, change \`fn port\` to return \`Result<u16, _>\` and propagate the parse error instead of calling .unwrap().",
       "suggestion": {

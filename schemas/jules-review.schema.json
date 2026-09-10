@@ -129,7 +129,7 @@
               "analyzer",
               "memory"
             ],
-            "description": "Where this finding's evidence lives. Required at severity High."
+            "description": "Where this finding's evidence lives. The prompt requires it at severity High; this schema does not enforce that, because a missing value is deliberately recorded rather than rejected during rollout."
           }
         }
       }

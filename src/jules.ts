@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import { jules } from "@google/jules-sdk";
 import { EvidenceSource, ReviewResult, StructuredFix } from "./types.js";
-import { holdBlockToItsEvidence } from "./evidence.js";
+import { CHECKABLE_EVIDENCE, holdBlockToItsEvidence } from "./evidence.js";
 import {
   buildFormatRepairPrompt,
   buildJsonRepairPrompt,
@@ -600,9 +600,17 @@ function convertStructuredReview(review: {
       endLine: comment.endLine ?? comment.suggestion?.endLine,
       severity: comment.severity,
       confidence: comment.confidence,
-      ...(comment.evidenceSource
+      // Validated here, not trusted. The response is JSON at runtime, so the
+      // declared TypeScript type guarantees nothing about what actually
+      // arrives. An unrecognised label is dropped rather than forwarded, so it
+      // reaches the evidence hold as ABSENT -- recorded, not enforced -- which
+      // is the same treatment a model that never emitted the field receives.
+      ...(comment.evidenceSource &&
+      CHECKABLE_EVIDENCE.includes(comment.evidenceSource as EvidenceSource)
         ? { evidenceSource: comment.evidenceSource }
-        : {}),
+        : comment.evidenceSource === "memory"
+          ? { evidenceSource: "memory" as EvidenceSource }
+          : {}),
       message: comment.message,
       promptForAgents: comment.promptForAgents ?? "",
       suggestedReplacement: comment.suggestion?.replacement,

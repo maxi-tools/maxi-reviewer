@@ -65,6 +65,19 @@ describe("holdBlockToItsEvidence", () => {
     expect(out.review.verdict).toBe("block");
   });
 
+  it("keeps a block when only SOME High findings declared memory", () => {
+    // The mixed set: one says memory, one says nothing. Silence is not a
+    // statement that the block is unsupported, and an absent field is recorded
+    // rather than acted on -- so a single memory sibling must not drag the
+    // verdict down with it.
+    const out = holdBlockToItsEvidence(
+      review("block", [finding("High", "memory"), finding("High")])
+    );
+    expect(out.review.verdict).toBe("block");
+    expect(out.issues.join(" ")).not.toContain("downgraded");
+    expect(out.issues.join(" ")).toContain("no evidenceSource");
+  });
+
   it("records but does not enforce a missing evidenceSource", () => {
     // Deliberate: enforcing an absent field would downgrade every block from a
     // model that has not started filling it in yet.

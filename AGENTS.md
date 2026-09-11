@@ -54,11 +54,17 @@ pnpm lint          # ESLint — must pass with zero errors
 pnpm format:check  # Prettier — must report no formatting issues
 pnpm build         # ncc bundle — must compile without errors
 pnpm test          # Vitest — all tests must pass
-pnpm coverage      # Vitest + v8 — must meet 90% thresholds (lines, functions, branches, statements)
+pnpm coverage      # Vitest + v8 — must not fall below the ratchet in vitest.config.ts
 ```
 
 > **Note:** The Husky `pre-commit` hook runs `lint → format:check → build → coverage` automatically.
 > The `commit-msg` hook runs commitlint to enforce conventional commit messages.
+>
+> The coverage thresholds are a **ratchet set at the floor measured on main**, not a
+> target. They exist to catch a regression, so a commit that lowers coverage fails
+> the hook and one that raises it should raise the numbers too. They are deliberately
+> not aspirational: when they were, `pnpm coverage` could not pass on main and every
+> commit used `--no-verify`, which skips `lint`, `format:check` and `build` as well.
 
 ## Testing Conventions
 

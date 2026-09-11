@@ -1,22 +1,29 @@
 import js from "@eslint/js";
 
-// An object literal with no own `timeout` property. Three details matter and
-// each was a real miss before it was written down:
-//   - `key.value` as well as `key.name`, or a quoted `{ "timeout": 5000 }` is
-//     rejected as invalid -- a false positive, which is worse than a miss
-//     because it blocks correct code.
-//   - `:has(> Property)` and not `:has(Property)`, or a nested
-//     `{ interval: 25, nested: { timeout: 1 } }` counts the inner key as its
-//     own and passes.
-//   - applied under the TS wrappers too, since `as const` and `satisfies`
-//     interpose a node between the declarator and the object literal.
-const NO_TIMEOUT =
-  "ObjectExpression:not(:has(> Property[key.name='timeout'])):not(:has(> Property[key.value='timeout']))";
-const SETTLE_DECL = "VariableDeclarator[id.name='SETTLE_OPTIONS']";
+// A SETTLE_OPTIONS declaration with no `timeout` anywhere in its initializer.
+//
+// This deliberately asks about the *declarator*, not the object literal under
+// it. Three earlier versions matched the object through its parent chain and
+// each was defeated by a new wrapper shape -- `as const`, then `satisfies`,
+// then `as const satisfies`, which stacks two. A selector language cannot say
+// "the object at the root of this initializer, however wrapped", so every fix
+// was one more shape rather than the last one.
+//
+// Asking the declarator sidesteps wrapper shape entirely: no combinator walks
+// the initializer, so no new TS syntax can break it.
+//
+// The trade, stated rather than discovered later: a `timeout` on a NESTED
+// object satisfies this, e.g. `{ interval: 25, nested: { timeout: 1 } }`.
+// That shape is contrived, where stacked type assertions are ordinary TS. One
+// contrived miss is worth immunity to every wrapper form.
+//
+// `key.value` as well as `key.name`, or a quoted `{ "timeout": 5000 }` is
+// rejected as invalid -- a false positive, which is worse than a miss because
+// it blocks correct code.
 const NO_TIMEOUT_SELECTORS = [
-  `${SETTLE_DECL} > ${NO_TIMEOUT}`,
-  `${SETTLE_DECL} > TSAsExpression > ${NO_TIMEOUT}`,
-  `${SETTLE_DECL} > TSSatisfiesExpression > ${NO_TIMEOUT}`,
+  "VariableDeclarator[id.name='SETTLE_OPTIONS']" +
+    ":not(:has(Property[key.name='timeout']))" +
+    ":not(:has(Property[key.value='timeout']))",
 ];
 import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";

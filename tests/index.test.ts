@@ -113,6 +113,21 @@ describe("index.ts", () => {
     mockArtifact.default.uploadArtifact.mockResolvedValue({});
   });
 
+  // vi.waitFor defaults to a 1000ms budget, which is not enough headroom for
+  // this particular wait. The action is loaded for real and has to settle
+  // through its own async plumbing while 28 test files run in parallel under
+  // v8 coverage instrumentation; a failure observed here took 2297ms to give
+  // up, i.e. it was still waiting on a machine that was merely busy.
+  //
+  // It flaked roughly one full run in six, and since `pnpm coverage` is the
+  // last step of the pre-commit hook, that is a one-in-six chance of a commit
+  // being rejected for a reason that has nothing to do with the commit --
+  // which is its own argument for `--no-verify` (#104).
+  //
+  // Raising the deadline weakens nothing: every assertion after the wait is
+  // unchanged, and a genuinely stuck action still fails, five seconds later.
+  const SETTLE_OPTIONS = { timeout: 5000, interval: 25 };
+
   const loadIndex = async () => {
     await import("../src/index.js");
     await vi.waitFor(() => {
@@ -134,7 +149,7 @@ describe("index.ts", () => {
         return;
       }
       throw new Error("Action has not settled yet.");
-    });
+    }, SETTLE_OPTIONS);
   };
 
   it("fails if eventName is pull_request_target", async () => {

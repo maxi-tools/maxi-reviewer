@@ -2,7 +2,7 @@
 
 `maxi-review` is Maxi's PR review action. It combines fast analyzer context with a Jules review session, validates the structured response, posts GitHub review feedback, and records review artifacts for late harvesting.
 
-This repository is a hard fork of the earlier Jules PR reviewer workflow, but the action identity and review schema are Maxi-owned:
+This repository is a hard fork of [thalesraymond/jules-pr-reviewer](https://github.com/thalesraymond/jules-pr-reviewer) by Sanjay Ramadugu, whose MIT licence and changelog history are preserved here. The fork has since diverged substantially: of 118 tracked paths, 38 still share a name with upstream but only 9 remain byte-identical, and all nine are tooling scaffolding (`.gitignore`, `.prettierrc`, the Husky hooks, commitlint, tsconfig, dependabot). In `src/` just four filenames overlap. The action identity and review schema are Maxi-owned:
 
 - Action/package identity: `maxi-review`
 - GitHub Action runtime: Node 24

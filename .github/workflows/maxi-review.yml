@@ -13,12 +13,38 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
-concurrency:
-  group: maxi-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No workflow-level concurrency group.
+#
+# A workflow-level group is PR-wide and cancels the whole run, so it takes the
+# `review` job with it; a job-level `cancel-in-progress: false` cannot override
+# a cancellation issued at the workflow level. Because `review` also excludes
+# `synchronize`, the replacement run starts no review, and the PR ends with no
+# completed AI review -- indistinguishable on the PR face from a review that
+# ran and found nothing (cubic, P1 on #621).
+#
+# Cancellation belongs to the cheap half only, so it is declared per job:
+# lint-gate cancels, review does not.
 
 jobs:
   lint-gate:
+    # Superseded lint verdicts are worthless and restarting is cheap, so this
+    # half keeps the cancel-on-push behaviour the workflow-level group used to
+    # provide -- scoped to this job so it cannot reach `review`.
+    #
+    # Keyed on the ACTION as well as the PR, so a run only ever cancels work
+    # doing the same job. With one group per PR, a `synchronize` run cancelled
+    # the lint-gate of an `opened`/`reopened`/`ready_for_review`/`labeled` run;
+    # that run's `review` then failed its `needs: lint-gate` + `success()`
+    # gate, and the `synchronize` run skips `review` by design -- so the review
+    # vanished with nothing replacing it. Same disappearance as the
+    # workflow-level group produced, reached by a different path
+    # (CodeRabbit, Major on #621).
+    #
+    # Two pushes in a row still cancel each other, which is the point: both are
+    # `synchronize`, so they are competing attempts at one task.
+    concurrency:
+      group: maxi-review-lint-${{ github.event.pull_request.number }}-${{ github.event.action }}
+      cancel-in-progress: true
     # Same-repository only: this job uses org app credentials to install the
     # private maxi-lint scanner. It checks changed files only and fails solely
     # on deny-level deterministic findings.
@@ -375,12 +401,64 @@ jobs:
 
   review:
     needs: lint-gate
+    # Its own group, and deliberately NOT cancel-in-progress.
+    #
+    # Cancellation is declared on lint-gate instead of at workflow level
+    # precisely so it cannot reach this job. A `synchronize` run must not kill
+    # a review that is mid-flight, because the same push is filtered out by the
+    # `if:` below and nothing would replace it: the PR would end with no
+    # completed AI review, which on the PR face is indistinguishable from a
+    # review that ran and found nothing.
+    #
+    # That failure did not exist before the once-per-PR filter, because the
+    # filter was a tautology and every push started a fresh review behind the
+    # cancellation. Fixing the tautology is what exposed it (cubic, P1 on this
+    # PR). The two halves have to move together.
+    #
+    # Keyed on the PR so two reviews of the SAME pull request still serialise
+    # -- someone re-labelling twice in quick succession queues rather than
+    # racing -- while a push no longer interrupts one.
+    concurrency:
+      group: maxi-review-ai-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     # Same fan-out exclusion as lint-gate, restated rather than inherited:
     # `always()` here means a SKIPPED lint-gate does not skip this job, so
     # excluding only lint-gate would leave the AI reviewer -- the expensive
     # half -- running on all ~31 copies anyway.
+    # `success()`, NOT `always()`. Under `always()` a FAILED lint-gate did not
+    # stop this job, so a PR that could not pass deterministic maxi-lint still
+    # spent a full AI review: the expensive half ran precisely when the cheap
+    # half had already found the answer. `needs: lint-gate` was ordering
+    # without gating.
+    #
+    # The fan-out exclusion below is now redundant on the skip path, since a
+    # skipped lint-gate no longer satisfies `success()`. It stays anyway: it is
+    # the condition a reader checks to answer "why was the fan-out not
+    # reviewed", and it should hold on its own terms if lint-gate's exclusion
+    # ever changes.
+    #
+    # `github.event.action != 'synchronize'` is what stops the re-review per
+    # push. It must be `event.action`, NOT `event_name`: this workflow triggers
+    # on `pull_request`, so `event_name` is the literal string "pull_request"
+    # for every type in that list and `event_name != 'synchronize'` is a
+    # tautology that filters nothing. The activity type lives in `event.action`.
+    #
+    # Recovering from a first push that fails lint-gate: `success()` skips the
+    # review, and later pushes are `synchronize` and skip too, so the PR does
+    # not review itself once the lint is fixed. That is deliberate, and the
+    # recovery is the `labeled` trigger plus `run-maxi-review` already in this
+    # condition -- adding the label re-runs the review on demand. The
+    # alternative, reviewing on every `synchronize` until one succeeds, is the
+    # 3.3x re-review this change exists to stop.
+    # MEASURED before this change: 100 Maxi Review runs covered 30 branches in
+    # maxi-dist (3.3 per branch, worst 13) and 37 in maxi-config (2.7, worst
+    # 13), with 18% and 29% cancelled mid-flight by the concurrency group --
+    # work started and thrown away. lint-gate deliberately KEEPS running on
+    # every push: it is a merge gate, and a gate that stops looking after the
+    # first commit is not one.
     if: >
-      always() &&
+      success() &&
+      github.event.action != 'synchronize' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (

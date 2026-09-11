@@ -2,7 +2,7 @@
 
 `maxi-review` is Maxi's PR review action. It combines fast analyzer context with a Jules review session, validates the structured response, posts GitHub review feedback, and records review artifacts for late harvesting.
 
-This repository is a hard fork of the earlier Jules PR reviewer workflow, but the action identity and review schema are Maxi-owned:
+This repository is a hard fork of [thalesraymond/jules-pr-reviewer](https://github.com/thalesraymond/jules-pr-reviewer) by Sanjay Ramadugu, whose MIT licence and changelog history are preserved here. The fork has since diverged substantially — four filenames remain in common — and the action identity and review schema are Maxi-owned:
 
 - Action/package identity: `maxi-review`
 - GitHub Action runtime: Node 24

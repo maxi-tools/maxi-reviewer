@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { reviewTimeoutExplanation } from "../src/review-pr.js";
@@ -46,7 +46,61 @@ describe("index.ts", () => {
     },
   };
 
+  // ── DIAGNOSTIC INSTRUMENTATION (maxi-reviewer#104) ──────────────────────
+  //
+  // Hunting a ~1-in-8 failure in this file whose VICTIM varies between runs:
+  // handles fail_on = never, handles Jules failure to return review, uses
+  // ctx.payload.before..., truncates large diffs. A varying victim points at
+  // work from one test landing inside another.
+  //
+  // Deliberately adds NO delay. An earlier probe slept 400ms per test to look
+  // for late calls; that both failed to reproduce and changed the timing of the
+  // race it was looking for. This instead snapshots the call counts when a test
+  // ENDS and again when the next one STARTS, using vitest's own inter-test gap
+  // as the observation window. If a count grew in between, the previous test's
+  // run was still executing after it returned -- and those calls would be
+  // attributed to whichever test runs next.
+  //
+  // Reports rather than throws: a run that does not flake should still finish
+  // and say so, and a run that does flake should show whether a leak preceded
+  // the failure or not. Remove this file's diagnostics once #104 is settled.
+  let prevCounts: Record<string, number> | null = null;
+  let prevTest = "<none>";
+  const callCounts = (): Record<string, number> => ({
+    setStatus: mockGithubHelper.setStatus.mock.calls.length,
+    submitReview: mockGithubHelper.submitReview.mock.calls.length,
+    resolveThreads: mockGithubHelper.resolveThreads.mock.calls.length,
+    runJulesReview: mockJulesHelper.runJulesReview.mock.calls.length,
+    runReviewCommand: mockReviewCommand.runReviewCommand.mock.calls.length,
+    info: mockInfo.mock.calls.length,
+    setFailed: mockSetFailed.mock.calls.length,
+  });
+
+  afterEach(() => {
+    prevTest = expect.getState().currentTestName ?? "<unknown>";
+    prevCounts = callCounts();
+  });
+
   beforeEach(async () => {
+    if (prevCounts) {
+      const now = callCounts();
+      const grew = Object.keys(prevCounts).filter(
+        (k) => now[k] !== prevCounts![k]
+      );
+      if (grew.length > 0) {
+        // process.stderr.write, NOT console.error: console output is swallowed
+        // in this suite. Verified -- console.error and console.log produce
+        // nothing in the run log while process.stderr.write comes through. A
+        // diagnostic that cannot be read is worse than none, because a silent
+        // run then looks like a clean one.
+        process.stderr.write(
+          `[FLAKE-DIAG] LEAK after "${prevTest}": ` +
+            grew.map((k) => `${k} ${prevCounts![k]}->${now[k]}`).join(", ") +
+            "\n"
+        );
+      }
+    }
+
     vi.resetModules();
     vi.clearAllMocks();
 
@@ -279,6 +333,21 @@ describe("index.ts", () => {
     const hugeDiff = "x".repeat(81_000);
     mockGithubHelper.fetchDiff.mockResolvedValue(hugeDiff);
     await loadIndex();
+    // DIAGNOSTIC (#104): this assertion reads calls[0], so it fails either
+    // because a foreign call occupies index 0 or because this run made more
+    // than one call. Printing the shape distinguishes those without guessing
+    // after the fact.
+    const calls = mockJulesHelper.runJulesReview.mock.calls;
+
+    process.stderr.write(
+      `[FLAKE-DIAG] truncates-large-diffs: runJulesReview calls=${calls.length} ` +
+        `promptLengths=[${calls.map((c: any) => String(c?.[1] ?? "").length).join(",")}] ` +
+        `hasNote=[${calls
+          .map((c: any) =>
+            String(c?.[1] ?? "").includes("NOTE: The diff was truncated")
+          )
+          .join(",")}]\n`
+    );
     const prompt = mockJulesHelper.runJulesReview.mock.calls[0][1];
     expect(prompt).toContain(
       "NOTE: The diff was truncated: original 81000 chars, kept first 80000."

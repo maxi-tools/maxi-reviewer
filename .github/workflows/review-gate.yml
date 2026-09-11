@@ -104,7 +104,7 @@ permissions: {}
 
 jobs:
   review-gate:
-    uses: maxi-tools/maxi-config/.github/workflows/review-gate-reusable.yml@main
+    uses: maxi-tools/ci/.github/workflows/review-gate-reusable.yml@d981809791f2d18eabdd7e125c575d60a2289414  # maxi-tools/ci main
     # `pull-requests: read` is what the gate actually spends: its two paginated
     # GraphQL queries read this PR's reviews and its review threads to decide
     # whether any thread is still unresolved. It only reads them — the verdict

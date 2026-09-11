@@ -60,18 +60,21 @@ pnpm coverage      # Vitest + v8 — must not fall below the ratchet in vitest.c
 > **Note:** The Husky `pre-commit` hook runs `lint → format:check → build → coverage` automatically.
 > The `commit-msg` hook runs commitlint to enforce conventional commit messages.
 >
-> The coverage thresholds are a **ratchet set at the floor measured on main**, not a
-> target. They exist to catch a regression, so a commit that lowers coverage fails
-> the hook and one that raises it should raise the numbers too. They are deliberately
-> not aspirational: when they were, `pnpm coverage` could not pass on main and every
-> commit used `--no-verify`, which skips `lint`, `format:check` and `build` as well.
+> The coverage thresholds are a **floor set at the coverage measured on main**, not a
+> target. Because they are integers just below the measured values, they reject a
+> material drop rather than every fractional one — a change losing a fraction of a
+> point still passes. That is the deliberate trade: tight enough to catch a real
+> regression, loose enough that ordinary variation does not reject a commit. They
+> are not aspirational, because when they were, `pnpm coverage` could not pass on
+> main and every commit used `--no-verify`, which skips `lint`, `format:check` and
+> `build` as well.
 
 ## Testing Conventions
 
 - **Framework:** Vitest with `describe` / `it` / `expect`.
 - **Location:** Place test files in `tests/` with the pattern `<module>.test.ts`, mirroring the source file they test.
 - **Mocking:** Use `vi.fn()` and `vi.spyOn()` for mocking. Create inline mock objects that satisfy the needed interface shape.
-- **Coverage Thresholds:** 90 % across lines, functions, branches, and statements. These are enforced in [`vitest.config.ts`](./vitest.config.ts) and will fail the build if not met.
+- **Coverage Thresholds:** a floor set at the coverage measured on `main`, not a target — currently lines 88, functions 91, branches 78, statements 86, in [`vitest.config.ts`](./vitest.config.ts). The pre-commit hook fails when coverage drops **below** those integers, so it catches a material regression rather than every fractional one. Raise them when coverage improves; lowering one needs a reason in the commit message.
 
 ## Code Style
 

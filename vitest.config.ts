@@ -23,10 +23,15 @@ export default defineConfig({
       // deterministic checks sitting in front of it. (#104.)
       //
       // Set to the floor actually measured on main, rounded down to the integer:
-      // statements 86.2, branches 78.23, functions 91.92, lines 88.13. These
-      // catch a REGRESSION, which is the property worth having and the one the
-      // old numbers never delivered. Raising them is how coverage improves;
-      // lowering one needs a reason in the commit message, not a quiet edit.
+      // statements 86.2, branches 78.23, functions 91.92, lines 88.13.
+      //
+      // Integers, so this is a floor and not a strict ratchet: functions may
+      // fall from 91.92 to 91.0 and still pass. That is the trade rather than
+      // an oversight -- exact decimal thresholds would reject a change losing
+      // a single covered branch, which is how a gate stops being passable and
+      // starts being bypassed again. These reject a MATERIAL drop. Raising
+      // them is how coverage improves; lowering one needs a reason in the
+      // commit message, not a quiet edit.
       thresholds: {
         lines: 88,
         functions: 91,

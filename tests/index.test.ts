@@ -126,7 +126,7 @@ describe("index.ts", () => {
   //
   // Raising the deadline weakens nothing: every assertion after the wait is
   // unchanged, and a genuinely stuck action still fails, five seconds later.
-  const SETTLE_TIMEOUT_MS = { timeout: 5000, interval: 25 };
+  const SETTLE_OPTIONS = { timeout: 5000, interval: 25 };
 
   const loadIndex = async () => {
     await import("../src/index.js");
@@ -149,7 +149,7 @@ describe("index.ts", () => {
         return;
       }
       throw new Error("Action has not settled yet.");
-    }, SETTLE_TIMEOUT_MS);
+    }, SETTLE_OPTIONS);
   };
 
   it("fails if eventName is pull_request_target", async () => {

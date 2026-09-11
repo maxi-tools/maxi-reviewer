@@ -1,4 +1,23 @@
 import js from "@eslint/js";
+
+// An object literal with no own `timeout` property. Three details matter and
+// each was a real miss before it was written down:
+//   - `key.value` as well as `key.name`, or a quoted `{ "timeout": 5000 }` is
+//     rejected as invalid -- a false positive, which is worse than a miss
+//     because it blocks correct code.
+//   - `:has(> Property)` and not `:has(Property)`, or a nested
+//     `{ interval: 25, nested: { timeout: 1 } }` counts the inner key as its
+//     own and passes.
+//   - applied under the TS wrappers too, since `as const` and `satisfies`
+//     interpose a node between the declarator and the object literal.
+const NO_TIMEOUT =
+  "ObjectExpression:not(:has(> Property[key.name='timeout'])):not(:has(> Property[key.value='timeout']))";
+const SETTLE_DECL = "VariableDeclarator[id.name='SETTLE_OPTIONS']";
+const NO_TIMEOUT_SELECTORS = [
+  `${SETTLE_DECL} > ${NO_TIMEOUT}`,
+  `${SETTLE_DECL} > TSAsExpression > ${NO_TIMEOUT}`,
+  `${SETTLE_DECL} > TSSatisfiesExpression > ${NO_TIMEOUT}`,
+];
 import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
 
@@ -51,12 +70,11 @@ export default tseslint.config(
           message:
             "vi.waitFor must pass SETTLE_OPTIONS as its second argument; the 1000ms default flakes under coverage. See #104.",
         },
-        {
-          selector:
-            "VariableDeclarator[id.name='SETTLE_OPTIONS'] > ObjectExpression:not(:has(Property[key.name='timeout']))",
+        ...NO_TIMEOUT_SELECTORS.map((selector) => ({
+          selector,
           message:
             "SETTLE_OPTIONS must define a timeout; without one, every wait that names it silently keeps vi.waitFor's 1000ms default. See #104.",
-        },
+        })),
       ],
     },
   }

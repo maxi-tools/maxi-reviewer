@@ -114,10 +114,14 @@ describe("index.ts", () => {
   });
 
   // vi.waitFor defaults to a 1000ms budget, which is not enough headroom for
-  // this particular wait. The action is loaded for real and has to settle
+  // any wait in this file. The action is loaded for real and has to settle
   // through its own async plumbing while 28 test files run in parallel under
   // v8 coverage instrumentation; a failure observed here took 2297ms to give
   // up, i.e. it was still waiting on a machine that was merely busy.
+  //
+  // Every `vi.waitFor` in this file passes these options. A bare one carries
+  // the 1000ms default and is the same latent flake wearing a different test
+  // name -- which is what the varying victim in #104 looked like.
   //
   // It flaked roughly one full run in six, and since `pnpm coverage` is the
   // last step of the pre-commit hook, that is a one-in-six chance of a commit
@@ -246,13 +250,19 @@ describe("index.ts", () => {
     (github as any).context.payload.action = "synchronize";
     (github as any).context.payload.before = "beforeSHA";
     await loadIndex();
-    expect(mockGithubHelper.fetchDiff).toHaveBeenCalledWith(
-      expect.anything(),
-      "owner",
-      "repo",
-      expect.anything(),
-      "beforeSHA",
-      "headSHA"
+    // Same reason as the truncation test: `fetchDiff` is not one of loadIndex's
+    // settle conditions, so assert on it through a bounded wait.
+    await vi.waitFor(
+      () =>
+        expect(mockGithubHelper.fetchDiff).toHaveBeenCalledWith(
+          expect.anything(),
+          "owner",
+          "repo",
+          expect.anything(),
+          "beforeSHA",
+          "headSHA"
+        ),
+      SETTLE_OPTIONS
     );
   });
 
@@ -279,6 +289,14 @@ describe("index.ts", () => {
     const hugeDiff = "x".repeat(81_000);
     mockGithubHelper.fetchDiff.mockResolvedValue(hugeDiff);
     await loadIndex();
+    // loadIndex settles on the status/failure signals, which can be reached by
+    // an early-exit path that never calls the reviewer. Waiting on the call
+    // being asserted turns "the reviewer never ran" into that message, instead
+    // of a TypeError from indexing an empty `calls`.
+    await vi.waitFor(
+      () => expect(mockJulesHelper.runJulesReview).toHaveBeenCalled(),
+      SETTLE_OPTIONS
+    );
     const prompt = mockJulesHelper.runJulesReview.mock.calls[0][1];
     expect(prompt).toContain(
       "NOTE: The diff was truncated: original 81000 chars, kept first 80000."
@@ -291,16 +309,18 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    await vi.waitFor(() =>
-      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "owner",
-        "repo",
-        "headSHA",
-        expect.anything(),
-        "failure",
-        "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
-      )
+    await vi.waitFor(
+      () =>
+        expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+          expect.anything(),
+          "owner",
+          "repo",
+          "headSHA",
+          expect.anything(),
+          "failure",
+          "No review after 30 min: Jules never replied. Reviewer timeout, not a code finding — re-runs often pass."
+        ),
+      SETTLE_OPTIONS
     );
     expect(mockGithubHelper.submitReview).not.toHaveBeenCalled();
     expect(mockArtifact.default.uploadArtifact).toHaveBeenCalled();
@@ -341,11 +361,13 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    await vi.waitFor(() =>
-      expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
-        expect.anything(),
-        ["t2"]
-      )
+    await vi.waitFor(
+      () =>
+        expect(mockGithubHelper.resolveThreads).toHaveBeenCalledWith(
+          expect.anything(),
+          ["t2"]
+        ),
+      SETTLE_OPTIONS
     );
   });
 
@@ -359,19 +381,22 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    await vi.waitFor(() =>
-      expect(mockGithubHelper.submitReview).toHaveBeenCalled()
+    await vi.waitFor(
+      () => expect(mockGithubHelper.submitReview).toHaveBeenCalled(),
+      SETTLE_OPTIONS
     );
-    await vi.waitFor(() =>
-      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "owner",
-        "repo",
-        "headSHA",
-        expect.anything(),
-        "failure",
-        "Blocking issues found"
-      )
+    await vi.waitFor(
+      () =>
+        expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+          expect.anything(),
+          "owner",
+          "repo",
+          "headSHA",
+          expect.anything(),
+          "failure",
+          "Blocking issues found"
+        ),
+      SETTLE_OPTIONS
     );
   });
 
@@ -387,16 +412,18 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    await vi.waitFor(() =>
-      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "owner",
-        "repo",
-        "headSHA",
-        expect.anything(),
-        "success",
-        "Review complete (verdict: block)"
-      )
+    await vi.waitFor(
+      () =>
+        expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+          expect.anything(),
+          "owner",
+          "repo",
+          "headSHA",
+          expect.anything(),
+          "success",
+          "Review complete (verdict: block)"
+        ),
+      SETTLE_OPTIONS
     );
   });
 
@@ -406,16 +433,18 @@ describe("index.ts", () => {
       sessionId: "s1",
     });
     await loadIndex();
-    await vi.waitFor(() =>
-      expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
-        expect.anything(),
-        "owner",
-        "repo",
-        "headSHA",
-        expect.anything(),
-        "success",
-        "Approved"
-      )
+    await vi.waitFor(
+      () =>
+        expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+          expect.anything(),
+          "owner",
+          "repo",
+          "headSHA",
+          expect.anything(),
+          "success",
+          "Approved"
+        ),
+      SETTLE_OPTIONS
     );
   });
 

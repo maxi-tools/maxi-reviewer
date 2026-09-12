@@ -132,27 +132,74 @@ describe("index.ts", () => {
   // unchanged, and a genuinely stuck action still fails, five seconds later.
   const SETTLE_OPTIONS = { timeout: 5000, interval: 25 };
 
-  const loadIndex = async () => {
-    await import("../src/index.js");
-    await vi.waitFor(() => {
-      const hasFinalStatus = mockGithubHelper.setStatus.mock.calls.some(
-        (call) => call[5] !== "pending"
-      );
-      const hasSkip = mockInfo.mock.calls.some(
+  // The action settles through any of five paths, and which one it took is the
+  // first thing you need to know when a test that follows the wait fails. The
+  // wait used to throw a bare "Action has not settled yet.", so a timeout said
+  // nothing about which signals were being waited on or what the action had
+  // managed to do -- during the #104 flake hunt that gap cost a full CI cycle,
+  // since a failure could not be told from an early exit down the wrong path.
+  //
+  // Named conditions, so the timeout can report the state of every one of them
+  // and loadIndex can return which fired. Tests asserting on work that is NOT
+  // a settle condition -- `truncates large diffs` on runJulesReview, `uses
+  // ctx.payload.before` on fetchDiff -- are the ones that need this, because
+  // for them the wait returning is not evidence their call happened.
+  // src/github.ts:341 -- setStatus(octokit, owner, repo, sha, context, state,
+  // description). Naming the offsets once means the three places that read a
+  // mock call do not each restate them, and a signature change has one site to
+  // fix rather than three to find.
+  const STATUS_STATE_ARG = 5;
+  const INFO_MESSAGE_ARG = 0;
+
+  const SETTLE_CONDITIONS = {
+    "review-command": () =>
+      mockReviewCommand.runReviewCommand.mock.calls.length > 0,
+    "set-failed": () => mockSetFailed.mock.calls.length > 0,
+    "submit-review": () => mockGithubHelper.submitReview.mock.calls.length > 0,
+    "final-status": () =>
+      mockGithubHelper.setStatus.mock.calls.some(
+        (call) => call[STATUS_STATE_ARG] !== "pending"
+      ),
+    "skip-or-bypass": () =>
+      mockInfo.mock.calls.some(
         (call) =>
-          String(call[0]).startsWith("Skipping") ||
-          String(call[0]).startsWith("Bypass label")
+          String(call[INFO_MESSAGE_ARG]).startsWith("Skipping") ||
+          String(call[INFO_MESSAGE_ARG]).startsWith("Bypass label")
+      ),
+  } as const;
+
+  type SettleReason = keyof typeof SETTLE_CONDITIONS;
+  const SETTLE_REASONS = Object.keys(SETTLE_CONDITIONS) as SettleReason[];
+
+  // What the action has actually done, for the timeout message. Statuses are
+  // the informative part: an action stuck on "pending" looks identical to one
+  // that never called setStatus until you can see the list.
+  const settleState = () =>
+    [
+      `setStatus=[${mockGithubHelper.setStatus.mock.calls
+        .map((call) => String(call[STATUS_STATE_ARG]))
+        .join(", ")}]`,
+      `setFailed=${mockSetFailed.mock.calls.length}`,
+      `submitReview=${mockGithubHelper.submitReview.mock.calls.length}`,
+      `runReviewCommand=${mockReviewCommand.runReviewCommand.mock.calls.length}`,
+      `info=[${mockInfo.mock.calls
+        .map((call) => String(call[INFO_MESSAGE_ARG]).slice(0, 40))
+        .join(" | ")}]`,
+    ].join(" ");
+
+  const loadIndex = async (): Promise<SettleReason[]> => {
+    await import("../src/index.js");
+    return await vi.waitFor(() => {
+      const satisfied = SETTLE_REASONS.filter((reason) =>
+        SETTLE_CONDITIONS[reason]()
       );
-      if (
-        mockReviewCommand.runReviewCommand.mock.calls.length > 0 ||
-        mockSetFailed.mock.calls.length > 0 ||
-        mockGithubHelper.submitReview.mock.calls.length > 0 ||
-        hasFinalStatus ||
-        hasSkip
-      ) {
-        return;
+      if (satisfied.length > 0) {
+        return satisfied;
       }
-      throw new Error("Action has not settled yet.");
+      throw new Error(
+        "Action has not settled. No settle condition fired " +
+          `(${SETTLE_REASONS.join(", ")}). State: ${settleState()}`
+      );
     }, SETTLE_OPTIONS);
   };
 
@@ -162,6 +209,16 @@ describe("index.ts", () => {
     expect(mockSetFailed).toHaveBeenCalledWith(
       expect.stringContaining("pull_request_target is not supported")
     );
+  });
+
+  it("reports which condition settled the action", async () => {
+    // Covers the settle-reason plumbing itself. Without this, the named
+    // conditions are only exercised through the paths other tests happen to
+    // take, and a rename that silently stopped one from ever matching would
+    // just look like a slower suite.
+    (github as any).context.eventName = "pull_request_target";
+    const reasons = await loadIndex();
+    expect(reasons).toContain("set-failed");
   });
 
   it("fails if eventName is not pull_request", async () => {

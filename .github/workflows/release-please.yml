@@ -19,14 +19,56 @@ jobs:
     runs-on: [self-hosted, Linux, ARM64]
     timeout-minutes: 20
     steps:
+      # This whole workflow exists to open and update one release pull request,
+      # and GITHUB_TOKEN cannot open a pull request on this org: both
+      # maxi-tools and this repo report `can_approve_pull_request_reviews:
+      # false` (Settings -> Actions -> "Allow GitHub Actions to create and
+      # approve pull requests"), and GitHub enforces that flag on PR *creation*
+      # by the Actions token, not only on approvals.
+      #
+      # So every run reached the last step of the release flow and died there:
+      # it computed the version, wrote the tree, and force-updated
+      # `release-please--branches--main--components--maxi-review`, then failed
+      # with `release-please failed: GitHub Actions is not permitted to create
+      # or approve pull requests`. The branch landing successfully is why this
+      # looked intermittent rather than categorical -- the work was done, only
+      # the PR could not be created -- and it left main red on every merge.
+      #
+      # An App installation token is not subject to that restriction, and the
+      # maxi-tools-auth app is already how everything else in this org opens
+      # PRs here: the `maxi-config-sync/*` pull requests on this repo are
+      # authored by `app/maxi-tools-auth` from exactly this mint.
+      - name: Mint a token that is allowed to open the release PR
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: maxi-tools
+          # Scoped to this repository. Unscoped, the mint inherits the entire
+          # installation -- contents and pull-requests write across every repo
+          # in the org -- for a job that never touches another one.
+          repositories: ${{ github.event.repository.name }}
+          # contents: the release branch, the version-bump commit, and the tag
+          # and GitHub Release cut when the release PR merges.
+          # pull-requests: the release PR itself, which is the step that fails
+          # without this.
+          permission-contents: write
+          permission-pull-requests: write
+
       - uses: googleapis/release-please-action@v5
         id: release
         with:
           release-type: node
+          token: ${{ steps.app-token.outputs.token }}
 
       # If a release was created, we check out the code to update the major tag
       - uses: actions/checkout@v6
         if: ${{ steps.release.outputs.release_created }}
+        with:
+          # Same identity that cut the release above, so the major tag is not
+          # attributed to a different actor than the release it points at.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Update major tag
         if: ${{ steps.release.outputs.release_created }}

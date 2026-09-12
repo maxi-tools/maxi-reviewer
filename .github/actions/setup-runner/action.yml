@@ -151,7 +151,7 @@ runs:
         # sccache, silently disable the wrapper, and leave it disabled for the
         # rest of the job. Self-contained rather than dependent on step order.
         # (codex + cubic, PR #1893)
-        export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.cargo/bin:$PATH"
+        export PATH="/opt/homebrew/bin:/usr/local/bin:${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 
         # Selecting a cache dir does nothing unless something routes through
         # sccache. maxi-ml's `.cargo/config.toml` does NOT pin `rustc-wrapper`
@@ -244,7 +244,7 @@ runs:
       id: hw
       shell: bash
       run: |
-        export PATH="$HOME/.cargo/bin:/usr/local/cuda/bin:/opt/rocm/bin:$PATH"
+        export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:/usr/local/cuda/bin:/opt/rocm/bin:$PATH"
         HAS_CUDA=false
         HAS_AMD_GPU=false
         HAS_ROCM=false
@@ -395,7 +395,10 @@ runs:
     - name: Setup PATH
       shell: bash
       run: |
-        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        # CARGO_HOME, not $HOME/.cargo: the NixOS ml-node runners point it at
+        # /data/rust/<runner>/cargo, where a hardcoded path puts the wrong
+        # directory on PATH and cargo-installed binaries go unfound.
+        echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
         [ -d "/opt/homebrew/bin" ] && echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
         [ -d "$HOME/.local/bin" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         # CUDA
@@ -409,12 +412,41 @@ runs:
       shell: bash
       run: |
         if command -v apt-get &>/dev/null; then
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
+          # Self-hosted Linux runners are multi-tenant. A concurrent job's
+          # apt-get holds /var/lib/dpkg/lock-frontend, and ours exits
+          # immediately rather than waiting. Contention is transient, so
+          # retry it; it is not the same thing as the package being
+          # unavailable. (Codacy, maxi-kvm #47)
+          apt_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if sudo "$@"; then return 0; fi
+              # No sleep after the last attempt: the caller fails immediately
+              # after this returns, so the final backoff buys nothing and costs
+              # 50s of CI on every run that was going to fail anyway.
+              if [ "$attempt" -eq 5 ]; then break; fi
+              echo "::notice::apt-get busy or failed (attempt $attempt/5); retrying in $((attempt * 10))s"
+              sleep "$((attempt * 10))"
+            done
+            return 1
+          }
+          # Deliberately no `2>/dev/null || true` on the install: swallowing a
+          # failed build-essential/pkg-config install does not avoid the
+          # failure, it relocates it to a later step whose error names a
+          # missing header rather than the install that never happened. Same
+          # principle as the sccache branch above, which fails loudly.
+          if ! apt_retry apt-get update -qq; then
+            echo "::error::apt-get update failed after 5 attempts on ${RUNNER_NAME:-this runner}"
+            exit 1
+          fi
+          if ! apt_retry apt-get install -y -qq \
             build-essential pkg-config cmake \
             libasound2-dev libudev-dev libdbus-1-dev \
             libxcb1-dev libxcb-shm0-dev libxcb-randr0-dev \
-            libxdo-dev libssl-dev 2>/dev/null || true
+            libxdo-dev libssl-dev; then
+            echo "::error::apt-get install of system dependencies failed after 5 attempts on ${RUNNER_NAME:-this runner}"
+            exit 1
+          fi
         fi
 
     - name: Install system dependencies (macOS)
@@ -467,11 +499,27 @@ runs:
         echo "Xcode tools: $XCODE_PATH"
 
         # If full Xcode.app is installed, prefer it (has Metal Performance Shaders, GPU tools)
+        #
+        # `xcode-select -s` is machine-global, so on a multi-tenant runner a
+        # concurrent job can switch the developer dir out from under this one
+        # mid-build. The global switch stays, because jobs that never run this
+        # action rely on the machine default it establishes; DEVELOPER_DIR is
+        # set alongside it so THIS job is deterministic regardless, as it takes
+        # precedence over the xcode-select setting. (Codacy, maxi-kvm #47)
+        #
+        # Exported as well as written to GITHUB_ENV, because GITHUB_ENV only
+        # reaches LATER steps: `xcodebuild -license accept` a few lines down
+        # runs in this same shell and would otherwise still be exposed to the
+        # global switch this is meant to insulate it from.
         if [ -d "/Applications/Xcode.app" ]; then
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer 2>/dev/null || true
+          export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
           echo "Switched to full Xcode.app"
         elif [ -d "/Applications/Xcode-beta.app" ]; then
           sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer 2>/dev/null || true
+          export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
           echo "Switched to Xcode-beta.app"
         fi
 
@@ -677,7 +725,11 @@ runs:
       if: inputs.cargo-tools != ''
       shell: bash
       run: |
-        [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+        # Same reason as the Install Rust step's cargo_env: CARGO_HOME is not
+        # always $HOME/.cargo, and sourcing the wrong path silently leaves
+        # cargo off PATH for the installs below.
+        _cargo_env="${CARGO_HOME:-$HOME/.cargo}/env"
+        [ -f "$_cargo_env" ] && . "$_cargo_env"
         IFS=',' read -ra TOOLS <<< "${{ inputs.cargo-tools }}"
         for tool in "${TOOLS[@]}"; do
           tool=$(echo "$tool" | xargs)
@@ -690,7 +742,7 @@ runs:
               NEXTEST_PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
               [ "$NEXTEST_PLATFORM" = "darwin" ] && NEXTEST_PLATFORM="mac"
               curl -LsSf "https://get.nexte.st/latest/${NEXTEST_PLATFORM}" 2>/dev/null \
-                | tar xz -C "$HOME/.cargo/bin" 2>/dev/null \
+                | tar xz -C "${CARGO_HOME:-$HOME/.cargo}/bin" 2>/dev/null \
                 || cargo install cargo-nextest 2>/dev/null || echo "::warning::Failed to install $tool"
             else
               cargo install "cargo-${tool}" 2>/dev/null || echo "::warning::Failed to install $tool"
@@ -976,26 +1028,47 @@ runs:
           $OrtUrl = "https://github.com/microsoft/onnxruntime/releases/download/v$OrtVersion/$ZipName"
           Write-Host "Downloading ONNX Runtime v$OrtVersion ($OrtVariant)..."
           New-Item -ItemType Directory -Force -Path $OrtDir | Out-Null
-          $ZipPath = "$env:TEMP\$ZipName"
+          # Per-invocation scratch directory. $env:TEMP is the runner USER's
+          # temp and is shared by every job in that session, so the fixed
+          # "ort-extract" name had two concurrent jobs extracting into one
+          # directory -- and the cleanup below would delete the other job's
+          # extraction out from under its Copy-Item. A GUID cannot collide and
+          # is not guessable. (Codacy, maxi-io #162)
+          $Scratch = Join-Path $env:TEMP ("ort-extract-" + [guid]::NewGuid().ToString("N"))
+          New-Item -ItemType Directory -Force -Path $Scratch | Out-Null
+          $ZipPath = Join-Path $Scratch $ZipName
           try {
             Invoke-WebRequest -Uri $OrtUrl -OutFile $ZipPath
-            Expand-Archive -Path $ZipPath -DestinationPath "$env:TEMP\ort-extract" -Force
-            $ExtractedDir = Get-ChildItem "$env:TEMP\ort-extract" -Directory | Select-Object -First 1
+            Expand-Archive -Path $ZipPath -DestinationPath $Scratch -Force
+            $ExtractedDir = Get-ChildItem $Scratch -Directory | Select-Object -First 1
             Copy-Item -Recurse "$($ExtractedDir.FullName)\*" $OrtDir -Force
-            Remove-Item $ZipPath, "$env:TEMP\ort-extract" -Recurse -Force -ErrorAction SilentlyContinue
           } catch {
             if ($OrtVariant -ne "win-x64") {
               Write-Host "GPU build failed, falling back to CPU..."
+              # Discard the failed attempt's tree before starting a new one.
+              if ($Scratch -and (Test-Path $Scratch)) {
+                Remove-Item $Scratch -Recurse -Force -ErrorAction SilentlyContinue
+              }
               $OrtVariant = "win-x64"
               $OrtDir = "$env:USERPROFILE\.cache\onnxruntime-$OrtVersion-$OrtVariant"
               $OrtDll = "$OrtDir\lib\onnxruntime.dll"
               $ZipName = "onnxruntime-$OrtVariant-$OrtVersion.zip"
               $OrtUrl = "https://github.com/microsoft/onnxruntime/releases/download/v$OrtVersion/$ZipName"
               New-Item -ItemType Directory -Force -Path $OrtDir | Out-Null
-              Invoke-WebRequest -Uri $OrtUrl -OutFile "$env:TEMP\$ZipName"
-              Expand-Archive -Path "$env:TEMP\$ZipName" -DestinationPath "$env:TEMP\ort-extract" -Force
-              $ExtractedDir = Get-ChildItem "$env:TEMP\ort-extract" -Directory | Select-Object -First 1
+              $Scratch = Join-Path $env:TEMP ("ort-extract-" + [guid]::NewGuid().ToString("N"))
+              New-Item -ItemType Directory -Force -Path $Scratch | Out-Null
+              $ZipPath = Join-Path $Scratch $ZipName
+              Invoke-WebRequest -Uri $OrtUrl -OutFile $ZipPath
+              Expand-Archive -Path $ZipPath -DestinationPath $Scratch -Force
+              $ExtractedDir = Get-ChildItem $Scratch -Directory | Select-Object -First 1
               Copy-Item -Recurse "$($ExtractedDir.FullName)\*" $OrtDir -Force
+            }
+          } finally {
+            # Runs on BOTH paths. The CPU-fallback branch previously had no
+            # cleanup at all, so every fallback leaked its extraction into the
+            # shared temp permanently.
+            if ($Scratch -and (Test-Path $Scratch)) {
+              Remove-Item $Scratch -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
         }
@@ -1055,7 +1128,24 @@ runs:
         fi
         echo "Python interpreter: $PY ($("$PY" --version 2>&1))"
 
-        VENV="${RUNNER_TEMP:-/tmp}/maxi-auto-support-venv"
+        # RUNNER_TEMP is already per-runner, so it cannot collide. The bare
+        # /tmp fallback could: two runners on one host would share that exact
+        # path, and the `rm -rf` below would delete a venv another job is
+        # currently executing from. (Codacy, maxi-kvm #47)
+        #
+        # `mktemp -d` rather than a name built from $$: a PID is guessable, and
+        # a guessable name under a world-writable /tmp is a symlink target.
+        # mktemp creates it 0700 and unpredictable, atomically.
+        #
+        # Not cleaned up on exit, deliberately: $BIN goes onto GITHUB_PATH and
+        # later steps in this job execute from it, so removing it here would
+        # break the thing it was created for. The runner reclaims RUNNER_TEMP
+        # between jobs, and the fallback only runs when RUNNER_TEMP is unset.
+        venv_root="${RUNNER_TEMP:-}"
+        if [ -z "$venv_root" ]; then
+          venv_root="$(mktemp -d "${TMPDIR:-/tmp}/maxi-runner-XXXXXX")"
+        fi
+        VENV="$venv_root/maxi-auto-support-venv"
         rm -rf "$VENV"
         "$PY" -m venv "$VENV"
         if [ -d "$VENV/bin" ]; then BIN="$VENV/bin"; else BIN="$VENV/Scripts"; fi
@@ -1094,7 +1184,8 @@ runs:
         echo "=== Runner Setup Complete ==="
         echo "Platform:      ${{ steps.detect.outputs.platform }}"
         echo "Accelerators:  ${{ steps.hw.outputs.summary }}"
-        [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+        _cargo_env="${CARGO_HOME:-$HOME/.cargo}/env"
+        [ -f "$_cargo_env" ] && . "$_cargo_env"
         command -v rustc &>/dev/null && echo "Rust:          $(rustc --version)"
         [ -n "$ORT_DYLIB_PATH" ] && echo "ONNX Runtime:  $ORT_DYLIB_PATH"
         echo "============================="

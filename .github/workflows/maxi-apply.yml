@@ -13,6 +13,24 @@ permissions:
   pull-requests: read
   issues: write
 
+# One apply at a time per pull request. The job commits to the PR branch and
+# pushes, so two `/maxi apply` comments in quick succession race on that push:
+# the loser either fails on a non-fast-forward or, if it re-reads in between,
+# silently drops whichever suggestions the winner had just applied.
+#
+# cancel-in-progress is FALSE deliberately. The usual reason to cancel a
+# superseded run -- it is recomputing something the newer run will redo -- does
+# not hold for a job whose side effect is a commit. Cancelling mid-push is how
+# you get a half-applied branch with nothing in the log saying why, so these
+# queue instead.
+#
+# Keyed on the issue number because the only trigger is `issue_comment`, where
+# `github.event.issue.number` IS the pull request. Adding a trigger means
+# re-deriving this key along with the authorisation gate below.
+concurrency:
+  group: maxi-apply-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 # Trust model:
 # - `issue_comment` runs from the DEFAULT branch with secrets in scope, and
 #   unlike a fork `pull_request` it is NOT covered by the outside-contributor

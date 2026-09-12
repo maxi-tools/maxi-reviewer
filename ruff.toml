@@ -14,33 +14,33 @@ target-version = "py311"
 [lint]
 select = [
   # Pyflakes — real errors, not style.
-  "F401",  # unused import
-  "F811",  # redefinition of unused name
-  "F841",  # local variable assigned but never used
-  "F821",  # undefined name
+  "F401", # unused import
+  "F811", # redefinition of unused name
+  "F841", # local variable assigned but never used
+  "F821", # undefined name
   # flake8-bugbear — mutable defaults and silent no-ops.
-  "B006",  # mutable default argument
-  "B007",  # loop control variable not used within loop body
-  "B018",  # useless expression (a statement that does nothing)
+  "B006", # mutable default argument
+  "B007", # loop control variable not used within loop body
+  "B018", # useless expression (a statement that does nothing)
   # flake8-bandit. S110 in particular is try/except/pass, which is how a CI gate
   # silently stops gating.
-  "S102",  # exec used
-  "S103",  # bad file permissions
-  "S104",  # binding to all interfaces
-  "S105",  # hardcoded password string
-  "S106",  # hardcoded password funcarg
-  "S107",  # hardcoded password default
-  "S108",  # insecure usage of temp file/directory
-  "S110",  # try-except-pass
-  "S301",  # pickle usage
-  "S608",  # possible SQL injection via string construction
+  "S102", # exec used
+  "S103", # bad file permissions
+  "S104", # binding to all interfaces
+  "S105", # hardcoded password string
+  "S106", # hardcoded password funcarg
+  "S107", # hardcoded password default
+  "S108", # insecure usage of temp file/directory
+  "S110", # try-except-pass
+  "S301", # pickle usage
+  "S608", # possible SQL injection via string construction
   # Same family as S110: `assert` is removed entirely under `python -O`, so an
   # assert-based check is a guard that can stop guarding without changing a line
   # of source. Tests are exempted below -- and that exemption is why this had to
   # be selected: per-file-ignores only suppresses rules that are enabled, so
   # while S101 was absent from this list the entry below excused nothing and
   # production asserts went unflagged as well.
-  "S101",  # assert used
+  "S101", # assert used
 ]
 
 [lint.per-file-ignores]

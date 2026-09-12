@@ -939,6 +939,34 @@ runs:
         HAS_CUDA="${{ steps.hw.outputs.has_cuda }}"
         HAS_ROCM="${{ steps.hw.outputs.has_rocm }}"
 
+        # RE-PROBE, because those two outputs are older than the installers.
+        #
+        # `Detect accelerators` is step 4. `Install CUDA toolkit` and
+        # `Install ROCm` are steps 13 and 14. Step outputs are a snapshot, so on
+        # a runner where THIS action installed the toolkit, has_cuda/has_rocm
+        # still say what was true before it did -- and this step then stages the
+        # CPU build on a GPU box, silently. No warning, no failure, just an
+        # accelerator nobody uses and a slow job.
+        #
+        # It is the same class of mistake the ROCm installer above already
+        # documents: has_rocm means "ROCm was ALREADY installed", which is why
+        # that step is gated on has_amd_gpu instead. This step asks the question
+        # after the answer can have changed, so it has to look again.
+        #
+        # Upgrades false -> true only. A detection that said `true` is not
+        # second-guessed here, so a probe failing for its own reasons cannot
+        # downgrade a box to the CPU build. (Codacy, maxi-config#671.)
+        if [ "$HAS_CUDA" != "true" ] \
+          && { command -v nvcc >/dev/null 2>&1 || [ -x /usr/local/cuda/bin/nvcc ]; }; then
+          HAS_CUDA=true
+          echo "::notice::CUDA found by re-probe; detection state updated (the build chosen still depends on platform)"
+        fi
+        if [ "$HAS_ROCM" != "true" ] \
+          && { command -v rocminfo >/dev/null 2>&1 || [ -x /opt/rocm/bin/rocminfo ]; }; then
+          HAS_ROCM=true
+          echo "::notice::ROCm found by re-probe; detection state updated (the build chosen still depends on platform)"
+        fi
+
         # Pick the best ORT variant for available hardware
         case "$PLATFORM" in
           darwin-arm64)  ORT_ARCH="osx-arm64";      ORT_LIB="lib/libonnxruntime.dylib" ;;

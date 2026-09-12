@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+RELEASE_PLEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release-please.yml"
 ACTIONLINT_CONFIG = ROOT / ".github" / "actionlint.yaml"
 PINNED_ACTION = re.compile(r"uses:\s*[^\s@]+/[^\s@]+@[0-9a-f]{40}(?:\s|$)")
 USES_ACTION = re.compile(r"uses:\s*[^\s@]+/[^\s@]+@[^\s]+")
@@ -89,6 +90,56 @@ def sonar_token_bindings(text: str) -> list:
     return bindings
 
 
+def steps_of(text: str) -> list:
+    """Every step in the file as a list of its own lines, in file order.
+
+    Scope-walked rather than prefix-matched, for the reason the SONAR_TOKEN
+    helper already documents: a re-indent or a YAML formatter pass must not be
+    able to silently disable an assertion. A step is a `- ` item whose nearest
+    enclosing key is `steps:`, which also keeps `- ` lines inside a `run: |`
+    block out of the result -- their enclosing key is the `run:` scalar.
+
+    Returning the step's lines rather than a parsed mapping is deliberate: an
+    assertion can then require an exact key/value line, so a value swapped for
+    a different one fails instead of passing a key-presence check.
+    """
+    lines = text.splitlines()
+    steps = []
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped.startswith("- "):
+            continue
+        parent = enclosing_line(lines, index, indent_of(line))
+        if parent is None or parent[1].strip() != "steps:":
+            continue
+        indent = indent_of(line)
+        body = [stripped[2:].strip()]
+        for candidate in lines[index + 1:]:
+            if not candidate.strip():
+                continue
+            if indent_of(candidate) <= indent:
+                break
+            if candidate.lstrip().startswith("#"):
+                continue
+            body.append(candidate.strip())
+        steps.append(body)
+    return steps
+
+
+def step_using(steps: list, action: str) -> list:
+    """The one step invoking `action`, failing loudly on zero or many."""
+    matches = [
+        step
+        for step in steps
+        if any(line.startswith("uses: " + action + "@") for line in step)
+    ]
+    if len(matches) != 1:
+        raise AssertionError(
+            "expected exactly one step using " + action + ", found " + str(len(matches))
+        )
+    return matches[0]
+
+
 class WorkflowPolicyTests(unittest.TestCase):
     def test_trusted_ci_uses_self_hosted_and_forks_use_isolation(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -164,11 +215,54 @@ class WorkflowPolicyTests(unittest.TestCase):
             ],
         )
 
-    def test_third_party_actions_are_pinned_to_shas(self) -> None:
-        text = CI_WORKFLOW.read_text(encoding="utf-8")
-        unpinned = [line.strip() for line in text.splitlines() if USES_ACTION.search(line) and not PINNED_ACTION.search(line)]
 
-        self.assertEqual([], unpinned)
+    def test_release_please_opens_its_pr_with_an_app_token(self) -> None:
+        # GITHUB_TOKEN cannot open a pull request here: maxi-tools and this
+        # repo both set `can_approve_pull_request_reviews: false`, and GitHub
+        # applies that flag to PR creation by the Actions token. release-please
+        # therefore ran to completion every time -- version computed, release
+        # branch pushed -- and then failed on the create call, leaving main red
+        # after every merge with no failing step that named a code defect.
+        #
+        # This is asserted here rather than left to review because the failure
+        # is invisible until it reaches main: release-please has no
+        # pull_request trigger, so dropping the token below would go green on
+        # the PR that did it and only break once merged.
+        text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
+        steps = steps_of(text)
+
+        mint = step_using(steps, "actions/create-github-app-token")
+        self.assertIn("id: app-token", mint)
+        # Both halves of the grant, as exact lines. `permission-pull-requests`
+        # is the one the create call needs and the one that was missing;
+        # `permission-contents` covers the release branch, the bump commit and
+        # the tag. A key-presence check would pass on `read`, which is the
+        # exact value that produced the original failure.
+        self.assertIn("permission-pull-requests: write", mint)
+        self.assertIn("permission-contents: write", mint)
+
+        release = step_using(steps, "googleapis/release-please-action")
+        # Exact list, not `assertIn`: a second `token:` line -- a
+        # GITHUB_TOKEN fallback appended below this one -- would take
+        # precedence in YAML while leaving a containment check green.
+        self.assertEqual(
+            ["token: ${{ steps.app-token.outputs.token }}"],
+            [line for line in release if line.startswith("token:")],
+        )
+        self.assertLess(steps.index(mint), steps.index(release))
+
+    def test_third_party_actions_are_pinned_to_shas(self) -> None:
+        # release-please.yml is in scope alongside ci.yml, and is arguably the
+        # workflow that needs it more: its actions run against a token that can
+        # write contents, tags and pull requests, where ci.yml's cannot. It had
+        # been running `googleapis/release-please-action@v5` and
+        # `actions/checkout@v6` — mutable tags the upstream maintainer can
+        # repoint at any commit without notice.
+        for path in (CI_WORKFLOW, RELEASE_PLEASE_WORKFLOW):
+            text = path.read_text(encoding="utf-8")
+            unpinned = [line.strip() for line in text.splitlines() if USES_ACTION.search(line) and not PINNED_ACTION.search(line)]
+
+            self.assertEqual([], unpinned, path.name)
 
     def test_actionlint_knows_custom_self_hosted_labels(self) -> None:
         text = ACTIONLINT_CONFIG.read_text(encoding="utf-8")

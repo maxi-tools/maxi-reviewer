@@ -3,12 +3,26 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# Its OWN group, not maxi-review.yml's. They shared `maxi-review-<pr>`, and
+# that workflow sets cancel-in-progress: true, so starting it evicted this one
+# -- `cancel-in-progress: false` here governs what this workflow cancels, not
+# whether it can be cancelled. 14 of the last 20 runs died that way, most
+# before executing a step, which meant the dogfood lane usually did not run at
+# all. It failed quietly too: a cancelled run shows in `gh pr checks` text mode
+# as `fail`, indistinguishable from an ordinary red check (#108).
 concurrency:
-  group: maxi-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: self-test-${{ github.event.pull_request.number }}
+  # Now that the group is ours, a superseded commit should not hold a slot --
+  # the job cap below is 70 minutes.
+  cancel-in-progress: true
 
 jobs:
-  review:
+  # Named self-test, not review: maxi-review.yml's job is also `review`, so
+  # both published a check by that name and a PR showed two `review` rows, one
+  # green and one cancelled. Nothing requires this context -- the fleet ruleset
+  # requires only `ci` -- so the rename costs nothing and makes the two lanes
+  # tellable apart.
+  self-test:
     if: github.actor != 'dependabot[bot]'
     # STILL HOSTED, deliberately, and not merely because forks exist.
     #

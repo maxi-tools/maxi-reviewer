@@ -38,8 +38,42 @@ describe("action metadata", () => {
 
     expect(readme).toContain(".github/maxi-review-rules.md");
     expect(readme).not.toContain(".github/jules-review-rules.md");
-    expect(selfTestWorkflow).toContain("group: maxi-review-");
     expect(selfTestWorkflow).not.toContain("group: jules-review-");
+  });
+
+  it("gives the dogfood lane its own concurrency group", () => {
+    // These two shared `maxi-review-<pr>`, and maxi-review.yml sets
+    // cancel-in-progress: true, so starting it evicted the self-test --
+    // 14 of 20 runs, usually before a step executed (#108). Asserting the
+    // groups merely differ, rather than pinning either literal, so renaming
+    // one later does not fail this for the wrong reason.
+    // Walks the top-level concurrency block line by line rather than matching
+    // its shape. The regex this replaces required `group:` to be the first key
+    // after the header (comments aside), so putting `cancel-in-progress` first
+    // would have failed the test for a reason having nothing to do with
+    // concurrency groups, and it hard-coded LF. Scanning the block is
+    // order-independent, tolerates CRLF, and says what it is looking for.
+    const groupOf = (workflow: string): string => {
+      const lines = workflow.split(/\r?\n/);
+      const start = lines.findIndex((line) => /^concurrency:\s*$/.test(line));
+      if (start === -1) throw new Error("no top-level concurrency block");
+      for (const line of lines.slice(start + 1)) {
+        if (/^\S/.test(line)) break; // dedented out of the block
+        const match = /^\s+group:\s*(.+?)\s*$/.exec(line);
+        if (match) return match[1];
+      }
+      throw new Error("concurrency block declares no group");
+    };
+
+    const read = (path: string) =>
+      readFileSync(new URL(path, import.meta.url), "utf8");
+    const selfTest = groupOf(read("../.github/workflows/self-test.yml"));
+    const maxiReview = groupOf(read("../.github/workflows/maxi-review.yml"));
+
+    expect(selfTest).not.toBe(maxiReview);
+    // Both must still be per-PR, or one PR's run would evict another's.
+    expect(selfTest).toContain("github.event.pull_request.number");
+    expect(maxiReview).toContain("github.event.pull_request.number");
   });
 
   it("builds the local action before dogfooding it", () => {

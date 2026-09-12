@@ -144,6 +144,13 @@ describe("index.ts", () => {
   // a settle condition -- `truncates large diffs` on runJulesReview, `uses
   // ctx.payload.before` on fetchDiff -- are the ones that need this, because
   // for them the wait returning is not evidence their call happened.
+  // src/github.ts:341 -- setStatus(octokit, owner, repo, sha, context, state,
+  // description). Naming the offsets once means the three places that read a
+  // mock call do not each restate them, and a signature change has one site to
+  // fix rather than three to find.
+  const STATUS_STATE_ARG = 5;
+  const INFO_MESSAGE_ARG = 0;
+
   const SETTLE_CONDITIONS = {
     "review-command": () =>
       mockReviewCommand.runReviewCommand.mock.calls.length > 0,
@@ -151,13 +158,13 @@ describe("index.ts", () => {
     "submit-review": () => mockGithubHelper.submitReview.mock.calls.length > 0,
     "final-status": () =>
       mockGithubHelper.setStatus.mock.calls.some(
-        (call) => call[5] !== "pending"
+        (call) => call[STATUS_STATE_ARG] !== "pending"
       ),
     "skip-or-bypass": () =>
       mockInfo.mock.calls.some(
         (call) =>
-          String(call[0]).startsWith("Skipping") ||
-          String(call[0]).startsWith("Bypass label")
+          String(call[INFO_MESSAGE_ARG]).startsWith("Skipping") ||
+          String(call[INFO_MESSAGE_ARG]).startsWith("Bypass label")
       ),
   } as const;
 
@@ -170,13 +177,13 @@ describe("index.ts", () => {
   const settleState = () =>
     [
       `setStatus=[${mockGithubHelper.setStatus.mock.calls
-        .map((call) => String(call[5]))
+        .map((call) => String(call[STATUS_STATE_ARG]))
         .join(", ")}]`,
       `setFailed=${mockSetFailed.mock.calls.length}`,
       `submitReview=${mockGithubHelper.submitReview.mock.calls.length}`,
       `runReviewCommand=${mockReviewCommand.runReviewCommand.mock.calls.length}`,
       `info=[${mockInfo.mock.calls
-        .map((call) => String(call[0]).slice(0, 40))
+        .map((call) => String(call[INFO_MESSAGE_ARG]).slice(0, 40))
         .join(" | ")}]`,
     ].join(" ");
 

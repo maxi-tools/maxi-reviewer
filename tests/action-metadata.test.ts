@@ -38,8 +38,32 @@ describe("action metadata", () => {
 
     expect(readme).toContain(".github/maxi-review-rules.md");
     expect(readme).not.toContain(".github/jules-review-rules.md");
-    expect(selfTestWorkflow).toContain("group: maxi-review-");
     expect(selfTestWorkflow).not.toContain("group: jules-review-");
+  });
+
+  it("gives the dogfood lane its own concurrency group", () => {
+    // These two shared `maxi-review-<pr>`, and maxi-review.yml sets
+    // cancel-in-progress: true, so starting it evicted the self-test --
+    // 14 of 20 runs, usually before a step executed (#108). Asserting the
+    // groups merely differ, rather than pinning either literal, so renaming
+    // one later does not fail this for the wrong reason.
+    const groupOf = (workflow: string): string => {
+      const match = /^concurrency:\n(?:\s+#.*\n)*\s+group:\s*(.+)$/m.exec(
+        workflow
+      );
+      if (!match) throw new Error("no top-level concurrency group found");
+      return match[1].trim();
+    };
+
+    const read = (path: string) =>
+      readFileSync(new URL(path, import.meta.url), "utf8");
+    const selfTest = groupOf(read("../.github/workflows/self-test.yml"));
+    const maxiReview = groupOf(read("../.github/workflows/maxi-review.yml"));
+
+    expect(selfTest).not.toBe(maxiReview);
+    // Both must still be per-PR, or one PR's run would evict another's.
+    expect(selfTest).toContain("github.event.pull_request.number");
+    expect(maxiReview).toContain("github.event.pull_request.number");
   });
 
   it("builds the local action before dogfooding it", () => {

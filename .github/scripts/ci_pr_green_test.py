@@ -203,6 +203,61 @@ class StaleTest(unittest.TestCase):
         self.assertEqual((failures, pending, stale), ([], [], []))
 
 
+class LiveRunWinsTest(unittest.TestCase):
+    def test_a_succeeded_run_beats_a_cancelled_sibling_at_the_same_second(self):
+        # The shape actually seen on maxi-config#677 once both runs finished:
+        # ...112 cancelled by concurrency, ...083 succeeded, same second. The id
+        # tie-break picked the cancelled one and reported a passing workflow as
+        # STALE.
+        runs = [
+            run(GATE, workflow_id=1, suite=1, created=T0,
+                conclusion="cancelled", rid=112),
+            run(GATE, workflow_id=1, suite=2, created=T0,
+                conclusion="success", rid=83),
+        ]
+        failures, pending, stale, _ = mod.judge(runs, [], [])
+        self.assertEqual((failures, pending, stale), ([], [], []))
+
+    def test_an_in_flight_run_beats_a_cancelled_sibling_at_the_same_second(self):
+        # Observed on maxi-config#677: two runs of one workflow created in the
+        # same second, one cancelled and one still going. Ordering by id alone
+        # picked the cancelled one, so the judge said STALE -- "no verdict,
+        # re-run it" -- while a run was in flight and about to produce one.
+        runs = [
+            run(GATE, workflow_id=1, suite=1, created=T0,
+                conclusion="cancelled", rid=112),
+            run(GATE, workflow_id=1, suite=2, created=T0,
+                conclusion=None, status="in_progress", rid=83),
+        ]
+        failures, pending, stale, _ = mod.judge(runs, [], [])
+        self.assertEqual(failures, [])
+        self.assertEqual(stale, [], "a live run means the workflow is not stale")
+        self.assertEqual(len(pending), 1)
+        self.assertIn("in_progress", pending[0])
+
+    def test_a_genuinely_cancelled_workflow_is_still_stale(self):
+        # The fix must not make every cancelled run disappear: with no live
+        # sibling, cancelled is still no verdict.
+        runs = [run(GATE, workflow_id=1, suite=1, created=T0,
+                    conclusion="cancelled", rid=112)]
+        _f, _p, stale, _ = mod.judge(runs, [], [])
+        self.assertEqual(len(stale), 1)
+
+    def test_a_newer_finished_run_beats_an_older_stuck_one(self):
+        # Liveness breaks ties only within the same instant. Ordering by it
+        # first would let one wedged job hold the verdict at PENDING forever,
+        # which trades a wrong answer for one that never arrives.
+        runs = [
+            run(CI, workflow_id=2, suite=1, created=T0,
+                conclusion=None, status="in_progress", rid=1),
+            run(CI, workflow_id=2, suite=2, created=T1,
+                conclusion="failure", rid=2),
+        ]
+        failures, pending, _s, _c = mod.judge(runs, [], [])
+        self.assertEqual(pending, [], "the newer finished run is the answer")
+        self.assertEqual(len(failures), 1)
+
+
 class EmptyReadTest(unittest.TestCase):
     def test_nothing_read_is_unknown_not_green(self):
         # An empty or unrecognised response must not answer GREEN. Zero rows is

@@ -66,15 +66,22 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         if: ${{ steps.release.outputs.release_created }}
         with:
-          # Same identity that cut the release above, so the major tag is not
-          # attributed to a different actor than the release it points at.
+          # The same token that cut the release above, so the whole release
+          # path -- branch, bump commit, tag, Release, and the major-tag push
+          # below -- runs as one identity. It also means this push does not
+          # depend on the workflow-level `permissions:` block, which this org's
+          # hardening has already shown can be declared and still be
+          # ineffective.
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Update major tag
         if: ${{ steps.release.outputs.release_created }}
         run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          # Tagger matches the token doing the push -- maxi-tools-auth[bot],
+          # minted above -- rather than github-actions[bot], which no longer
+          # authenticates anything in this workflow.
+          git config user.name 'maxi-tools-auth[bot]'
+          git config user.email '264883562+maxi-tools-auth[bot]@users.noreply.github.com'
 
           # Force create the major version tag (e.g., v1, v2) pointing to the current commit
           git tag -fa v${{ steps.release.outputs.major }} -m "Release v${{ steps.release.outputs.major }}"

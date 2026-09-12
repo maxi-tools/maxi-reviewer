@@ -47,12 +47,22 @@ describe("action metadata", () => {
     // 14 of 20 runs, usually before a step executed (#108). Asserting the
     // groups merely differ, rather than pinning either literal, so renaming
     // one later does not fail this for the wrong reason.
+    // Walks the top-level concurrency block line by line rather than matching
+    // its shape. The regex this replaces required `group:` to be the first key
+    // after the header (comments aside), so putting `cancel-in-progress` first
+    // would have failed the test for a reason having nothing to do with
+    // concurrency groups, and it hard-coded LF. Scanning the block is
+    // order-independent, tolerates CRLF, and says what it is looking for.
     const groupOf = (workflow: string): string => {
-      const match = /^concurrency:\n(?:\s+#.*\n)*\s+group:\s*(.+)$/m.exec(
-        workflow
-      );
-      if (!match) throw new Error("no top-level concurrency group found");
-      return match[1].trim();
+      const lines = workflow.split(/\r?\n/);
+      const start = lines.findIndex((line) => /^concurrency:\s*$/.test(line));
+      if (start === -1) throw new Error("no top-level concurrency block");
+      for (const line of lines.slice(start + 1)) {
+        if (/^\S/.test(line)) break; // dedented out of the block
+        const match = /^\s+group:\s*(.+?)\s*$/.exec(line);
+        if (match) return match[1];
+      }
+      throw new Error("concurrency block declares no group");
     };
 
     const read = (path: string) =>

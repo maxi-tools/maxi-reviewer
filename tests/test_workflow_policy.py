@@ -252,10 +252,17 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertLess(steps.index(mint), steps.index(release))
 
     def test_third_party_actions_are_pinned_to_shas(self) -> None:
-        text = CI_WORKFLOW.read_text(encoding="utf-8")
-        unpinned = [line.strip() for line in text.splitlines() if USES_ACTION.search(line) and not PINNED_ACTION.search(line)]
+        # release-please.yml is in scope alongside ci.yml, and is arguably the
+        # workflow that needs it more: its actions run against a token that can
+        # write contents, tags and pull requests, where ci.yml's cannot. It had
+        # been running `googleapis/release-please-action@v5` and
+        # `actions/checkout@v6` — mutable tags the upstream maintainer can
+        # repoint at any commit without notice.
+        for path in (CI_WORKFLOW, RELEASE_PLEASE_WORKFLOW):
+            text = path.read_text(encoding="utf-8")
+            unpinned = [line.strip() for line in text.splitlines() if USES_ACTION.search(line) and not PINNED_ACTION.search(line)]
 
-        self.assertEqual([], unpinned)
+            self.assertEqual([], unpinned, path.name)
 
     def test_actionlint_knows_custom_self_hosted_labels(self) -> None:
         text = ACTIONLINT_CONFIG.read_text(encoding="utf-8")

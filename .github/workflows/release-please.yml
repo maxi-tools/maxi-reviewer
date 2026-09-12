@@ -56,14 +56,14 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         id: release
         with:
           release-type: node
           token: ${{ steps.app-token.outputs.token }}
 
       # If a release was created, we check out the code to update the major tag
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         if: ${{ steps.release.outputs.release_created }}
         with:
           # Same identity that cut the release above, so the major tag is not

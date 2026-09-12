@@ -151,16 +151,39 @@ class GhTransport:
 
 
 def newest(items, key):
-    """The newest item per group, by `created_at`/`started_at` then id.
+    """The newest item per group, by `created_at`/`started_at`, then whether it speaks, then id.
 
-    The timestamp alone is not a total order -- runs started in the same second
-    are common -- so id breaks ties. Ids are monotonic per repository.
+    The timestamp alone is not a total order -- runs created in the same second
+    are common -- so ties need breaking, and ids are monotonic per repository.
+
+    Within one instant the tie goes to the run that SPEAKS -- one still going,
+    or one that reached a real conclusion -- over one that was cancelled and so
+    never said anything. Observed on maxi-config#677: runs ...083 and ...112
+    were created in the same second, ...112 was cancelled by concurrency and
+    ...083 succeeded, and the id tie-break picked the cancelled one. The judge
+    reported
+
+        STALE  Review Gate (workflow): cancelled - no verdict, re-run it
+
+    for a workflow that had already passed, and the advice would have cancelled
+    nothing useful. A cancelled run is not evidence about the SHA; its sibling
+    at the same instant is.
+
+    Deliberately NOT the primary key. Ordering by this before the timestamp
+    would let a run stuck in_progress outrank a newer run that actually
+    finished, so one wedged job would hold the verdict at PENDING indefinitely
+    -- trading a wrong answer for one that never arrives.
     """
     best = {}
     for item in items:
         group = key(item)
+        speaks = (
+            item.get("status") != "completed"
+            or item.get("conclusion") not in NO_VERDICT_CONCLUSIONS
+        )
         stamp = (
             item.get("created_at") or item.get("started_at") or "",
+            speaks,
             item.get("id") or 0,
         )
         if group not in best or stamp > best[group][0]:

@@ -78,10 +78,52 @@ jobs:
           # Backstop only. The three conditions above should already prevent a
           # loop; this bounds the damage if one of them is ever wrong.
           MAX_ATTEMPTS: "6"
+          # Tries per API call, not per pull request. See retry_out below.
+          API_RETRIES: "3"
         run: |
           set -uo pipefail
 
-          prs="$(gh pr list --repo "$REPO" --state open --limit 200 \
+          # A transient GitHub 5xx is not a verdict about this repository, so it
+          # is retried rather than reported.
+          #
+          # MEASURED, 2026-09-13: the 08:44 tick failed in maxi-kvm AND
+          # maxi-ios-bridge with `HTTP 500 (https://api.github.com/graphql)` on
+          # the very first call -- the `gh pr list` below -- while the same tick
+          # succeeded in maxi-core, maxi-ui, maxi-io, maxi-transport and
+          # maxi-libs. So it was neither an outage nor either repo's code: it
+          # was one server-side 500 that happened to land on two of the ticks.
+          # Zero pull requests were examined, and both default branches carried
+          # a red `unstick` for the next half hour. A janitor that exists
+          # because nobody reads a red check they do not believe must not be a
+          # source of red checks nobody believes.
+          #
+          # This does NOT soften the guard. The retry is bounded; after the last
+          # try the call still fails, still increments `errors`, and the run
+          # still exits non-zero. What changes is that one 500 no longer decides
+          # it on its own.
+          #
+          # stdout is buffered and replayed only on success, so a truncated body
+          # from a failed try can never reach the caller's `$(...)`. stderr is
+          # passed through on every try: the 500 above was diagnosable only
+          # because `gh pr list` did not suppress it, and the per-PR calls that
+          # did suppress it would have been a silent `errors` increment.
+          retry_out() {
+            local try=1 out
+            while true; do
+              if out="$("$@")"; then
+                printf '%s' "$out"
+                return 0
+              fi
+              if [ "$try" -ge "$API_RETRIES" ]; then
+                return 1
+              fi
+              printf 'try %s/%s failed, retrying: %s\n' "$try" "$API_RETRIES" "$*" >&2
+              sleep "$((try * 5))"
+              try=$((try + 1))
+            done
+          }
+
+          prs="$(retry_out gh pr list --repo "$REPO" --state open --limit 200 \
                    --json number,headRefOid,isDraft || true)"
           if [ -z "$prs" ]; then
             echo "could not list pull requests"
@@ -118,7 +160,7 @@ jobs:
             # would re-run a gate that is correctly red. That is the same
             # fail-open shape this whole workflow exists to clean up after,
             # reproduced inside it.
-            if ! thread_pages="$(gh api graphql --paginate -f query='
+            if ! thread_pages="$(retry_out gh api graphql --paginate -f query='
               query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
                 repository(owner:$owner, name:$name) {
                   pullRequest(number:$number) {
@@ -130,7 +172,7 @@ jobs:
                 }
               }' -F owner="${REPO%/*}" -F name="${REPO#*/}" -F number="$number" \
               --jq '[.data.repository.pullRequest.reviewThreads.nodes[]
-                     | select(.isResolved == false)] | length' 2>/dev/null)"; then
+                     | select(.isResolved == false)] | length')"; then
               echo "PR #$number: review-thread query failed"
               errors=$((errors + 1))
               continue
@@ -167,9 +209,9 @@ jobs:
             # This is the same enumeration review-gate-reusable.yml performs on
             # itself for its staleness check, deliberately: one way of asking
             # "every run for this commit", not two that can disagree.
-            if ! runs_json="$(gh api --paginate \
+            if ! runs_json="$(retry_out gh api --paginate \
                      "repos/$REPO/actions/workflows/review-gate.yml/runs?head_sha=$head&per_page=100" \
-                     --jq '.workflow_runs[] | {databaseId: .id, conclusion, attempt: .run_attempt, startedAt: .run_started_at}' 2>/dev/null)"; then
+                     --jq '.workflow_runs[] | {databaseId: .id, conclusion, attempt: .run_attempt, startedAt: .run_started_at}')"; then
               echo "PR #$number: could not list Review Gate runs"
               errors=$((errors + 1))
               continue
@@ -202,7 +244,7 @@ jobs:
             # default to 0, and read as "not a threads failure" -- so an outage
             # silently declined to re-ask every stale gate while the run still
             # reported success.
-            if ! jobs_json="$(gh api "repos/$REPO/actions/runs/$id/jobs" 2>/dev/null)"; then
+            if ! jobs_json="$(retry_out gh api "repos/$REPO/actions/runs/$id/jobs")"; then
               echo "PR #$number: could not read jobs for run $id"
               errors=$((errors + 1))
               continue

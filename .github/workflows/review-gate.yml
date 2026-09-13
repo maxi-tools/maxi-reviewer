@@ -8,8 +8,26 @@
 name: Review Gate
 
 on:
+  # `labeled`/`unlabeled` are here for ONE reason: `review-infra-unavailable`.
+  # That label waives the non-author-review condition, and a label-dependent
+  # verdict that is not recomputed when the label moves is the same defect
+  # class as the bug that produced this waiver (#555) -- an escape hatch that
+  # appears not to work at the moment somebody reaches for it. Both directions
+  # matter, and they fail differently:
+  #
+  #   labeled     without it, applying the label during an outage changes
+  #               nothing. The red verdict stands until someone pushes or
+  #               re-runs, which is precisely the "the override made it worse"
+  #               experience this whole change exists to remove.
+  #   unlabeled   without it, REMOVING the label leaves the waived green
+  #               status standing, and the PR merges with neither the label
+  #               nor a review. That one is a correctness hole, not friction.
+  #
+  # This is not the `pull_request_review_thread` situation below: label events
+  # ARE real workflow triggers, so the gap is closable and is closed.
+  # `maxi-review.yml` has carried `labeled` since it was written.
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled]
   pull_request_review:
     types: [submitted, dismissed]
   # Resolving a conversation emits NO pull_request or pull_request_review
@@ -43,11 +61,50 @@ on:
   pull_request_review_comment:
     types: [created, deleted]
 
+# Without this, every trigger above stacks a run that is never superseded, and
+# `pull_request_review_comment` fires once per individual comment. A reviewer
+# filing eighteen comments in a round therefore queues eighteen gate runs, none
+# of which cancels the others. Measured on maxi-config#412: 24 queued
+# review-gate jobs on one SHA -- 12 copies of `resolve-review-threads` and 12 of
+# `awaiting-non-author-review-bots-included` -- with not one of them started,
+# on a self-hosted
+# pool at zero idle. The gate could not reach a verdict because it was waiting
+# behind eleven stale copies of itself.
+#
+# `maxi-review.yml` -- fanned out by the same script, from this directory -- has
+# had this since it was written. This file never did.
+#
+# THIS BLOCK LIVES IN THE TEMPLATE, NOT ONLY IN maxi-config's applied copy.
+# It was first added to `.github/workflows/review-gate.yml` alone, and the next
+# fan-out (#436, "sync Maxi review workflows from maxi-config") copied this
+# template straight over it and deleted all thirty lines -- in maxi-config and
+# in every consumer at once. Re-measured after that revert: 73 queued runs org
+# wide on SHAs that were no longer any branch tip or open-PR head, 10 of them
+# `Review Gate`. tests/test_review_gate_workflow.py pins it here now.
+#
+# Cancelling is safe here, and the distinction matters: the approach withdrawn
+# above left verdicts PENDING, which is not neutral in a rollup that aggregates
+# across suites. A cancelled run is *terminal*, not pending. No `review-gate`
+# context is in any repo's required set (checked across the org: rulesets
+# require `merge-gate/*` only), so a cancelled check-run cannot block a merge,
+# and the authoritative signal is the commit status the reusable workflow
+# publishes, which is last-write-wins per context. The newest run always
+# survives to write it.
+#
+# This also removes the reason for the soft-supersede branch in
+# review-gate-reusable.yml ("run N started while M was publishing; yielding the
+# context back to pending") -- that exists to compensate for stacking rather
+# than prevent it. Leave it in place: it is now belt-and-braces, and removing it
+# is a separate change that should be measured on its own.
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
   review-gate:
-    uses: maxi-tools/maxi-config/.github/workflows/review-gate-reusable.yml@main
+    uses: maxi-tools/ci/.github/workflows/review-gate-reusable.yml@d981809791f2d18eabdd7e125c575d60a2289414  # maxi-tools/ci main
     # `pull-requests: read` is what the gate actually spends: its two paginated
     # GraphQL queries read this PR's reviews and its review threads to decide
     # whether any thread is still unresolved. It only reads them — the verdict

@@ -13,6 +13,24 @@ permissions:
   pull-requests: read
   issues: write
 
+# One apply at a time per pull request. The job commits to the PR branch and
+# pushes, so two `/maxi apply` comments in quick succession race on that push:
+# the loser either fails on a non-fast-forward or, if it re-reads in between,
+# silently drops whichever suggestions the winner had just applied.
+#
+# cancel-in-progress is FALSE deliberately. The usual reason to cancel a
+# superseded run -- it is recomputing something the newer run will redo -- does
+# not hold for a job whose side effect is a commit. Cancelling mid-push is how
+# you get a half-applied branch with nothing in the log saying why, so these
+# queue instead.
+#
+# Keyed on the issue number because the only trigger is `issue_comment`, where
+# `github.event.issue.number` IS the pull request. Adding a trigger means
+# re-deriving this key along with the authorisation gate below.
+concurrency:
+  group: maxi-apply-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 # Trust model:
 # - `issue_comment` runs from the DEFAULT branch with secrets in scope, and
 #   unlike a fork `pull_request` it is NOT covered by the outside-contributor
@@ -60,9 +78,19 @@ jobs:
     # jobs never get a runner assigned, so this command lane silently did
     # nothing on every invocation. Routed to the self-hosted Linux x64 fleet.
     runs-on: [self-hosted, Linux, X64]
+    # Actions cancellation budgets, not a local scheduler model. This lane is
+    # triggered by a COMMENT, so without an explicit bound a command that hangs
+    # -- a wedged gh call, an unresponsive API -- holds a self-hosted runner at
+    # the platform default rather than for ten minutes. maxi-kvm has carried
+    # these two lines locally and a test asserting them
+    # (tests/maxi_apply_authorization_test.py); the distributed copy did not,
+    # so every sync proposed removing them there and shipped the unbounded
+    # version everywhere else. Keep job > authorize, authorize <= 5, job <= 10.
+    timeout-minutes: 10
     steps:
       - name: Authorize requester
         id: authorize
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTER: ${{ github.event.comment.user.login }}
@@ -119,7 +147,7 @@ jobs:
           exit 1
 
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
@@ -127,7 +155,7 @@ jobs:
           persist-credentials: true
 
       - name: Checkout maxi-config apply script
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: maxi-tools/maxi-config
           ref: main
@@ -158,7 +186,8 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
+          # Suggestions only modify tracked files. Never stage the nested helper checkout.
+          git add -u
           git commit -m "Apply Jules suggestions"
           git push
 

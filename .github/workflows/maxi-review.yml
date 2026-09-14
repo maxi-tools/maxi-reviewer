@@ -207,6 +207,65 @@ jobs:
             --files="$RUNNER_TEMP/changed-files.txt" \
             --labels="$PR_LABELS"
 
+      # Refuses a PR that pins one maxi-tools repo to a commit of another.
+      #
+      # Reuses the file list and the helper checkout above rather than fetching
+      # either again -- same sparse maxi-review/ tree, same default-branch
+      # reasoning, same fail-closed-if-absent posture.
+      #
+      # FAILS ONLY ON A PIN THIS PR ADDED, and warns about the rest. Judging
+      # the whole tree would fail every repo that already carries one, on its
+      # next unrelated PR, which is how a guard gets labelled noise and turned
+      # off. The failure mode worth eliminating is a NEW pin.
+      #
+      # "Added" is judged against the base branch's copy of each changed
+      # manifest, not against the changed-file list: Cargo.lock is in the diff
+      # of nearly every dependency bump, and a pre-existing pin in it must not
+      # re-block each one. The checkout is depth 1 (see above), so the base
+      # copies come from the contents API -- only for the changed
+      # Cargo.toml/Cargo.lock files, which is usually none and rarely more
+      # than two. A 404 is a file the PR created; any other failure is a
+      # lookup this gate must not paper over, so it fails closed.
+      - name: Refuse intra-org dependency pins
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        shell: bash
+        working-directory: pr-code
+        run: |
+          set -euo pipefail
+          helper="$GITHUB_WORKSPACE/.maxi-config/maxi-review/check-intra-org-pins.py"
+          if [ ! -f "$helper" ]; then
+            echo "::error::$helper is missing from maxi-config's default" \
+              "branch. This gate fails closed rather than passing a PR it" \
+              "never checked; restore the helper on maxi-config main."
+            exit 1
+          fi
+          base_dir="$RUNNER_TEMP/base-manifests"
+          mkdir -p "$base_dir"
+          while IFS= read -r path; do
+            case "${path##*/}" in Cargo.toml|Cargo.lock) ;; *) continue ;; esac
+            mkdir -p "$base_dir/$(dirname "$path")"
+            err="$RUNNER_TEMP/base-fetch.err"
+            if gh api -H 'Accept: application/vnd.github.raw+json' \
+                 "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=${BASE_SHA}" \
+                 > "$base_dir/$path" 2> "$err"; then
+              continue
+            fi
+            rm -f "$base_dir/$path"
+            if grep -q 'HTTP 404' "$err"; then
+              continue  # not on the base branch: the PR created it
+            fi
+            echo "::error::could not fetch the base-branch copy of $path:"
+            cat "$err"
+            exit 1
+          done < "$RUNNER_TEMP/changed-files.txt"
+          python3 "$helper" \
+            --files="$RUNNER_TEMP/changed-files.txt" \
+            --base-dir="$base_dir" \
+            --labels="$PR_LABELS"
+
       - name: Run maxi-lint deny gate
         id: maxilint
         env:

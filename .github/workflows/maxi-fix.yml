@@ -22,6 +22,14 @@ jobs:
     # jobs never get a runner assigned, so this command lane silently did
     # nothing on every invocation. Routed to the self-hosted Linux x64 fleet.
     runs-on: [self-hosted, Linux, X64]
+    # Unbounded before this: a wedged Jules session held a fleet runner until
+    # the 6-hour GitHub default (#249). 40, not the 10 maxi-apply.yml uses --
+    # this job runs a Jules hands-on session rather than a short scripted
+    # command, so it needs the same budget as maxi-review.yml's Jules-review
+    # step: the Jules session's own budget plus cleanup headroom (see the
+    # `timeout-minutes: 40` comment on the Jules review step in
+    # maxi-review.yml for the derivation).
+    timeout-minutes: 40
     steps:
       - name: Authorize requester
         id: authorize

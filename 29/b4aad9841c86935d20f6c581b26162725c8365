@@ -1,0 +1,16 @@
+dist/calibration-harvest/index.js
+  h_cebe5b6d461c32 64403,64406,64409-64426,64445
+dist/calibration-harvest/index.js.map
+  h_cebe5b6d461c32 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29b4aad9841c86935d20f6c581b26162725c8365",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.1.0...v1.2.0) (2026-09-19)
+
+
+### Features
+
+* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([81e2dc3](https://github.com/maxi-tools/maxi-reviewer/commit/81e2dc3baf39ec2c7f1d51f7255fd38a297d1608))
+* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([c0d4480](https://github.com/maxi-tools/maxi-reviewer/commit/c0d44807eec63451b71085f858077361f44cb238))
+
+
+### Bug Fixes
+
+* **calibration-harvest:** address six reviewer findings ([034dd31](https://github.com/maxi-tools/maxi-reviewer/commit/034dd31095f267cd73a858084f7b8af8d3f69ad5))
+* **calibration-harvest:** contents:write for release, path-group in README ([a709237](https://github.com/maxi-tools/maxi-reviewer/commit/a709237ce98e49600e2e320ec626c5b4c2399fce))
+
 ## [1.1.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.0.0...v1.1.0) (2026-09-18)
 
 

@@ -96,7 +96,7 @@ jobs:
           # No `repositories:` line — the App token inherits the org-wide
           # installation's grant, which is what the cross-repo search needs.
           owner: maxi-tools
-          permission-contents: write
+          permission-contents: read
           permission-issues: read
           permission-pull-requests: read
 

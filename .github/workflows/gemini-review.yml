@@ -75,7 +75,11 @@ jobs:
     # Measured 2026-08-24: macOS 9/9 busy, Linux X64 10/10 idle. The same
     # class of work (Maxi Review / Fix / Apply) already runs on that lane
     # from maxi-config's templates, so this is not a new bet.
-    runs-on: [self-hosted, Linux, X64]
+    #
+    # No arch label. Measured 2026-09-18 the X64 pool was 14/14 busy with 71
+    # queued while ARM64 had a slot idle, and nothing here is arch-shaped:
+    # gh, python and an API. ci/runner-routing.toml, [lanes.linux-any].
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 15
     permissions:
       contents: read

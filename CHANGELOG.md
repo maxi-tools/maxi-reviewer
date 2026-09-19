@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.2.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.1.0...v1.2.0) (2026-09-19)
+
+
+### Features
+
+* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([81e2dc3](https://github.com/maxi-tools/maxi-reviewer/commit/81e2dc3baf39ec2c7f1d51f7255fd38a297d1608))
+* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([c0d4480](https://github.com/maxi-tools/maxi-reviewer/commit/c0d44807eec63451b71085f858077361f44cb238))
+* **harvest:** publish the analysis beside the data, every run ([f13bb84](https://github.com/maxi-tools/maxi-reviewer/commit/f13bb8459a99d4fe143d4e6846a74d8bafaada80))
+* **harvest:** publish the analysis beside the data, every run ([0704c7e](https://github.com/maxi-tools/maxi-reviewer/commit/0704c7e90f1f5ed153395006e67153017120e0ba))
+
+
+### Bug Fixes
+
+* **calibration-harvest:** address CodeRabbit print-width + test-typing findings ([835318a](https://github.com/maxi-tools/maxi-reviewer/commit/835318a4756663fceb5adc8d878274dc72b17b52))
+* **calibration-harvest:** address six reviewer findings ([034dd31](https://github.com/maxi-tools/maxi-reviewer/commit/034dd31095f267cd73a858084f7b8af8d3f69ad5))
+* **calibration-harvest:** contents:write for release, path-group in README ([a709237](https://github.com/maxi-tools/maxi-reviewer/commit/a709237ce98e49600e2e320ec626c5b4c2399fce))
+* **calibration-harvest:** drop metadata from job permissions, cut release with native token ([338ee5b](https://github.com/maxi-tools/maxi-reviewer/commit/338ee5bfe21c2e91eb2d70afe7f08d8ac4ec840c))
+* **calibration-harvest:** parenthesise each side of the org-search OR ([53e4bd0](https://github.com/maxi-tools/maxi-reviewer/commit/53e4bd058d5934831f9dad1dd0d7f12635822590))
+* **calibration-harvest:** parenthesise each side of the org-search OR ([11571f3](https://github.com/maxi-tools/maxi-reviewer/commit/11571f36b204a78e1d99c23ee47b43375646787d))
+* **calibration-harvest:** pin upload-artifact and revert contents:write ([bc1a5f8](https://github.com/maxi-tools/maxi-reviewer/commit/bc1a5f8d82b4e00415116131ca108147921904d8))
+* **calibration-harvest:** pin upload-artifact to v7.0.1 ([56f47a3](https://github.com/maxi-tools/maxi-reviewer/commit/56f47a31c810d56f2fd69ed60767d338e79f8079))
+* **calibration-harvest:** rename graphql variable away from reserved 'query' key ([bc6d167](https://github.com/maxi-tools/maxi-reviewer/commit/bc6d167dd36d5476dd8014506636a8e1a330d0ac))
+* **calibration-harvest:** rename graphql variable away from reserved 'query' key ([f9f078e](https://github.com/maxi-tools/maxi-reviewer/commit/f9f078e6c3a62ffedfe3908a0991d3510848bc85))
+* **calibration-harvest:** swap permission-issues for permission-metadata ([02e3517](https://github.com/maxi-tools/maxi-reviewer/commit/02e351747c09f27c8c0642f3b5f7bafa47fd934f))
+* **harvest:** `gh release delete` takes --cleanup-tag, not --cleanup-tags ([9adc8e2](https://github.com/maxi-tools/maxi-reviewer/commit/9adc8e25b16dcff7925ef2d437de84f5735c738d))
+* **harvest:** close three holes review found in the [#133](https://github.com/maxi-tools/maxi-reviewer/issues/133) fix itself ([e58da17](https://github.com/maxi-tools/maxi-reviewer/commit/e58da1797d703768de501fc86b04ff366f6c2359))
+* **harvest:** get commit paths from REST, and stop publishing a failed ([8eb1628](https://github.com/maxi-tools/maxi-reviewer/commit/8eb1628031cd5765bd8152891d8ca28f51a498fd))
+* **harvest:** get commit paths from REST, and stop publishing a failed measurement as data ([3976bc9](https://github.com/maxi-tools/maxi-reviewer/commit/3976bc962f7c63f6061fbb051a732e0f2426dbc6))
+* **harvest:** make the accept rate measurable, and let the release publish ([ff00d4b](https://github.com/maxi-tools/maxi-reviewer/commit/ff00d4b79eb5242c021e3146ef0e1e98e489b45e))
+* **harvest:** paginate a commit's files, and test the path that carries the behaviour ([ecf08f0](https://github.com/maxi-tools/maxi-reviewer/commit/ecf08f0a8c21a343e7a2da2fc8a89ed0b3612893))
+* **harvest:** walk commits on every PR, so `accepted` is reachable ([91e37fe](https://github.com/maxi-tools/maxi-reviewer/commit/91e37fed4fb7ffe8482dbfecb4f5a27aee383b22))
+* **profiles:** "accepted" means that file was touched, not that bucket ([b1ccf91](https://github.com/maxi-tools/maxi-reviewer/commit/b1ccf9179ae9d1ea03bd94ce49eabf92fca86404))
+* **profiles:** "accepted" means that file was touched, not that bucket ([8fa212d](https://github.com/maxi-tools/maxi-reviewer/commit/8fa212d029137ea15a93e177bd3ce9654bbf0965))
+* **report:** keep the table valid when no path group qualifies ([4a23848](https://github.com/maxi-tools/maxi-reviewer/commit/4a2384821760dff4d7064997ee65ec9af5cd3c01))
+
 ## [1.1.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.0.0...v1.1.0) (2026-09-18)
 
 

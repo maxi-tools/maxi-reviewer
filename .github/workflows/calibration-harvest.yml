@@ -54,15 +54,19 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      # GraphQL cross-repo search (`org:maxi-tools is:pr ...`) needs
-      # `issues: read` at the org level. The default `GITHUB_TOKEN` here does
-      # not include it; the App token mint below grants it on the calling
-      # repo and the org-wide App installation provides it on every member
-      # repo. (The workflow's `metadata: read` line that used to live here
-      # was a typo — `metadata` is not a permission scope in the
-      # permissions: block; the org-wide read is granted by `issues: read`
-      # on the App token.)
-      issues: read
+      # The org-wide walk uses REST (`repos.listForOrg` → per-repo
+      # `pulls.list`) followed by per-repo GraphQL for review threads
+      # and PR commits. None of those need `issues: read` — `metadata:
+      # read` and `pull_requests: read` are sufficient and are minted
+      # on the App token below. (Earlier drafts requested `issues:
+      # read` because the original implementation used `search(query,
+      # type: ISSUE)` for the cross-org walk, but the `maxi-tools-auth`
+      # App manifest does NOT declare `issues` and the org-wide
+      # installation does not grant it — the request returned HTTP 422
+      # "The permissions requested are not granted to this installation."
+      # The pivoted REST walk replaces the search call and only needs
+      # `metadata: read` on the App token.)
+      metadata: read
       pull-requests: read
     steps:
       - name: Resolve inputs
@@ -87,17 +91,27 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Mint a token with org-wide issues:read
+      - name: Mint a token with org-wide metadata:read
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           # No `repositories:` line — the App token inherits the org-wide
-          # installation's grant, which is what the cross-repo search needs.
+          # installation's grant, which is what the cross-repo REST walk
+          # (`listForOrg` then per-repo `pulls.list`) needs.
           owner: maxi-tools
+          # `metadata: read` is the only permission strictly required for
+          # the REST enumeration (the `listForOrg` endpoint returns the
+          # repos visible to the installation). We also request
+          # `pull_requests: read` so the per-repo `pulls.list` and the
+          # GraphQL `reviewThreads` / `commits` walks return data on
+          # every member repo. We do NOT request `issues: read` because
+          # the `maxi-tools-auth` App manifest does not declare `issues`
+          # and the org-wide installation does not grant it — the token
+          # mint then fails with HTTP 422.
           permission-contents: read
-          permission-issues: read
+          permission-metadata: read
           permission-pull-requests: read
 
       - name: Checkout repository

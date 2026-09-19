@@ -53,7 +53,14 @@ jobs:
     runs-on: [self-hosted, Linux]
     timeout-minutes: 60
     permissions:
-      contents: read
+      # `write`, and ONLY here: the rolling `reviewer-profiles-latest`
+      # release is cut with the native GITHUB_TOKEN, whose write is scoped to
+      # THIS repository. The App token below stays `contents: read` because
+      # its grant is org-wide — `permission-contents: write` on it would hand
+      # every job that reads this workflow push access to all 75 repos in the
+      # org (maxi-reviewer#120, maxi-reviewer High). Repo-scoped write for the
+      # one step that needs it; org-wide read for the search that needs that.
+      contents: write
       # GraphQL cross-repo search (`org:maxi-tools is:pr ...`) needs
       # `issues: read` at the org level. The default `GITHUB_TOKEN` here does
       # not include it; the App token mint below grants it on the calling
@@ -165,7 +172,12 @@ jobs:
       - name: Publish release
         if: ${{ steps.inputs.outputs.dry_run != '1' }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # The NATIVE token, not the App token. `gh release delete/create`
+          # needs contents:write, and this one carries it for this repository
+          # only (see the permissions: block). The App token is minted
+          # org-wide for the cross-repo search and is deliberately read-only
+          # — cutting a release with it would require org-wide write.
+          GH_TOKEN: ${{ github.token }}
           PROFILES_PATH: ${{ steps.run.outputs.profiles-path }}
           CALIBRATION_PATH: ${{ steps.run.outputs.calibration-path }}
         run: |

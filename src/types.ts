@@ -310,6 +310,13 @@ export interface ReviewArtifact {
   sessionId?: string;
 }
 
+/** Merge-time state of a review thread, as observed on the PR. */
+export interface ThreadState {
+  path: string;
+  line: number;
+  resolved: boolean;
+}
+
 export interface ValidationResult<T> {
   ok: boolean;
   value?: T;

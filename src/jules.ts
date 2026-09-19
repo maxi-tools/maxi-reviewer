@@ -113,21 +113,33 @@ export async function runJulesReview(
 }> {
   const customJules = jules.with({ apiKey }) as JulesSessionClient;
 
+  // One wall-clock deadline for the whole review, including session setup,
+  // every SDK await, and every repair/retrieval round below. Each round
+  // previously requested a fresh `timeoutMinutes * 60 * 1000` budget of its
+  // own, so a slow-but-not-hung initial poll plus a repair round could
+  // together run for up to double the configured timeout instead of being
+  // bound by it. session.info() / session.send() were also unbounded, so a
+  // hang there was the same "step 12 hangs with no output" failure as a
+  // hung hydrate()/history().
+  const deadline = Date.now() + timeoutMinutes * 60 * 1000;
+  const remainingBudgetMs = () => Math.max(0, deadline - Date.now());
+
   const { session, afterMessage, resumed } = await startReviewSession(
     customJules,
     prompt,
     source,
-    options.previousSessionId
+    options.previousSessionId,
+    remainingBudgetMs
   );
   core.info(`Jules session: ${session.id}`);
 
   if (!afterMessage) {
-    await waitUntilSessionReady(session);
+    await waitUntilSessionReady(session, remainingBudgetMs);
   }
 
   let reviewMessage = await pollForReview(
     session,
-    timeoutMinutes * 60 * 1000,
+    remainingBudgetMs(),
     afterMessage,
     options.onProgress,
     setupBudgetFor(resumed, options)
@@ -143,7 +155,7 @@ export async function runJulesReview(
       session,
       firstMessage: reviewMessage,
       retrieval: options.retrieval,
-      timeoutMs: timeoutMinutes * 60 * 1000,
+      timeoutMs: remainingBudgetMs(),
       onProgress: options.onProgress,
     });
   }
@@ -163,11 +175,12 @@ export async function runJulesReview(
     );
     await sendSessionMessage(
       session,
-      buildJsonRepairPrompt(reviewMessage, err)
+      buildJsonRepairPrompt(reviewMessage, err),
+      remainingBudgetMs()
     );
     const repairedMessage = await pollForReview(
       session,
-      timeoutMinutes * 60 * 1000,
+      remainingBudgetMs(),
       reviewMessage,
       options.onProgress
     );
@@ -203,11 +216,12 @@ export async function runJulesReview(
     );
     await sendSessionMessage(
       session,
-      buildFormatRepairPrompt(reviewResult, formatIssues)
+      buildFormatRepairPrompt(reviewResult, formatIssues),
+      remainingBudgetMs()
     );
     const revisedMessage = await pollForReview(
       session,
-      timeoutMinutes * 60 * 1000,
+      remainingBudgetMs(),
       latestReviewMessage,
       options.onProgress
     );
@@ -240,7 +254,7 @@ export async function runJulesReview(
     const verified = await requestStructuredValidationRepair({
       session,
       latestReviewMessage,
-      timeoutMinutes,
+      timeoutMs: remainingBudgetMs(),
       verificationContext: options.verificationContext,
       onProgress: options.onProgress,
     });
@@ -299,7 +313,8 @@ async function runRetrievalLoop(input: {
           retrieval.nonce,
           parsed.errors,
           roundsLeft
-        )
+        ),
+        Math.max(0, deadline - Date.now())
       );
       const repaired = await pollForReview(
         session,
@@ -330,7 +345,8 @@ async function runRetrievalLoop(input: {
     }
     await sendSessionMessage(
       session,
-      formatRetrievalResults(retrieval.nonce, results, roundsLeft)
+      formatRetrievalResults(retrieval.nonce, results, roundsLeft),
+      Math.max(0, deadline - Date.now())
     );
     const next = await pollForReview(
       session,
@@ -352,7 +368,8 @@ async function runRetrievalLoop(input: {
     core.info("Retrieval budget exhausted; requesting the final review.");
     await sendSessionMessage(
       session,
-      formatRetrievalResults(retrieval.nonce, [], 0)
+      formatRetrievalResults(retrieval.nonce, [], 0),
+      Math.max(0, deadline - Date.now())
     );
     const finalMessage = await pollForReview(
       session,
@@ -370,7 +387,8 @@ async function startReviewSession(
   prompt: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   source: any,
-  previousSessionId?: string
+  previousSessionId: string | undefined,
+  remainingBudgetMs: () => number
 ): Promise<{
   session: JulesSession;
   afterMessage?: string;
@@ -390,7 +408,7 @@ async function startReviewSession(
       const session = customJules.session(previousSessionId) as JulesSession;
       await session.info();
       const afterMessage = await latestAgentMessage(session);
-      await sendSessionMessage(session, prompt);
+      await sendSessionMessage(session, prompt, remainingBudgetMs());
       return { session, afterMessage, resumed: true };
     } catch (err) {
       core.warning(
@@ -400,7 +418,11 @@ async function startReviewSession(
   }
 
   core.info("Creating Jules review session…");
-  const rawSession = await createReviewSession(customJules, prompt, source);
+  const rawSession = await withTimeout(
+    createReviewSession(customJules, prompt, source),
+    remainingBudgetMs(),
+    "createReviewSession"
+  );
   return { session: rawSession as unknown as JulesSession, resumed: false };
 }
 
@@ -461,7 +483,7 @@ function formatJulesSource(source: any): string {
 async function requestStructuredValidationRepair(input: {
   session: JulesSession;
   latestReviewMessage: string;
-  timeoutMinutes: number;
+  timeoutMs: number;
   verificationContext: VerificationContext;
   onProgress?: (progress: ReviewProgress) => void | Promise<void>;
 }): Promise<{
@@ -487,11 +509,12 @@ async function requestStructuredValidationRepair(input: {
   );
   await sendSessionMessage(
     input.session,
-    buildReviewRepairPrompt(structuredReview, issues)
+    buildReviewRepairPrompt(structuredReview, issues),
+    input.timeoutMs
   );
   const revisedMessage = await pollForReview(
     input.session,
-    input.timeoutMinutes * 60 * 1000,
+    input.timeoutMs,
     input.latestReviewMessage,
     input.onProgress
   );
@@ -623,15 +646,22 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function waitUntilSessionReady(session: {
-  id: string;
-  info: () => Promise<unknown>;
-}): Promise<void> {
+async function waitUntilSessionReady(
+  session: {
+    id: string;
+    info: () => Promise<unknown>;
+  },
+  remainingBudgetMs: () => number
+): Promise<void> {
   const maxAttempts = 20;
   let delay = 2000;
   for (let i = 0; i < maxAttempts; i++) {
+    const remaining = remainingBudgetMs();
+    if (remaining <= 0) {
+      throw new Error("Session did not become ready within timeout.");
+    }
     try {
-      await session.info();
+      await withTimeout(session.info(), remaining, "session.info()");
       core.info(`Session ${session.id} is ready after ${i + 1} attempt(s).`);
       return;
     } catch (err) {
@@ -646,7 +676,13 @@ async function waitUntilSessionReady(session: {
         throw new Error(`Jules session.info() failed: ${msg}`, { cause: err });
       }
       core.info(`Session not yet ready (attempt ${i + 1}/${maxAttempts})…`);
-      await new Promise((r) => setTimeout(r, delay));
+      const sleepMs = Math.min(delay, remainingBudgetMs());
+      if (sleepMs <= 0) {
+        throw new Error("Session did not become ready within timeout.", {
+          cause: err,
+        });
+      }
+      await new Promise((r) => setTimeout(r, sleepMs));
       delay = Math.min(delay * 1.5, 15000);
     }
   }
@@ -781,6 +817,39 @@ function createSetupWatch(
   };
 }
 
+/**
+ * Races `promise` against a timer so a hung network call cannot outlive
+ * `ms`. Without this, `session.info()`/`session.send()`/`session.hydrate()`/
+ * `session.history()` had no timeout of their own and a single hung call
+ * could hold the poll loop (and the runner) well past `deadline`, which is
+ * exactly the "step 12 hangs with no output" failure mode this file exists
+ * to prevent.
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => {
+        reject(new Error(`${label} timed out after ${ms}ms`));
+      },
+      Math.max(0, ms)
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 async function pollForReview(
   session: JulesSession,
   timeoutMs: number,
@@ -811,11 +880,21 @@ async function pollForReview(
     // poll hiccup, so it must not land in a catch that resumes waiting.
     await setupWatch.check(attempt);
     try {
-      await session.hydrate();
+      await withTimeout(
+        session.hydrate(),
+        deadline - Date.now(),
+        "session.hydrate()"
+      );
       let last = "";
-      for await (const a of session.history()) {
-        if (a.type === "agentMessaged") last = a.message;
-      }
+      await withTimeout(
+        (async () => {
+          for await (const a of session.history()) {
+            if (a.type === "agentMessaged") last = a.message;
+          }
+        })(),
+        deadline - Date.now(),
+        "session.history()"
+      );
       if (last) {
         sawAgentOutput = true;
         if (afterMessage !== undefined && last === afterMessage) {
@@ -844,14 +923,17 @@ async function pollForReview(
         core.info(`Review progress callback failed: ${errorMessage(err)}`);
       }
     }
-    await new Promise((r) => setTimeout(r, 20_000));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((r) => setTimeout(r, Math.min(20_000, remaining)));
   }
   return "";
 }
 
 async function sendSessionMessage(
   session: JulesSession,
-  message: string
+  message: string,
+  timeoutMs: number
 ): Promise<void> {
   const send =
     session.prompt || session.message || session.sendMessage || session.send;
@@ -860,7 +942,7 @@ async function sendSessionMessage(
       "Jules session does not expose a same-session message method for review repair."
     );
   }
-  await send.call(session, message);
+  await withTimeout(send.call(session, message), timeoutMs, "session.send()");
 }
 
 export function isAuthError(msg: string): boolean {

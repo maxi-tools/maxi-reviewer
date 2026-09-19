@@ -3,6 +3,7 @@ import {
   validateAnalyzerFinding,
   validateJulesReview,
   validateReviewArtifact,
+  validateThreadState,
 } from "../src/schema.js";
 
 describe("maxi.review.v1 schemas", () => {
@@ -193,6 +194,84 @@ describe("maxi.review.v1 schemas", () => {
     );
   });
 
+  it("rejects review artifacts with malformed legacy newComments elements", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: {
+        summary: "Review summary.",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        newComments: [
+          null,
+          {
+            file: "src/a.ts",
+            severity: "Bogus",
+            confidence: "High",
+            message: "Missing line.",
+          },
+        ],
+      },
+      validationErrors: [],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "validatedReview.newComments[0] must be an object"
+    );
+    expect(result.errors.join("\n")).toContain(
+      "validatedReview.newComments[1].line must be a positive integer"
+    );
+    expect(result.errors.join("\n")).toContain("severity must be one of");
+  });
+
+  it("accepts a legacy review with well-formed newComments elements", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: {
+        summary: "Review summary.",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        newComments: [
+          {
+            file: "src/a.ts",
+            line: 3,
+            severity: "Warning",
+            confidence: "High",
+            message: "Use this.",
+            promptForAgents: "",
+          },
+        ],
+      },
+      validationErrors: [],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("rejects review artifacts without harvest retention metadata", () => {
     const result = validateReviewArtifact({
       schema: "maxi.review.v1.review-artifact",
@@ -240,5 +319,22 @@ describe("maxi.review.v1 schemas", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.join("\n")).toContain("outcomeSchema");
+  });
+
+  it("accepts a thread observation with an empty path and line 0", () => {
+    const result = validateThreadState({
+      path: "",
+      line: 0,
+      resolved: false,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a null or malformed thread observation", () => {
+    expect(validateThreadState(null).ok).toBe(false);
+    expect(validateThreadState({ path: "src/a.ts", line: 1 }).ok).toBe(false);
+    expect(
+      validateThreadState({ path: "src/a.ts", line: 1.5, resolved: true }).ok
+    ).toBe(false);
   });
 });

@@ -5,79 +5,136 @@ import {
   aggregateCalibration,
   lowPrecisionRules,
   buildCalibrationReport,
+  ingestCalibration,
+  pathGroupOf,
   EmittedFinding,
 } from "../src/calibration.js";
-import { ReviewArtifact } from "../src/types.js";
+import {
+  AnalyzerFinding,
+  JulesReview,
+  JulesReviewComment,
+  ReviewArtifact,
+  ReviewComment,
+  ReviewResult,
+} from "../src/types.js";
+
+function analyzerFinding(
+  overrides: Partial<AnalyzerFinding> & Pick<AnalyzerFinding, "id">
+): AnalyzerFinding {
+  return {
+    schema: "maxi.review.v1.analyzer-finding",
+    tool: "opengrep",
+    ruleId: "r1",
+    severity: "warning",
+    confidence: "high",
+    message: "x",
+    path: "src/a.ts",
+    startLine: 4,
+    endLine: 4,
+    ...overrides,
+  } satisfies AnalyzerFinding;
+}
+
+function julesComment(
+  overrides: Partial<JulesReviewComment> &
+    Pick<JulesReviewComment, "id" | "path" | "line">
+): JulesReviewComment {
+  return {
+    severity: "Warning",
+    confidence: "High",
+    message: "m",
+    ...overrides,
+  } satisfies JulesReviewComment;
+}
+
+function legacyComment(
+  overrides: Partial<ReviewComment> & Pick<ReviewComment, "file" | "line">
+): ReviewComment {
+  return {
+    severity: "Info",
+    confidence: "Low",
+    message: "m",
+    promptForAgents: "p",
+    ...overrides,
+  } satisfies ReviewComment;
+}
+
+function julesReview(comments: JulesReviewComment[]): JulesReview {
+  return {
+    schema: "maxi.review.v1.jules-review",
+    summary: "s",
+    verdict: "comment",
+    resolvedCommentIds: [],
+    comments,
+  } satisfies JulesReview;
+}
+
+function legacyReview(newComments: ReviewComment[]): ReviewResult {
+  return {
+    summary: "s",
+    verdict: "comment",
+    resolvedCommentIds: [],
+    newComments,
+  } satisfies ReviewResult;
+}
 
 function artifact(
-  validatedReview: unknown,
-  analyzerFindings: unknown[] = [],
+  validatedReview: JulesReview | ReviewResult | null,
+  analyzerFindings: AnalyzerFinding[] = [],
   legacy = false
 ): ReviewArtifact {
-  return {
-    schema: "maxi.review.v1.review-artifact",
+  const base = {
+    schema: "maxi.review.v1.review-artifact" as const,
     createdAt: "2026-06-28T00:00:00.000Z",
     retention: {
-      harvestableAfterMerge: true,
-      channels: ["github-actions-artifact", "github-pr-comment"],
-      commentMarker: "<!-- maxi-review artifact -->",
+      harvestableAfterMerge: true as const,
+      channels: ["github-actions-artifact", "github-pr-comment"] as [
+        "github-actions-artifact",
+        "github-pr-comment",
+      ],
+      commentMarker: "<!-- maxi-review artifact -->" as const,
     },
     repoFullName: "o/r",
     prNumber: 1,
     headSha: "h",
     baseSha: "b",
     analyzerFindings,
-    rawJulesResponses: [],
+    rawJulesResponses: [] as string[],
     validatedReview,
-    validationErrors: [],
-    ...(legacy
-      ? {}
-      : {
-          outcomeSchema: "maxi.review.v1.review-outcome",
-          outcome: "REVIEWED_WITH_FINDINGS",
-          reviewOutputChars: 1,
-          runIdentity: {
-            workflowRunId: 101,
-            workflowRunAttempt: 1,
-            job: "review",
-          },
-        }),
-  } as unknown as ReviewArtifact;
+    validationErrors: [] as string[],
+  };
+  if (legacy) {
+    return base satisfies ReviewArtifact;
+  }
+  return {
+    ...base,
+    outcomeSchema: "maxi.review.v1.review-outcome" as const,
+    outcome: "REVIEWED_WITH_FINDINGS" as const,
+    reviewOutputChars: 1,
+    runIdentity: {
+      workflowRunId: 101,
+      workflowRunAttempt: 1,
+      job: "review",
+    },
+  } satisfies ReviewArtifact;
 }
 
 describe("extractEmittedFindings", () => {
   it("attributes a rule from sourceFindingIds via analyzer findings", () => {
     const a = artifact(
-      {
-        schema: "maxi.review.v1.jules-review",
-        summary: "s",
-        verdict: "comment",
-        resolvedCommentIds: [],
-        comments: [
-          {
-            id: "c1",
-            path: "src/a.ts",
-            line: 4,
-            severity: "Warning",
-            confidence: "High",
-            message: "m",
-            sourceFindingIds: ["f1"],
-          },
-        ],
-      },
-      [
-        {
-          schema: "maxi.review.v1.analyzer-finding",
-          id: "f1",
-          tool: "opengrep",
-          ruleId: "ts.no-floating-promises",
-          severity: "warning",
-          confidence: "high",
-          message: "x",
+      julesReview([
+        julesComment({
+          id: "c1",
           path: "src/a.ts",
-          startLine: 4,
-          endLine: 4,
-        },
+          line: 4,
+          sourceFindingIds: ["f1"],
+        }),
+      ]),
+      [
+        analyzerFinding({
+          id: "f1",
+          ruleId: "ts.no-floating-promises",
+        }),
       ]
     );
     const found = extractEmittedFindings(a);
@@ -88,44 +145,87 @@ describe("extractEmittedFindings", () => {
   });
 
   it("falls back to code-review when no analyzer source is cited", () => {
-    const a = artifact({
-      schema: "maxi.review.v1.jules-review",
-      summary: "s",
-      verdict: "comment",
-      resolvedCommentIds: [],
-      comments: [
-        {
-          id: "c1",
-          path: "src/b.ts",
-          line: 2,
-          severity: "High",
-          confidence: "High",
-          message: "m",
-        },
-      ],
-    });
+    const a = artifact(
+      julesReview([julesComment({ id: "c1", path: "src/b.ts", line: 2 })])
+    );
     expect(extractEmittedFindings(a)[0].rule).toBe("code-review");
   });
 
   it("reads the legacy ReviewResult newComments shape", () => {
-    const a = artifact({
-      summary: "s",
-      verdict: "comment",
-      resolvedCommentIds: [],
-      newComments: [
-        {
-          file: "src/c.ts",
-          line: 9,
-          severity: "Info",
-          confidence: "Low",
-          message: "m",
-          promptForAgents: "p",
-        },
-      ],
-    });
+    const a = artifact(
+      legacyReview([legacyComment({ file: "src/c.ts", line: 9 })])
+    );
     const found = extractEmittedFindings(a);
     expect(found[0].path).toBe("src/c.ts");
     expect(found[0].rule).toBe("code-review");
+  });
+
+  it("returns no findings when the artifact is missing", () => {
+    expect(extractEmittedFindings(undefined)).toEqual([]);
+    expect(extractEmittedFindings(null)).toEqual([]);
+  });
+
+  it("skips a null analyzer finding instead of throwing", () => {
+    const found = extractEmittedFindings({
+      analyzerFindings: [
+        null,
+        analyzerFinding({
+          id: "f1",
+          ruleId: "ts.no-floating-promises",
+        }),
+      ],
+      validatedReview: julesReview([
+        julesComment({
+          id: "c1",
+          path: "src/a.ts",
+          line: 4,
+          sourceFindingIds: ["f1"],
+        }),
+      ]),
+    });
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("ts.no-floating-promises");
+  });
+
+  it("skips a null legacy newComments element instead of throwing", () => {
+    const found = extractEmittedFindings({
+      analyzerFindings: [],
+      validatedReview: {
+        summary: "s",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        newComments: [null, legacyComment({ file: "src/c.ts", line: 9 })],
+      },
+    });
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toBe("src/c.ts");
+  });
+
+  it("skips a null structured comments element instead of throwing", () => {
+    const found = extractEmittedFindings({
+      analyzerFindings: [],
+      validatedReview: {
+        schema: "maxi.review.v1.jules-review",
+        summary: "s",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        comments: [null, julesComment({ id: "c1", path: "src/d.ts", line: 2 })],
+      },
+    });
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toBe("src/d.ts");
+  });
+});
+
+describe("pathGroupOf", () => {
+  it.each([
+    ["src/a.ts", "src"],
+    ["/src/a.ts", "src"],
+    ["//src/a.ts", "src"],
+    ["a.ts", "a.ts"],
+    ["", "(unknown)"],
+  ])("groups %s as %s", (input, expected) => {
+    expect(pathGroupOf(input)).toBe(expected);
   });
 });
 
@@ -143,6 +243,21 @@ describe("correlateOutcomes", () => {
     ]);
     expect(out[0].outcome).toBe("accepted");
     expect(out[1].outcome).toBe("unaddressed");
+    expect(out[2].outcome).toBe("dismissed");
+  });
+
+  it("treats missing findings or threads as empty instead of throwing", () => {
+    expect(correlateOutcomes(undefined, undefined)).toEqual([]);
+    expect(correlateOutcomes(null, null)).toEqual([]);
+  });
+
+  it("skips a null thread element instead of throwing", () => {
+    const out = correlateOutcomes(findings, [
+      null,
+      { path: "src/a.ts", line: 4, resolved: true },
+    ]);
+    expect(out[0].outcome).toBe("accepted");
+    expect(out[1].outcome).toBe("dismissed");
     expect(out[2].outcome).toBe("dismissed");
   });
 });
@@ -222,22 +337,9 @@ describe("aggregateCalibration and lowPrecisionRules", () => {
 
 describe("buildCalibrationReport", () => {
   it("combines artifacts and thread states end to end", () => {
-    const a = artifact({
-      schema: "maxi.review.v1.jules-review",
-      summary: "s",
-      verdict: "comment",
-      resolvedCommentIds: [],
-      comments: [
-        {
-          id: "c1",
-          path: "src/a.ts",
-          line: 4,
-          severity: "Warning",
-          confidence: "High",
-          message: "m",
-        },
-      ],
-    });
+    const a = artifact(
+      julesReview([julesComment({ id: "c1", path: "src/a.ts", line: 4 })])
+    );
     const report = buildCalibrationReport([
       { artifact: a, threads: [{ path: "src/a.ts", line: 4, resolved: true }] },
     ]);
@@ -248,22 +350,7 @@ describe("buildCalibrationReport", () => {
 
   it("excludes legacy artifacts instead of inferring acceptance", () => {
     const legacy = artifact(
-      {
-        schema: "maxi.review.v1.jules-review",
-        summary: "s",
-        verdict: "comment",
-        resolvedCommentIds: [],
-        comments: [
-          {
-            id: "c1",
-            path: "src/a.ts",
-            line: 4,
-            severity: "Warning",
-            confidence: "High",
-            message: "m",
-          },
-        ],
-      },
+      julesReview([julesComment({ id: "c1", path: "src/a.ts", line: 4 })]),
       [],
       true
     );
@@ -278,5 +365,85 @@ describe("buildCalibrationReport", () => {
     expect(report.byRule).toEqual([]);
     expect(report.bySeverity).toEqual([]);
     expect(report.byPath).toEqual([]);
+  });
+});
+
+describe("ingestCalibration", () => {
+  const validItem = {
+    artifact: artifact(
+      julesReview([julesComment({ id: "c1", path: "src/a.ts", line: 4 })])
+    ),
+    threads: [{ path: "src/a.ts", line: 4, resolved: true }],
+  };
+
+  it("excludes a null item and a missing artifact with a visible count", () => {
+    const { report, excluded } = ingestCalibration([
+      null,
+      { artifact: null, threads: [] },
+      validItem,
+    ]);
+    expect(excluded).toHaveLength(2);
+    expect(excluded[0]).toEqual({
+      index: 0,
+      reason: "item must be an object",
+    });
+    expect(excluded[1]).toEqual({
+      index: 1,
+      reason: "artifact is missing",
+    });
+    expect(report.byRule.find((g) => g.key === "code-review")?.accepted).toBe(
+      1
+    );
+  });
+
+  it("excludes a null thread element and still correlates the rest", () => {
+    const { report, excluded } = ingestCalibration([
+      {
+        artifact: validItem.artifact,
+        threads: [null, { path: "src/a.ts", line: 4, resolved: true }],
+      },
+    ]);
+    expect(excluded).toHaveLength(1);
+    expect(excluded[0].reason).toMatch(/threads\[0\] is invalid/);
+    expect(report.byRule.find((g) => g.key === "code-review")?.accepted).toBe(
+      1
+    );
+  });
+
+  it("excludes an artifact missing a required field", () => {
+    const incomplete = { ...validItem.artifact };
+    delete (incomplete as { createdAt?: string }).createdAt;
+    const { report, excluded } = ingestCalibration([
+      { artifact: incomplete, threads: validItem.threads },
+    ]);
+    expect(excluded).toHaveLength(1);
+    expect(excluded[0].reason).toMatch(/createdAt/);
+    expect(report.byRule).toEqual([]);
+  });
+
+  it("excludes an artifact with a null legacy newComments element", () => {
+    const { report, excluded } = ingestCalibration([
+      {
+        artifact: {
+          ...validItem.artifact,
+          validatedReview: {
+            summary: "s",
+            verdict: "comment",
+            resolvedCommentIds: [],
+            newComments: [null, legacyComment({ file: "src/c.ts", line: 9 })],
+          },
+        },
+        threads: [],
+      },
+    ]);
+    expect(excluded.length).toBeGreaterThan(0);
+    expect(excluded.some((e) => /newComments/.test(e.reason))).toBe(true);
+    expect(report.byRule).toEqual([]);
+  });
+
+  it("returns an empty report when items is not an array", () => {
+    const { report, excluded } = ingestCalibration(undefined);
+    expect(report.byRule).toEqual([]);
+    expect(excluded).toEqual([{ index: -1, reason: "items must be an array" }]);
   });
 });

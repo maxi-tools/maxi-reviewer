@@ -1,0 +1,21 @@
+dist/calibration-harvest/index.js
+  s_b1f4d8d95745a7::t_00b690bd531edd 58033,71727-71869,71893,71933-71949
+dist/calibration-harvest/index.js.map
+  s_b1f4d8d95745a7::t_38fff3d5512392 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83e4a4dc67698b59241b34f8dc2974c996c48b6a",
+  "prompts": {},
+  "sessions": {
+    "s_b1f4d8d95745a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd3649f8-1e62-42b5-9f11-9c0187233ba8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

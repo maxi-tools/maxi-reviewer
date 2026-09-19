@@ -1,0 +1,14 @@
+tests/action-metadata.test.ts
+  h_cebe5b6d461c32 69-79,217-224,226-228,247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9f51d3cf6b109f1fbf142942e88eb703ab02299",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

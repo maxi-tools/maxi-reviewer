@@ -105,11 +105,21 @@ jobs:
     # what is being suppressed. maxi-config's pr_review_gate.py therefore
     # bypasses the same branch prefix, and MUST be deployed first, or every
     # fan-out PR is gate-red with no push that can fix it.
+    # `ci/fanout-pin` is the SECOND producer on these consumers:
+    # maxi-tools/ci's fanout-ci-pin.yml advances the pinned `uses:` sha, one
+    # branch per consumer. Same App, and suppressed here for the same reason
+    # -- nine reviewers reading a one-line sha change 49 times per tip. It
+    # was not enrolled when it shipped, and the measured consequence was 49
+    # PRs no reviewer would touch and no gate would clear
+    # (maxi-config#784). Both halves still required, together.
     if: >
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
+        (
+          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
+          github.head_ref != 'ci/fanout-pin'
+        ) ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
       ) &&
       (
@@ -550,7 +560,10 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
+        (
+          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
+          github.head_ref != 'ci/fanout-pin'
+        ) ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
       ) &&
       (

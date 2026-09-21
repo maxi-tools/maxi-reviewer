@@ -96,8 +96,20 @@ on:
 # context back to pending") -- that exists to compensate for stacking rather
 # than prevent it. Leave it in place: it is now belt-and-braces, and removing it
 # is a separate change that should be measured on its own.
+#
+# KEYED ON event_name AS WELL AS THE PR NUMBER. Without it all three triggers
+# above share one lane, so a `pull_request_review_comment` run cancels the
+# in-flight `pull_request` run -- the one whose check-runs a merge tool scores.
+# Nothing re-triggers that cancelled run, and re-running it joins the same lane
+# and cancels the rerun, so the only recovery is a new head SHA. Measured on
+# maxi-ml 2026-09-20: four PRs (#2235, #2259, #2263, #2264) code-green and
+# unmergeable, each showing cancelled `review-gate / matrix.check`; on #2247 it
+# took an empty commit to clear. Splitting by event keeps the collapse that
+# matters -- eighteen comments still land in one `pull_request_review_comment`
+# lane and still supersede each other -- while a review comment can no longer
+# kill a code run.
 concurrency:
-  group: review-gate-${{ github.event.pull_request.number }}
+  group: review-gate-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions: {}

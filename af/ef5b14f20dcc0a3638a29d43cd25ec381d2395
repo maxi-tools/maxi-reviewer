@@ -1,0 +1,20 @@
+dist/index.js
+  h_cebe5b6d461c32 70747
+dist/index.js.map
+  h_cebe5b6d461c32 1
+src/jules.ts
+  h_cebe5b6d461c32 421-425
+tests/jules.test.ts
+  h_cebe5b6d461c32 1039-1063
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afef5b14f20dcc0a3638a29d43cd25ec381d2395",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

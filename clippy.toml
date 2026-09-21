@@ -1,3 +1,4 @@
+# maxi-config-owned Clippy configuration.
 # Canonical Clippy configuration for the maxi-tools ecosystem.
 # Source of truth: maxi-config/clippy.toml
 #
@@ -5,6 +6,7 @@
 # allow) live in hooks/clippy-strict-lints.sh, which both the pre-push hook and
 # workflows/clippy.yml source so local and CI enforcement can never drift.
 # See the "Strict Rust Lint Policy" section of README.md for the full policy.
+# Fanned out by scripts/sync-maxi-review.sh; edit it there, not here.
 
 # MSRV is intentionally NOT pinned here. With no `msrv`, Clippy reads each repo's
 # `rust-version` from its own Cargo.toml, so MSRV-gated lints fit every

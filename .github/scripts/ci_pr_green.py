@@ -89,7 +89,7 @@ NO_VERDICT_CONCLUSIONS = frozenset({"cancelled", "stale"})
 # here; "skipped by configuration" and friends are real, deliberate passes and
 # are not listed. Add a pattern when a bot is OBSERVED doing this, not when one
 # might.
-HOLLOW_SUCCESS = re.compile(r"rate.?limit|quota exceeded", re.I)
+HOLLOW_SUCCESS = re.compile(r"rate.?limit|quota exceeded", re.IGNORECASE)
 
 # A non-success whose OWN DESCRIPTION says it did not do the work.
 #
@@ -119,7 +119,7 @@ HOLLOW_SUCCESS = re.compile(r"rate.?limit|quota exceeded", re.I)
 HOLLOW_NOT_RUN = re.compile(
     r"did.?not.?run|out.?of.?minutes|quota.?exceeded|"
     r"could.?not.?start|analysis.?timeout",
-    re.I,
+    re.IGNORECASE,
 )
 
 
@@ -139,9 +139,21 @@ def discover_gate_stamp():
     if not maxi:
         return None
     try:
-        proc = subprocess.run(  # nosec B603 -- subprocess invocation uses a literal argv, no shell
-            ["/usr/bin/env", "maxi", "--version"],
-            capture_output=True, text=True, timeout=4
+        # `maxi`, not `["/usr/bin/env", "maxi"]`. The path was already
+        # resolved by shutil.which() above and is REPORTED as
+        # `stamp["path"]`; going back through PATH would run whatever a
+        # second lookup finds, so the version reported could describe a
+        # different binary from the path reported. That is the exact defect
+        # class this file exists to catch -- a measurement whose provenance
+        # does not match what it claims -- so the resolved absolute path is
+        # what gets executed. (GhTransport.get keeps /usr/bin/env for its own
+        # stated reason: there the binary is deliberately NOT pinned.)
+        proc = subprocess.run(  # nosec B603 -- absolute path from shutil.which, literal argv, no shell
+            [maxi, "--version"],
+            capture_output=True, text=True, timeout=4,
+            # Explicit: the returncode is inspected two lines down and a
+            # non-zero one means "no stamp available", not an error to raise.
+            check=False,
         )
         if proc.returncode != 0:
             return None

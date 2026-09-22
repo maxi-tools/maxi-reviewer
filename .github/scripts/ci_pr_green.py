@@ -373,8 +373,8 @@ def judge(runs, checks, statuses):
     skip_check_ids = set()
     for check in keep_checks:
         conclusion = check.get("conclusion")
-        if conclusion == "success" or conclusion in OK_CONCLUSIONS \
-                or conclusion in NO_VERDICT_CONCLUSIONS:
+        if (conclusion in OK_CONCLUSIONS
+                or conclusion in NO_VERDICT_CONCLUSIONS):
             continue  # HOLLOW_SUCCESS is handled below in its own loop.
         title = ((check.get("output") or {}).get("title")) or ""
         if HOLLOW_NOT_RUN.search(title):

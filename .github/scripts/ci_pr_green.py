@@ -92,6 +92,45 @@ NO_VERDICT_CONCLUSIONS = frozenset({"cancelled", "stale"})
 HOLLOW_SUCCESS = re.compile(r"rate.?limit|quota exceeded", re.I)
 
 
+def discover_gate_stamp():
+    """Return the build stamp of the `maxi` binary on PATH, if any.
+
+    The stamp is the same format the release pipeline embeds (see
+    release/verify_provenance.py STAMP and the version_long that the build
+    injects as MAXI_VERSION_LONG) and that `maxi --version` / `maxi provenance`
+    print. By surfacing it here, a stale gate binary becomes a readable fact
+    in the judge output (especially --json) instead of an invisible cause of
+    mysterious refusals or overrides.
+
+    This reuses the existing stamp mechanism rather than adding a second one.
+    """
+    maxi = shutil.which("maxi")
+    if not maxi:
+        return None
+    try:
+        proc = subprocess.run(  # nosec B603 -- subprocess invocation uses a literal argv, no shell
+            ["/usr/bin/env", "maxi", "--version"],
+            capture_output=True, text=True, timeout=4
+        )
+        if proc.returncode != 0:
+            return None
+        text = (proc.stdout or "") + (proc.stderr or "")
+        m = re.search(
+            r"(\d+\.\d+\.\d+ \(build \d+, ([0-9a-f]{7,40}), (\d{4}-\d{2}-\d{2})\))",
+            text,
+        )
+        if m:
+            return {
+                "path": maxi,
+                "version_long": m.group(1),
+                "sha": m.group(2),
+                "date": m.group(3),
+            }
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
 class GhTransport:
     """Fetch through `gh api`.
 
@@ -367,6 +406,9 @@ def render(report, as_json):
         return
     print(f"{report['verdict']}  {report['sha'][:9]}  "
           f"({report['considered']} live checks judged)")
+    if report.get("gate_binary"):
+        gb = report["gate_binary"]
+        print(f"gate binary: {gb['version_long']}  ({gb['path']})")
     for line in report["failures"]:
         print(f"  FAILING  {line}")
     for line in report["pending"]:
@@ -419,6 +461,7 @@ def main(argv=None):
             sha,
         )
     verdict = verdict_of(failures, pending, stale)
+    gate_bin = discover_gate_stamp()
     report = {
         "verdict": verdict,
         "sha": sha,
@@ -428,6 +471,12 @@ def main(argv=None):
         "stale": stale,
         # Advisory. Deliberately not part of the verdict -- see HOLLOW_SUCCESS.
         "hollow": hollow,
+        # Build stamp of the maxi binary discoverable on PATH (if any).
+        # This is how "the merge gate runs an 8-hour-old binary" becomes
+        # visible to callers and to automation. The format is the one
+        # produced by the apps-latest pipeline (MAXI_VERSION / MAXI_BUILD_SHA
+        # injected at build, scanned at publish by verify_provenance.py).
+        "gate_binary": gate_bin,
     }
     render(report, args.as_json)
     return 0 if verdict == "GREEN" else 1

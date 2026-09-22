@@ -210,6 +210,155 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(len(hollow), 1)
         self.assertIn("some-bot", hollow[0])
 
+    def test_a_qlty_out_of_minutes_error_is_noticed_but_still_green(self):
+        """The qlty wedge: state=error + 'did not run' is a quota outage, not a finding.
+
+        On maxi-sandbox#140 (2026-09-22) the org's qlty minutes ran out, so
+        qlty posted `state: error` with `description: "Qlty did not run
+        because you are out of minutes."` on every PR in the org. The merge
+        gate treated the quota outage as a code defect and every PR was
+        unmergeable until the minutes topped up. The fix: this is a
+        did-not-run claim on a non-success state, which gets the same
+        NOTICE-bucket, GREEN-passing treatment as the rate-limited success
+        above.
+
+        Deliberately narrow: a real qlty finding has a real summary attached
+        and the regex must not match it, otherwise the gate ignores qlty
+        errors wholesale. Pinned by the next two tests.
+        """
+        statuses = [{"context": "qlty check", "state": "error",
+                     "description": "Qlty did not run because you are out of minutes."}]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual((failures, pending, stale), ([], [], []),
+                         "an out-of-minutes error must not withhold GREEN")
+        self.assertEqual(len(hollow), 1)
+        self.assertIn("qlty check", hollow[0])
+        self.assertIn("did not run", hollow[0])
+        self.assertEqual(
+            mod.verdict_of(failures, pending, stale), "GREEN",
+            "a quota exhaustion is not the author's doing; failing the PR "
+            "would wedge every merge until the minutes top up")
+
+    def test_a_qlty_check_run_out_of_minutes_is_noticed_but_still_green(self):
+        """Same shape, different channel: a qlty CHECK-RUN with conclusion=error.
+
+        qlty Cloud posts both -- a commit STATUS and a check RUN -- and the
+        same description ("did not run because ... minutes") can land on
+        either. The check-run path carries prose in `output.title` rather
+        than in `state.description`, so it is the symmetric case: same
+        exclusion, same NOTICE bucket.
+        """
+        row = check("qlty check", suite=1, started=T0, conclusion="error")
+        row["output"] = {"title": "Qlty did not run because you are out of minutes.",
+                         "summary": ""}
+        failures, pending, stale, hollow, _ = mod.judge([], [row], [])
+        self.assertEqual((failures, pending, stale), ([], [], []),
+                         "the did-not-run conclusion=error must not withhold GREEN")
+        self.assertEqual(len(hollow), 1)
+        self.assertIn("qlty check", hollow[0])
+        self.assertIn("did not run", hollow[0])
+        self.assertEqual(mod.verdict_of(failures, pending, stale), "GREEN")
+
+    def test_a_qlty_finding_with_no_did_not_run_phrasing_still_fails(self):
+        """The narrow pattern must not launder real findings.
+
+        Acceptance criterion 3 of t_409d42df: a qlty that ran and objected is
+        not the same as one that never started, and collapsing those is how
+        this class of bug gets made in the first place. A real qlty finding
+        has a real summary (issues, smells, complexity), not "did not run".
+        The regex must not match it.
+        """
+        statuses = [{"context": "qlty check", "state": "error",
+                     "description": "Found 3 issues: complex function on line 42; "
+                                    "duplicated block in src/foo.rs."}]
+        failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(failures), 1,
+                         "a real qlty finding must still be a failure")
+        self.assertEqual(hollow, [], "the description has no did-not-run phrase")
+        self.assertEqual(mod.verdict_of(failures, _p, _stale), "NOT_GREEN")
+
+    def test_a_codacy_internal_error_with_no_did_not_run_phrasing_still_fails(self):
+        """A non-success description that is NOT a did-not-run claim still fails.
+
+        HOLLOW_NOT_RUN is deliberately narrow. A bot that posts state=error
+        for any other reason -- network, auth, internal -- stays a failure.
+        The pattern matches what the bot SAYS, not just the fact that the
+        state is non-success.
+        """
+        statuses = [{"context": "Codacy Static Code Analysis", "state": "error",
+                     "description": "Internal server error"}]
+        failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(hollow, [])
+        self.assertEqual(mod.verdict_of(failures, _p, _stale), "NOT_GREEN")
+
+    def test_a_hollow_not_run_alone_is_GREEN(self):
+        """The verdict, not the buckets. Verifies hollow-not-run does not
+        withhold GREEN, by way of `verdict_of` -- the same property M3
+        exposed for the success-side hollow.
+        """
+        statuses = [{"context": "qlty check", "state": "error",
+                     "description": "Qlty did not run because you are out of minutes."}]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(hollow), 1, "precondition: this row IS hollow")
+        self.assertEqual(
+            mod.verdict_of(failures, pending, stale), "GREEN",
+            "a quota outage must not block the merge; the bot's quota is "
+            "not the author's doing")
+
+    def test_a_real_failure_beside_a_hollow_not_run_is_NOT_GREEN(self):
+        """The hollow must not become a way to launder a failure either.
+
+        Same shape as the success-side hollow test: a real red beside the
+        hollow keeps the verdict NOT_GREEN. Otherwise a hollow exclusion
+        would let any PR with a quota outage slip a real failure past the
+        gate.
+        """
+        statuses = [
+            {"context": "qlty check", "state": "error",
+             "description": "Qlty did not run because you are out of minutes."},
+            {"context": "review-gate/threads", "state": "failure"},
+        ]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(hollow), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(mod.verdict_of(failures, pending, stale), "NOT_GREEN")
+
+    def test_a_qlty_analysis_timeout_is_hollow_not_run(self):
+        """The qlty Cloud race the troubleshooting docs name.
+
+        "Pull request analysis starts, but Qlty hasn't posted a conclusive
+        status back to GitHub within 15 minutes. At that point, Qlty will
+        mark ... as `error`." That is still a did-not-run claim delivered via
+        state=error -- an analysis that began and never completed -- and
+        belongs in `hollow` for the same reason an explicit
+        out-of-minutes error does.
+        """
+        statuses = [{"context": "qlty check", "state": "error",
+                     "description": "Analysis timeout: 15-minute window expired."}]
+        failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(failures, [])
+        self.assertEqual(len(hollow), 1)
+        self.assertIn("Analysis timeout", hollow[0])
+
+    def test_a_hollow_not_run_does_not_also_appear_in_failures(self):
+        """The pre-pass guarantees a row lands in exactly one bucket.
+
+        The did-not-run check-run above would otherwise be added to BOTH
+        `failures` (by the bucketing loop) and `hollow` (by the pre-pass),
+        which still withholds GREEN. The pre-pass's `skip_check_ids` is what
+        makes the bucketing loop skip it. If this test starts failing the
+        pre-pass's skip set has drifted.
+        """
+        row = check("qlty check", suite=1, started=T0, conclusion="error")
+        row["output"] = {"title": "Qlty did not run because you are out of minutes.",
+                         "summary": ""}
+        failures, _p, _stale, hollow, _ = mod.judge([], [row], [])
+        self.assertEqual(failures, [],
+                         "the pre-pass must skip the row in the bucketing loop")
+        self.assertEqual(len(hollow), 1)
+        self.assertEqual(mod.verdict_of(failures, _p, _stale), "GREEN")
+
     def test_commit_status_failure_is_reported(self):
         statuses = [{"context": "review-gate/threads", "state": "failure"}]
         failures, _p, _stale, _hollow, _ = mod.judge([], [], statuses)

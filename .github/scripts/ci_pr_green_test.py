@@ -8,7 +8,10 @@ workflow run.
 
 # maxi-config-owned PR greenness judge tests.
 
+import contextlib
 import importlib.util
+import io
+import json
 import pathlib
 import unittest
 
@@ -18,6 +21,12 @@ SCRIPT = pathlib.Path(__file__).with_name("ci_pr_green.py")
 # one copy would quietly change which group a row lands in.
 GATE = "Review Gate"
 CI = "CI"
+# The fake resolved paths the gate-stamp test asserts on. Named because the
+# whole point of that test is that the binary EXECUTED and the path REPORTED
+# are the same string; spelling it three times invites them to drift apart,
+# which is the very defect being guarded.
+FAKE_MAXI = "/opt/fake/maxi"
+FAKE_GH = "/opt/fake/gh"
 T0 = "2026-09-11T17:00:00Z"
 T1 = "2026-09-11T18:00:00Z"
 
@@ -689,38 +698,95 @@ class GateBinaryTest(unittest.TestCase):
 
     def test_gate_binary_appears_in_json_report(self):
         # The point of the change: a caller (or a later Rust port) can see
-        # exactly which binary produced the verdict.
+        # exactly which binary produced the verdict. So this asserts on the
+        # JSON REPORT, which is the thing the name promises.
+        #
+        # It did not, until now. The old body called mod.main(...) and
+        # asserted NOTHING about it, then asserted on discover_gate_stamp()
+        # directly. That main() call could never have reached the stamp:
+        # fake_which returned None for "gh", so GhTransport.__init__ raised
+        # "gh is not on PATH", main caught it and returned 2, and the only
+        # thing printed was {"verdict": "UNKNOWN", ...} -- no gate_binary key
+        # in it at all. Measured: main() returned 2 and the sole PATH lookup
+        # made was "gh". A test named for the JSON report never once looked
+        # at the JSON report, which is exactly the "absence reads as success"
+        # shape this whole script exists to catch, turned on the script.
         orig_which = mod.shutil.which
         orig_run = mod.subprocess.run
+        orig_transport = mod.GhTransport
 
-        def fake_which(name):
-            return "/opt/fake/maxi" if name == "maxi" else None
+        class FakeTransport:
+            """Enough of the API for main() to reach a real verdict.
+
+            One successful status and no runs/checks: `considered` must be
+            non-zero or main short-circuits to UNKNOWN via report_unknown,
+            which does not carry gate_binary either.
+            """
+
+            def __init__(self, binary=None):
+                # Intentionally empty: the real __init__ resolves `gh` on
+                # PATH and raises when it is absent, which is the exact
+                # behaviour this double exists to avoid.
+                pass
+
+            # `key`, `params` and `path` are unused in places below, and stay
+            # in the signatures on purpose: a double that does not mirror the
+            # real call shape stops catching the caller passing the wrong
+            # thing, which is most of what a double is for here.
+            def items(self, path, key, params=None):
+                if path.endswith("/statuses"):
+                    return [{"context": CI, "state": "success",
+                             "description": ""}]
+                return []
+
+            def one(self, path, params=None):
+                return {}
 
         class FakeProc:
             returncode = 0
             stdout = "2.0.0 (build 42, deadbeef1234567, 2026-09-21)\n"
             stderr = ""
 
+        argvs = []
+
         def fake_run(*a, **k):
+            argvs.append(a[0] if a else k.get("args"))
             return FakeProc()
 
-        mod.shutil.which = fake_which
+        mod.shutil.which = lambda name: (
+            FAKE_MAXI if name == "maxi" else FAKE_GH
+        )
         mod.subprocess.run = fake_run
+        mod.GhTransport = FakeTransport
+        buf = io.StringIO()
         try:
-            code = mod.main(["--repo", "o/n", "--sha", "abc", "--json"])
-            # main prints and returns; we cannot easily capture stdout here
-            # without monkeypatching print, but we can at least call the
-            # internal and assert the shape is present.
-            stamp = mod.discover_gate_stamp()
-            self.assertIsNotNone(stamp)
-            self.assertEqual(stamp["sha"], "deadbeef1234567")
-            # The shape (path / version_long / sha / date keys) is asserted
-            # via the assertEqual above; the rest of the test exercises the
-            # function. A literal "key in dict-literal" check would be a
-            # tautology.
+            with contextlib.redirect_stdout(buf):
+                code = mod.main(["--repo", "o/n", "--sha", "abc", "--json"])
         finally:
             mod.shutil.which = orig_which
             mod.subprocess.run = orig_run
+            mod.GhTransport = orig_transport
+
+        # Assert the exit code. The old test discarded it, which is what let
+        # a silent return of 2 sit here unnoticed.
+        self.assertEqual(code, 0)
+        report = json.loads(buf.getvalue())
+        self.assertEqual(report["verdict"], "GREEN")
+        stamp = report["gate_binary"]
+        self.assertEqual(stamp["path"], FAKE_MAXI)
+        self.assertEqual(stamp["sha"], "deadbeef1234567")
+        self.assertEqual(stamp["date"], "2026-09-21")
+        self.assertEqual(
+            stamp["version_long"],
+            "2.0.0 (build 42, deadbeef1234567, 2026-09-21)",
+        )
+        # The version must be read from the SAME binary whose path is
+        # reported. Going back through PATH -- ["/usr/bin/env", "maxi", ...]
+        # -- would let stamp["path"] and stamp["version_long"] describe two
+        # different files, so the argv is asserted rather than assumed.
+        # Without this the whole test still passes with the env form, because
+        # a stubbed subprocess.run accepts any argv at all.
+        self.assertEqual(argvs, [[FAKE_MAXI, "--version"]])
 
 
 

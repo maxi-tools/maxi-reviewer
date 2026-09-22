@@ -27,6 +27,13 @@ CI = "CI"
 # which is the very defect being guarded.
 FAKE_MAXI = "/opt/fake/maxi"
 FAKE_GH = "/opt/fake/gh"
+
+# The two literals the hollow-success fixtures repeat most -- nine and five
+# times respectively. Named for the same reason as the pair above: a fixture
+# whose context string and the assertion about it drift apart stops testing
+# what it claims to.
+QLTY = "qlty check"
+QLTY_NO_MINUTES = "Qlty did not run because you are out of minutes."
 T0 = "2026-09-11T17:00:00Z"
 T1 = "2026-09-11T18:00:00Z"
 
@@ -235,13 +242,13 @@ class JudgeTest(unittest.TestCase):
         and the regex must not match it, otherwise the gate ignores qlty
         errors wholesale. Pinned by the next two tests.
         """
-        statuses = [{"context": "qlty check", "state": "error",
-                     "description": "Qlty did not run because you are out of minutes."}]
+        statuses = [{"context": QLTY, "state": "error",
+                     "description": QLTY_NO_MINUTES}]
         failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
         self.assertEqual((failures, pending, stale), ([], [], []),
                          "an out-of-minutes error must not withhold GREEN")
         self.assertEqual(len(hollow), 1)
-        self.assertIn("qlty check", hollow[0])
+        self.assertIn(QLTY, hollow[0])
         self.assertIn("did not run", hollow[0])
         self.assertEqual(
             mod.verdict_of(failures, pending, stale), "GREEN",
@@ -257,14 +264,14 @@ class JudgeTest(unittest.TestCase):
         than in `state.description`, so it is the symmetric case: same
         exclusion, same NOTICE bucket.
         """
-        row = check("qlty check", suite=1, started=T0, conclusion="error")
-        row["output"] = {"title": "Qlty did not run because you are out of minutes.",
+        row = check(QLTY, suite=1, started=T0, conclusion="error")
+        row["output"] = {"title": QLTY_NO_MINUTES,
                          "summary": ""}
         failures, pending, stale, hollow, _ = mod.judge([], [row], [])
         self.assertEqual((failures, pending, stale), ([], [], []),
                          "the did-not-run conclusion=error must not withhold GREEN")
         self.assertEqual(len(hollow), 1)
-        self.assertIn("qlty check", hollow[0])
+        self.assertIn(QLTY, hollow[0])
         self.assertIn("did not run", hollow[0])
         self.assertEqual(mod.verdict_of(failures, pending, stale), "GREEN")
 
@@ -277,7 +284,7 @@ class JudgeTest(unittest.TestCase):
         has a real summary (issues, smells, complexity), not "did not run".
         The regex must not match it.
         """
-        statuses = [{"context": "qlty check", "state": "error",
+        statuses = [{"context": QLTY, "state": "error",
                      "description": "Found 3 issues: complex function on line 42; "
                                     "duplicated block in src/foo.rs."}]
         failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
@@ -306,8 +313,8 @@ class JudgeTest(unittest.TestCase):
         withhold GREEN, by way of `verdict_of` -- the same property M3
         exposed for the success-side hollow.
         """
-        statuses = [{"context": "qlty check", "state": "error",
-                     "description": "Qlty did not run because you are out of minutes."}]
+        statuses = [{"context": QLTY, "state": "error",
+                     "description": QLTY_NO_MINUTES}]
         failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
         self.assertEqual(len(hollow), 1, "precondition: this row IS hollow")
         self.assertEqual(
@@ -324,8 +331,8 @@ class JudgeTest(unittest.TestCase):
         gate.
         """
         statuses = [
-            {"context": "qlty check", "state": "error",
-             "description": "Qlty did not run because you are out of minutes."},
+            {"context": QLTY, "state": "error",
+             "description": QLTY_NO_MINUTES},
             {"context": "review-gate/threads", "state": "failure"},
         ]
         failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
@@ -343,7 +350,7 @@ class JudgeTest(unittest.TestCase):
         belongs in `hollow` for the same reason an explicit
         out-of-minutes error does.
         """
-        statuses = [{"context": "qlty check", "state": "error",
+        statuses = [{"context": QLTY, "state": "error",
                      "description": "Analysis timeout: 15-minute window expired."}]
         failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
         self.assertEqual(failures, [])
@@ -359,8 +366,8 @@ class JudgeTest(unittest.TestCase):
         makes the bucketing loop skip it. If this test starts failing the
         pre-pass's skip set has drifted.
         """
-        row = check("qlty check", suite=1, started=T0, conclusion="error")
-        row["output"] = {"title": "Qlty did not run because you are out of minutes.",
+        row = check(QLTY, suite=1, started=T0, conclusion="error")
+        row["output"] = {"title": QLTY_NO_MINUTES,
                          "summary": ""}
         failures, _p, _stale, hollow, _ = mod.judge([], [row], [])
         self.assertEqual(failures, [],
@@ -394,6 +401,22 @@ class JudgeTest(unittest.TestCase):
         failures, _p, _stale, _hollow, considered = mod.judge(runs, [], [])
         self.assertEqual(len(failures), 1)
         self.assertEqual(considered, 2)
+
+
+class ConclusionSetsTest(unittest.TestCase):
+    def test_success_is_inside_ok_conclusions(self):
+        # Pins the premise of a simplification. The hollow pre-pass read
+        # `conclusion == "success" or conclusion in OK_CONCLUSIONS`; the first
+        # disjunct is dead only while "success" is a member of the set, so it
+        # was removed. If someone later narrows OK_CONCLUSIONS, that removal
+        # silently changes which rows reach the hollow check -- exactly the
+        # kind of change that looks like a no-op in review.
+        self.assertIn("success", mod.OK_CONCLUSIONS)
+        # The two sets must also stay disjoint, or which bucket a row skips
+        # into stops being well defined.
+        self.assertEqual(
+            mod.OK_CONCLUSIONS & mod.NO_VERDICT_CONCLUSIONS, frozenset()
+        )
 
 
 class StaleTest(unittest.TestCase):
@@ -729,17 +752,24 @@ class GateBinaryTest(unittest.TestCase):
                 # behaviour this double exists to avoid.
                 pass
 
-            # `key`, `params` and `path` are unused in places below, and stay
-            # in the signatures on purpose: a double that does not mirror the
-            # real call shape stops catching the caller passing the wrong
-            # thing, which is most of what a double is for here.
-            def items(self, path, key, params=None):
+            # The arity mirrors GhTransport on purpose -- a double that does
+            # not match the real call shape stops catching a caller passing
+            # the wrong thing, which is most of what this double is for. The
+            # unused ones carry a leading underscore because THIS FILE IS
+            # FANNED OUT: an "I have a good reason to leave this finding"
+            # costs one merge-gating review thread per consuming repo per
+            # sync, and there are ~50 of them. S1172 was declined here once
+            # and came straight back as threads on freya#45, coreml-rs#78,
+            # maxi-reviewer#147 and every other consumer. The bar for leaving
+            # a finding in a distributed payload is not the bar for leaving
+            # one in a repo that owns its own file.
+            def items(self, path, _key, _params=None):
                 if path.endswith("/statuses"):
                     return [{"context": CI, "state": "success",
                              "description": ""}]
                 return []
 
-            def one(self, path, params=None):
+            def one(self, _path, _params=None):
                 return {}
 
         class FakeProc:

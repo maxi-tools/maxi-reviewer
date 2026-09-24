@@ -880,10 +880,18 @@ jobs:
           # condition was false on EVERY run -- claude-review was never
           # labelled, and an existing label was always stripped. The lever
           # this block exists to pull had never once fired.
-          want_claude=0
-          if jq -e '.asked | map(select(.reviewer == "claude-review")) | length > 0' \
+          #
+          # The label is the SHARED lever for every workflow-gated reviewer:
+          # claude-review AND qwen-coder-local (the local coder-model lane
+          # added by t_6e9a6388) both consume `run-maxi-review`, and the
+          # label fires when ANY of them is asked. Naming it `want_claude`
+          # after the first consumer made sense when it was the only one;
+          # with a second consumer it is the "any workflow reviewer wanted"
+          # predicate. The variable is renamed below for that reason.
+          want_reviewer=0
+          if jq -e '.asked | map(select(.reviewer == "claude-review" or .reviewer == "qwen-coder-local")) | length > 0' \
                "$roster_json" >/dev/null; then
-            want_claude=1
+            want_reviewer=1
           fi
 
           has_label() { printf '%s\n' "$1" | grep -qx "run-maxi-review"; }
@@ -902,11 +910,11 @@ jobs:
           # and not this step's to own -- but it has to be VISIBLE, which is
           # what the old `|| true` prevented.
           if [ "$label_ok" = "1" ]; then
-            if [ "$want_claude" = "1" ] && ! has_label "$labels_now"; then
+            if [ "$want_reviewer" = "1" ] && ! has_label "$labels_now"; then
               gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
                 --add-label run-maxi-review \
                 || { echo "::warning::--add-label run-maxi-review failed"; label_ok=0; }
-            elif [ "$want_claude" = "0" ] && has_label "$labels_now"; then
+            elif [ "$want_reviewer" = "0" ] && has_label "$labels_now"; then
               gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
                 --remove-label run-maxi-review \
                 || { echo "::warning::--remove-label run-maxi-review failed"; label_ok=0; }
@@ -921,10 +929,10 @@ jobs:
                                   --json labels --jq '.labels[].name' 2>&1); then
               echo "::warning::could not re-read PR labels: $labels_after"
               label_ok=0
-            elif [ "$want_claude" = "1" ] && ! has_label "$labels_after"; then
+            elif [ "$want_reviewer" = "1" ] && ! has_label "$labels_after"; then
               echo "::warning::run-maxi-review still absent after --add-label"
               label_ok=0
-            elif [ "$want_claude" = "0" ] && has_label "$labels_after"; then
+            elif [ "$want_reviewer" = "0" ] && has_label "$labels_after"; then
               echo "::warning::run-maxi-review still present after --remove-label"
               label_ok=0
             fi

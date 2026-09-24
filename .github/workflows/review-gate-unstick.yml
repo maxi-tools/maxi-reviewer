@@ -69,13 +69,44 @@ concurrency:
 
 jobs:
   unstick:
-    # Deliberately hosted, not the self-hosted fleet: a janitor for the merge
-    # queue must not queue behind the build pool it exists to unblock. Same
-    # principle the orphan-sources and pin-drift guards use.
-    runs-on: ubuntu-latest
+    # A janitor for the merge queue must not queue behind the build pool it
+    # exists to unblock. That constraint is why this ran on `ubuntu-latest`.
+    # It is now met by isolation rather than by paying GitHub for it.
+    #
+    # `nas-unstick` is the NAS, which is not a build node, and its runners are
+    # registered with `--no-default-labels`: they carry that one label and NOT
+    # `self-hosted`, `Linux` or `X64`, so no other `runs-on` in the org can
+    # land work on them and this job never queues behind a build. The same
+    # absence keeps them out of the reconcile matrix -- the selector in
+    # scripts/online_fleet_runners.py requires a `macos` or `linux` label
+    # before a box is considered a fleet node at all.
+    #
+    # MEASURED, 2026-09-22: this file is fanned out to 49 repositories and the
+    # cron below fires twice an hour in each, so it was ~2,350 BILLED runs a
+    # day on GitHub-hosted runners with nobody pushing anything -- on its own
+    # enough to exhaust a month of Actions minutes in about a day.
+    #
+    # Four runners, not one: 49 repos x 2 ticks x ~40s measured is ~65 minutes
+    # of work per hour, so a single runner would fall permanently behind. The
+    # ticks also all fire together on :07 and :37, so the burst is 49 jobs at
+    # once, not a trickle.
+    runs-on: nas-unstick
     timeout-minutes: 10
     steps:
       - name: Ask stale Review Gate verdicts again
+        # Explicit because the script below opens with `set -uo pipefail`, and
+        # `pipefail` is not in POSIX sh. On a GitHub-hosted runner the default
+        # `run:` shell is bash, so this was implicit; on a self-hosted runner
+        # the default falls back to `sh` when bash is not found, and `dash`
+        # would fail the `set` on line 1.
+        #
+        # MEASURED: the NAS runners do have bash, and the dispatch smoke run
+        # (maxi-config run 35771434055, n5pro-unstick-3, 13s, success) proves
+        # it -- `set -o pipefail` under dash would have failed the step
+        # immediately. So this is hardening against a future host, not a fix
+        # for a live break. Stated because 'Codacy said HIGH RISK' and 'this
+        # is currently broken' are different claims.
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

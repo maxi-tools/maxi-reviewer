@@ -1158,7 +1158,7 @@ jobs:
         # number moving with it. Whenever `timeout_minutes` moves, this does:
         # timeout_minutes + 25.
         timeout-minutes: 40
-        uses: maxi-tools/maxi-reviewer@c6dcc726ae8aeffc316ba1951b670db4c69ec0d5
+        uses: maxi-tools/maxi-reviewer@d967a344a624e6e738e97494ef2e7f20eecca567
         with:
           # Which account, chosen by the step above. The KEY itself is read
           # straight from `secrets` here rather than passed through a step

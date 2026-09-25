@@ -941,6 +941,14 @@ jobs:
           # Publish the commit status. The description is the contract
           # T4 reads; the target_url points at this run so a reader who
           # lands on the PR page can land on the run.
+          #
+          # GitHub rejects a status description longer than 140 characters,
+          # and the selector's summary is not bounded: it names every asked
+          # reviewer, every skipped one, and every unread budget. A roster
+          # that has grown past that ceiling fails the whole step, which
+          # fails the review job, which is how a correct roster decision
+          # becomes a red PR. The full text is already in the step summary
+          # above; the status carries the head of it.
           summary=$(jq -r .summary "$roster_json")
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "$label_ok" = "1" ]; then
@@ -951,6 +959,9 @@ jobs:
             # contradicts the reviewers it just asked for.
             status_state=failure
             summary="$summary label=UNRECONCILED"
+          fi
+          if [ "${#summary}" -gt 140 ]; then
+            summary="${summary:0:139}…"
           fi
           gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
             -f state="$status_state" \

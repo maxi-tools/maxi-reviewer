@@ -700,7 +700,7 @@ jobs:
       # when the profile asset is absent -- the status names the gap.
       #
       # The status is what the review gate consumes in T4. The format
-      # `band=<b> asked=[...] skipped=[...]` is the contract; tests pin
+      # `asked=[...] skipped=<n>` is the contract; tests pin
       # the shape so a future refactor cannot silently change it.
       #
       # The file list is re-fetched here. It is the same data
@@ -942,13 +942,9 @@ jobs:
           # T4 reads; the target_url points at this run so a reader who
           # lands on the PR page can land on the run.
           #
-          # GitHub rejects a status description longer than 140 characters,
-          # and the selector's summary is not bounded: it names every asked
-          # reviewer, every skipped one, and every unread budget. A roster
-          # that has grown past that ceiling fails the whole step, which
-          # fails the review job, which is how a correct roster decision
-          # becomes a red PR. The full text is already in the step summary
-          # above; the status carries the head of it.
+          # The description is bounded by the selector, not clipped here.
+          # Clipping would leave a string that still starts with `asked=`
+          # and no longer parses, and `parse_roster` fails that closed.
           summary=$(jq -r .summary "$roster_json")
           run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "$label_ok" = "1" ]; then
@@ -956,12 +952,15 @@ jobs:
           else
             # The roster is still published -- a reader needs to see what was
             # decided -- but it must not report success while the label state
-            # contradicts the reviewers it just asked for.
+            # contradicts the reviewers it just asked for. The state carries
+            # that; the suffix is a hint for a human reading the description.
+            # GitHub rejects the POST above 140 characters, which is the
+            # failure this step exists to avoid, so the hint is dropped when
+            # it would not fit rather than failing the POST.
             status_state=failure
-            summary="$summary label=UNRECONCILED"
-          fi
-          if [ "${#summary}" -gt 140 ]; then
-            summary="${summary:0:139}…"
+            if [ $(( ${#summary} + 19 )) -le 140 ]; then
+              summary="$summary label=UNRECONCILED"
+            fi
           fi
           gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
             -f state="$status_state" \

@@ -71210,12 +71210,7 @@ async function runReviewWithSetupEscalation(args) {
     throw lastStuck ?? new Error("No review attempts were configured.");
 }
 
-;// CONCATENATED MODULE: ./src/openai-review.ts
-
-
-
-
-
+;// CONCATENATED MODULE: ./src/openai/client.ts
 const DEFAULT_OPENAI_MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct";
 /**
  * Fallback budget when the caller did not set one. A local vLLM reply is
@@ -71226,9 +71221,9 @@ const DEFAULT_OPENAI_TIMEOUT_MINUTES = 8;
 /**
  * A turn that produced no body because the budget ran out.
  *
- * Distinct from an HTTP error: the caller of {@link runOpenAiReview} turns
- * this into "no review" so a dead Spark does not fail the whole job before
- * the Jules path, or a configured fallback, has been considered.
+ * Distinct from an HTTP error: the caller of the review run turns this into
+ * "no review" so a dead Spark does not fail the whole job before the Jules
+ * path, or a configured fallback, has been considered.
  */
 class OpenAiTimeoutError extends Error {
     constructor(timeoutMinutes) {
@@ -71320,7 +71315,7 @@ async function completeOpenAiChat(request) {
         catch (err) {
             if (isAbortError(err))
                 throw new OpenAiTimeoutError(request.timeoutMinutes);
-            throw new Error(`OpenAI-compatible review request failed: ${openai_review_errorMessage(err)}`, { cause: err });
+            throw new Error(`OpenAI-compatible review request failed: ${client_errorMessage(err)}`, { cause: err });
         }
         if (!response.ok) {
             const body = await response.text().catch(() => "");
@@ -71344,143 +71339,35 @@ function isAbortError(err) {
             err instanceof DOMException &&
             err.name === "AbortError"));
 }
-/**
- * Run one review against an OpenAI-compatible endpoint.
- *
- * The prompt, the schema, and the repair loop are the same ones Jules uses.
- * What changes is the transport: each turn is one chat-completions call, and
- * the conversation so far is resent because vLLM has no session to resume.
- * A timeout returns `reviewResult: null` — the same shape Jules uses when it
- * never replies — so the caller can fall through without a special case.
- */
-async function runOpenAiReview(prompt, config, options = {}) {
-    const complete = options.complete ?? completeOpenAiChat;
-    const messages = [{ role: "user", content: prompt }];
-    const rawResponses = [];
-    const validationErrors = [];
-    const sessionId = `openai:${config.model}`;
-    let reply;
-    try {
-        reply = await turn(complete, config, messages, options.onProgress);
-    }
-    catch (err) {
-        if (err instanceof OpenAiTimeoutError) {
-            core/* warning */.$e(err.message);
-            return {
-                reviewResult: null,
-                sessionId: `openai:timeout:${config.model}`,
-            };
-        }
-        throw err;
-    }
-    rawResponses.push(reply);
-    if (options.retrieval) {
-        reply = await openai_review_runRetrievalLoop({
-            complete,
-            config,
-            messages,
-            firstReply: reply,
-            retrieval: options.retrieval,
-            onProgress: options.onProgress,
-        });
-        if (reply !== rawResponses[rawResponses.length - 1]) {
-            rawResponses.push(reply);
-        }
-    }
-    let reviewResult;
-    try {
-        reviewResult = parseOpenAiReview(reply);
-    }
-    catch (err) {
-        validationErrors.push(`Failed to parse OpenAI-compatible review: ${openai_review_errorMessage(err)}`);
-        core/* warning */.$e(`OpenAI-compatible review was not valid JSON; requesting a repair: ${err}`);
-        const repaired = await repairTurn(complete, config, messages, buildJsonRepairPrompt(reply, err), options.onProgress);
-        if (!repaired) {
-            return {
-                reviewResult: null,
-                sessionId,
-                rawResponses,
-                validationErrors,
-            };
-        }
-        rawResponses.push(repaired);
-        try {
-            reviewResult = parseOpenAiReview(repaired);
-            reply = repaired;
-        }
-        catch (repairErr) {
-            validationErrors.push(`Failed to parse repaired OpenAI-compatible review: ${openai_review_errorMessage(repairErr)}`);
-            return {
-                reviewResult: {
-                    summary: "The OpenAI-compatible reviewer returned a response that could not be parsed after one repair attempt. No valid code review comments are present.",
-                    verdict: "comment",
-                    resolvedCommentIds: [],
-                    newComments: [],
-                },
-                sessionId,
-                rawResponses,
-                validationErrors,
-            };
-        }
-    }
-    const formatIssues = findReviewFormatIssues(reviewResult);
-    if (formatIssues.length > 0) {
-        validationErrors.push(...formatIssues);
-        const revised = await repairTurn(complete, config, messages, buildFormatRepairPrompt(reviewResult, formatIssues), options.onProgress);
-        if (revised) {
-            rawResponses.push(revised);
-            try {
-                const revisedResult = parseOpenAiReview(revised);
-                const remaining = findReviewFormatIssues(revisedResult);
-                if (remaining.length === 0) {
-                    reviewResult = revisedResult;
-                    reply = revised;
-                }
-                else {
-                    validationErrors.push(...remaining);
-                }
-            }
-            catch (err) {
-                validationErrors.push(`Failed to parse formatting revision: ${openai_review_errorMessage(err)}`);
-            }
-        }
-    }
-    if (options.verificationContext) {
-        const verified = await requestValidationRepair({
-            complete,
-            config,
-            messages,
-            reply,
-            verificationContext: options.verificationContext,
-            onProgress: options.onProgress,
-        });
-        if (verified) {
-            reviewResult = verified.reviewResult;
-            rawResponses.push(verified.reply);
-            validationErrors.push(...verified.validationErrors);
-        }
-    }
-    const evidence = holdBlockToItsEvidence(reviewResult);
-    reviewResult = evidence.review;
-    validationErrors.push(...evidence.issues);
-    return {
-        reviewResult,
-        sessionId,
-        ...(rawResponses.length > 0 ? { rawResponses } : {}),
-        ...(validationErrors.length > 0 ? { validationErrors } : {}),
-    };
+function client_errorMessage(err) {
+    return err instanceof Error ? err.message : String(err);
 }
-async function turn(complete, config, messages, onProgress) {
-    await notify(onProgress, false);
-    const content = await complete({ ...config, messages });
-    messages.push({ role: "assistant", content });
-    await notify(onProgress, true);
+
+;// CONCATENATED MODULE: ./src/openai/conversation.ts
+
+
+/**
+ * One user-less turn: send the conversation, append the assistant reply.
+ */
+async function turn(conv) {
+    await notify(conv.onProgress, false);
+    const content = await conv.complete({
+        ...conv.config,
+        messages: conv.messages,
+    });
+    conv.messages.push({ role: "assistant", content });
+    await notify(conv.onProgress, true);
     return content;
 }
-async function repairTurn(complete, config, messages, repairPrompt, onProgress) {
-    messages.push({ role: "user", content: repairPrompt });
+/**
+ * A turn initiated by a fresh user message (repair prompt, retrieval
+ * follow-up). A timeout is a soft failure — the caller keeps whatever reply
+ * it already had — so it resolves to `null` rather than throwing.
+ */
+async function repairTurn(conv, repairPrompt) {
+    conv.messages.push({ role: "user", content: repairPrompt });
     try {
-        return await turn(complete, config, messages, onProgress);
+        return await turn(conv);
     }
     catch (err) {
         if (err instanceof OpenAiTimeoutError) {
@@ -71490,84 +71377,19 @@ async function repairTurn(complete, config, messages, repairPrompt, onProgress) 
         throw err;
     }
 }
-async function openai_review_runRetrievalLoop(input) {
-    const { complete, config, messages, retrieval, onProgress } = input;
-    let message = input.firstReply;
-    for (let step = 0; step < retrieval.maxSteps; step++) {
-        const parsed = parseRetrievalRequest(message);
-        if (parsed.kind === "none")
-            return message;
-        const roundsLeft = retrieval.maxSteps - step - 1;
-        const followUp = parsed.kind === "invalid"
-            ? formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft)
-            : await fulfilAndFormat(retrieval, parsed.request.requests, roundsLeft);
-        const next = await repairTurn(complete, config, messages, followUp, onProgress);
-        if (!next)
-            return message;
-        message = next;
-    }
-    if (parseRetrievalRequest(message).kind !== "none") {
-        const finalMessage = await repairTurn(complete, config, messages, formatRetrievalResults(retrieval.nonce, [], 0), onProgress);
-        if (finalMessage)
-            return finalMessage;
-    }
-    return message;
-}
-async function fulfilAndFormat(retrieval, requests, roundsLeft) {
-    const results = [];
-    for (const request of requests) {
-        try {
-            results.push(await retrieval.provider.fulfill(request));
-        }
-        catch (err) {
-            results.push({
-                tool: request.tool,
-                ok: false,
-                error: openai_review_errorMessage(err),
-            });
-        }
-    }
-    return formatRetrievalResults(retrieval.nonce, results, roundsLeft);
-}
-async function requestValidationRepair(input) {
-    let structured;
+async function notify(onProgress, sawAgentOutput) {
+    if (!onProgress)
+        return;
     try {
-        structured = parseJulesReview(input.reply);
-    }
-    catch {
-        return null;
-    }
-    const issues = verifyJulesReview(structured, input.verificationContext);
-    if (issues.length === 0)
-        return null;
-    const revised = await repairTurn(input.complete, input.config, input.messages, buildReviewRepairPrompt(input.reply, issues), input.onProgress);
-    if (!revised)
-        return null;
-    const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
-    try {
-        const review = parseJulesReview(revised);
-        const remaining = verifyJulesReview(review, input.verificationContext);
-        if (remaining.length > 0) {
-            validationErrors.push(...remaining.map((issue) => `${issue.kind}: ${issue.message}`));
-        }
-        // A revision that parsed is the review we have, even if a location is
-        // still off: dropping it would publish the comment the repair was asked
-        // to fix. Remaining issues stay on the artifact.
-        return {
-            reviewResult: parseOpenAiReview(revised),
-            reply: revised,
-            validationErrors,
-        };
+        await onProgress({ sawAgentOutput });
     }
     catch (err) {
-        validationErrors.push(`Failed to parse validation revision: ${openai_review_errorMessage(err)}`);
-        return {
-            reviewResult: openai_review_convertStructuredReview(structured),
-            reply: input.reply,
-            validationErrors,
-        };
+        core/* info */.pq(`Could not publish OpenAI review progress: ${client_errorMessage(err)}`);
     }
 }
+
+;// CONCATENATED MODULE: ./src/openai/parse.ts
+
 /**
  * Parse a model reply into the review the rest of the action already posts.
  *
@@ -71579,7 +71401,7 @@ async function requestValidationRepair(input) {
  */
 function parseOpenAiReview(message) {
     try {
-        return openai_review_convertStructuredReview(parseJulesReview(message));
+        return parse_convertStructuredReview(parseJulesReview(message));
     }
     catch {
         // Fall through to the legacy shape.
@@ -71615,7 +71437,7 @@ function parseOpenAiReview(message) {
         cause: lastError,
     });
 }
-function openai_review_convertStructuredReview(review) {
+function parse_convertStructuredReview(review) {
     return {
         summary: review.summary,
         verdict: review.verdict,
@@ -71637,19 +71459,290 @@ function openai_review_convertStructuredReview(review) {
         })),
     };
 }
-async function notify(onProgress, sawAgentOutput) {
-    if (!onProgress)
-        return;
+
+;// CONCATENATED MODULE: ./src/openai/retrieval-loop.ts
+
+
+
+/**
+ * Let the model ask for repository context mid-review. Each assistant reply
+ * is checked for a retrieval request; fulfilled results (or the reason the
+ * request was rejected) go back as the next user message. Returns the last
+ * assistant reply — the one the caller should parse as the review.
+ */
+async function retrieval_loop_runRetrievalLoop(conv, firstReply, retrieval) {
+    let message = firstReply;
+    for (let step = 0; step < retrieval.maxSteps; step++) {
+        const parsed = parseRetrievalRequest(message);
+        if (parsed.kind === "none")
+            return message;
+        const roundsLeft = retrieval.maxSteps - step - 1;
+        const followUp = parsed.kind === "invalid"
+            ? formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft)
+            : await fulfilAndFormat(retrieval, parsed.request.requests, roundsLeft);
+        const next = await repairTurn(conv, followUp);
+        if (!next)
+            return message;
+        message = next;
+    }
+    return nudgeForVerdict(conv, message, retrieval);
+}
+/**
+ * The budget ran out while the model was still asking for context. Send one
+ * final empty result set so it has to answer with the review itself.
+ */
+async function nudgeForVerdict(conv, message, retrieval) {
+    if (parseRetrievalRequest(message).kind === "none")
+        return message;
+    const finalMessage = await repairTurn(conv, formatRetrievalResults(retrieval.nonce, [], 0));
+    return finalMessage ?? message;
+}
+async function fulfilAndFormat(retrieval, requests, roundsLeft) {
+    const results = [];
+    for (const request of requests) {
+        try {
+            results.push(await retrieval.provider.fulfill(request));
+        }
+        catch (err) {
+            results.push({
+                tool: request.tool,
+                ok: false,
+                error: client_errorMessage(err),
+            });
+        }
+    }
+    return formatRetrievalResults(retrieval.nonce, results, roundsLeft);
+}
+
+;// CONCATENATED MODULE: ./src/openai/run.ts
+
+
+
+
+
+
+
+
+/**
+ * Run one review against an OpenAI-compatible endpoint.
+ *
+ * The prompt, the schema, and the repair loop are the same ones Jules uses.
+ * What changes is the transport: each turn is one chat-completions call, and
+ * the conversation so far is resent because vLLM has no session to resume.
+ * A timeout returns `reviewResult: null` — the same shape Jules uses when it
+ * never replies — so the caller can fall through without a special case.
+ */
+async function runOpenAiReview(prompt, config, options = {}) {
+    const run = {
+        conv: {
+            complete: options.complete ?? completeOpenAiChat,
+            config,
+            messages: [{ role: "user", content: prompt }],
+            onProgress: options.onProgress,
+        },
+        sessionId: `openai:${config.model}`,
+        rawResponses: [],
+        validationErrors: [],
+    };
+    const first = await firstTurn(run);
+    if (!first)
+        return noReviewOnTimeout(config);
+    run.rawResponses.push(first);
+    const reply = options.retrieval
+        ? await retrievalStage(run, first, options.retrieval)
+        : first;
+    const parsed = await parseWithRepair(run, reply);
+    if (!parsed)
+        return finish(run, null);
+    if (parsed.unparseable)
+        return finish(run, parsed.reviewResult);
+    let { reviewResult } = parsed;
+    let current = parsed.reply;
+    reviewResult = await formatRepairStage(run, reviewResult, (revised) => {
+        current = revised;
+    });
+    if (options.verificationContext) {
+        reviewResult = await verificationStage(run, current, options.verificationContext, reviewResult);
+    }
+    const evidence = holdBlockToItsEvidence(reviewResult);
+    run.validationErrors.push(...evidence.issues);
+    return finish(run, evidence.review);
+}
+/**
+ * The opening turn is the only one whose timeout means "no review at all":
+ * later stages already hold a reply worth keeping.
+ */
+async function firstTurn(run) {
     try {
-        await onProgress({ sawAgentOutput });
+        return await turn(run.conv);
     }
     catch (err) {
-        core/* info */.pq(`Could not publish OpenAI review progress: ${openai_review_errorMessage(err)}`);
+        if (err instanceof OpenAiTimeoutError) {
+            core/* warning */.$e(err.message);
+            return null;
+        }
+        throw err;
     }
 }
-function openai_review_errorMessage(err) {
-    return err instanceof Error ? err.message : String(err);
+function noReviewOnTimeout(config) {
+    return {
+        reviewResult: null,
+        sessionId: `openai:timeout:${config.model}`,
+    };
 }
+async function retrievalStage(run, firstReply, retrieval) {
+    const reply = await retrieval_loop_runRetrievalLoop(run.conv, firstReply, retrieval);
+    if (reply !== run.rawResponses[run.rawResponses.length - 1]) {
+        run.rawResponses.push(reply);
+    }
+    return reply;
+}
+/**
+ * Parse the reply, asking the model to repair its own output once when it
+ * is not valid review JSON. Returns `null` only when the repair turn timed
+ * out; a repair that still does not parse yields the empty "could not be
+ * parsed" review so the run still has something to post.
+ */
+async function parseWithRepair(run, reply) {
+    let parseError;
+    try {
+        return { reviewResult: parseOpenAiReview(reply), reply };
+    }
+    catch (err) {
+        parseError = err;
+        run.validationErrors.push(`Failed to parse OpenAI-compatible review: ${client_errorMessage(err)}`);
+        core/* warning */.$e(`OpenAI-compatible review was not valid JSON; requesting a repair: ${err}`);
+    }
+    const repaired = await repairTurn(run.conv, buildJsonRepairPrompt(reply, parseError));
+    if (!repaired)
+        return null;
+    run.rawResponses.push(repaired);
+    try {
+        return { reviewResult: parseOpenAiReview(repaired), reply: repaired };
+    }
+    catch (repairErr) {
+        run.validationErrors.push(`Failed to parse repaired OpenAI-compatible review: ${client_errorMessage(repairErr)}`);
+        return {
+            reviewResult: unparseableReview(),
+            reply: repaired,
+            unparseable: true,
+        };
+    }
+}
+function unparseableReview() {
+    return {
+        summary: "The OpenAI-compatible reviewer returned a response that could not be parsed after one repair attempt. No valid code review comments are present.",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        newComments: [],
+    };
+}
+/**
+ * Fix comment-shape problems (broken suggestion fences and the like) with
+ * one formatting repair turn. A revision that parses cleanly and passes the
+ * format checks replaces the review; anything else is recorded and the
+ * original review stands.
+ */
+async function formatRepairStage(run, reviewResult, onRevised) {
+    const formatIssues = findReviewFormatIssues(reviewResult);
+    if (formatIssues.length === 0)
+        return reviewResult;
+    run.validationErrors.push(...formatIssues);
+    const revised = await repairTurn(run.conv, buildFormatRepairPrompt(reviewResult, formatIssues));
+    if (!revised)
+        return reviewResult;
+    run.rawResponses.push(revised);
+    try {
+        const revisedResult = parseOpenAiReview(revised);
+        const remaining = findReviewFormatIssues(revisedResult);
+        if (remaining.length > 0) {
+            run.validationErrors.push(...remaining);
+            return reviewResult;
+        }
+        onRevised(revised);
+        return revisedResult;
+    }
+    catch (err) {
+        run.validationErrors.push(`Failed to parse formatting revision: ${client_errorMessage(err)}`);
+        return reviewResult;
+    }
+}
+/**
+ * Check the review against the diff (comment lines must be changed lines)
+ * and give the model one chance to correct misplaced comments.
+ */
+async function verificationStage(run, reply, verificationContext, reviewResult) {
+    const verified = await requestValidationRepair(run.conv, reply, verificationContext);
+    if (!verified)
+        return reviewResult;
+    run.rawResponses.push(verified.reply);
+    run.validationErrors.push(...verified.validationErrors);
+    return verified.reviewResult;
+}
+async function requestValidationRepair(conv, reply, verificationContext) {
+    let structured;
+    try {
+        structured = parseJulesReview(reply);
+    }
+    catch {
+        return null;
+    }
+    const issues = verifyJulesReview(structured, verificationContext);
+    if (issues.length === 0)
+        return null;
+    const revised = await repairTurn(conv, buildReviewRepairPrompt(reply, issues));
+    if (!revised)
+        return null;
+    const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
+    try {
+        const review = parseJulesReview(revised);
+        const remaining = verifyJulesReview(review, verificationContext);
+        if (remaining.length > 0) {
+            validationErrors.push(...remaining.map((issue) => `${issue.kind}: ${issue.message}`));
+        }
+        // A revision that parsed is the review we have, even if a location is
+        // still off: dropping it would publish the comment the repair was asked
+        // to fix. Remaining issues stay on the artifact.
+        return {
+            reviewResult: parseOpenAiReview(revised),
+            reply: revised,
+            validationErrors,
+        };
+    }
+    catch (err) {
+        validationErrors.push(`Failed to parse validation revision: ${client_errorMessage(err)}`);
+        return {
+            reviewResult: parse_convertStructuredReview(structured),
+            reply,
+            validationErrors,
+        };
+    }
+}
+function finish(run, reviewResult) {
+    return {
+        reviewResult,
+        sessionId: run.sessionId,
+        ...(run.rawResponses.length > 0 ? { rawResponses: run.rawResponses } : {}),
+        ...(run.validationErrors.length > 0
+            ? { validationErrors: run.validationErrors }
+            : {}),
+    };
+}
+
+;// CONCATENATED MODULE: ./src/openai-review.ts
+/**
+ * Public surface of the OpenAI-compatible reviewer backend.
+ *
+ * The implementation lives in cohesive modules under `./openai/`:
+ * `client.ts` (endpoint configuration and the chat-completions transport),
+ * `conversation.ts` (turn and repair-turn plumbing), `retrieval-loop.ts`
+ * (mid-review repository context requests), `parse.ts` (reply parsing), and
+ * `run.ts` (the review orchestration that ties them together). This barrel
+ * keeps the historical `./openai-review.js` import path stable.
+ */
+
+
+
 
 ;// CONCATENATED MODULE: ./src/prompt.ts
 

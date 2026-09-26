@@ -121,11 +121,13 @@ jobs:
           github.head_ref != 'ci/fanout-pin'
         ) ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
-      ) &&
-      (
-        vars.CI_ENFORCEMENT_MODE == 'strict' ||
-        contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
       )
+    # NOT gated on CI_ENFORCEMENT_MODE or `run-maxi-review`. It was, and
+    # that is what left a non-strict repo with no review at all: the label
+    # this condition required is applied by the roster step, which lives in
+    # `review`, which requires the label, so nothing could ever start. The
+    # scan is cheap and it is a merge gate, so it runs on every in-scope PR.
+    # The expensive half keeps the condition; see `review` below.
     # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
     # jobs are rejected before a runner is assigned -- zero steps, no log, ~3s
     # to "failure" -- so this gate reported every PR broken without scanning a
@@ -496,6 +498,425 @@ jobs:
             maxi-lint-findings.json
             maxi-lint-findings.md
           if-no-files-found: error
+
+  # The review the gate can always count on.
+  #
+  # `review-gate/non-author-review` requires a GitHub REVIEW from someone other
+  # than the author, and the bots a trivial PR is sent to submit one only when
+  # they have findings. A clean PR therefore got zero reviews and the gate
+  # stayed red -- the one outcome the gate exists to prevent. A special case in
+  # the gate was rejected for the same reason: it would let a PR merge with no
+  # review at all.
+  #
+  # So maxi-reviewer posts one itself, from the scan `lint-gate` already did.
+  # No model call. COMMENTED, never APPROVED: this lane did not read the diff,
+  # and a posted review is evidence that the deterministic scan ran, not that a
+  # reviewer was happy with the change.
+  #
+  # It runs where `review` does not. `review` excludes `synchronize` and
+  # requires strict mode or a label, so a PR opened before its lint passed is
+  # never reviewed -- the fix lands as `synchronize`, which skips the review,
+  # and the PR ends with none. This job has neither exclusion. It runs on the
+  # first push whose lint succeeds and then stops: one review per PR, because
+  # re-reviewing every push is the cost `review` was changed to stop paying.
+  #
+  # Posted with the Maxi Review app token, so the author is
+  # `maxi-reviewer[bot]` -- the login the roster asks for and the gate
+  # intersects against. `github.token` would post as `github-actions[bot]`,
+  # which the gate does not count when a roster is present.
+  #
+  # The decision logic is inlined rather than checked out. The fan-out copies
+  # workflow files only, so a script fetched from maxi-config would not exist
+  # on a consumer until the fan-out after the one that shipped this job, and
+  # the PRs that fan-out opens are among the ones this job must review.
+  # tests/test_post_deterministic_review.py holds the inlined block equal to
+  # maxi-review/post-deterministic-review.py, which is what it tests.
+  guaranteed-review:
+    needs: lint-gate
+    # Same scoping as lint-gate, restated rather than inherited. `success()`
+    # already skips this when lint-gate was skipped, but the condition a reader
+    # checks to answer "why was this not reviewed" should hold on its own.
+    #
+    # No `always()` and no `continue-on-error`. This job posts a review that
+    # says the scan was clean when it finds nothing, so it must only run when
+    # the scan actually succeeded. A failed lint-gate is a failed scan, and a
+    # review posted over it would tell the gate a reviewer looked. The next
+    # push reruns lint-gate, and this job posts then.
+    if: >
+      success() &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      (
+        (
+          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
+          github.head_ref != 'ci/fanout-pin'
+        ) ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      )
+    # Serialise per PR, and do not cancel. Two events on the same pull request
+    # (an open and a synchronize, or two labels) can both be eligible, and both
+    # would read an empty review list and both would POST. The gate needs one
+    # review, not two, and a cancelled run is not a posted one. The group name
+    # is this job's own: it must not share `review`'s group, or a queued
+    # guaranteed review would hold the AI review behind it and vice versa.
+    concurrency:
+      group: maxi-review-guaranteed-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          owner: maxi-tools
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-pull-requests: write
+
+      - name: Post the guaranteed review
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          ACTOR: ${{ github.actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          LINT_FINDINGS_JSON: ${{ needs.lint-gate.outputs.findings-json }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
+
+          # Both login spellings, matching REVIEWER_LOGINS in the decision
+          # block. Kept here as data rather than re-derived, so the re-read
+          # check below and the decision agree on who counts.
+          REVIEWER_LOGINS='["maxi-reviewer[bot]","maxi-reviewer"]'
+
+          findings="$RUNNER_TEMP/guaranteed-review-findings.json"
+          changed="$RUNNER_TEMP/guaranteed-review-changed.json"
+          reviews="$RUNNER_TEMP/guaranteed-review-reviews.json"
+          decision="$RUNNER_TEMP/guaranteed-review-decision.json"
+
+          # The scan result, from the job output lint-gate publishes. An empty
+          # output is a scan that did not complete -- lint-gate omits it when
+          # the findings exceed the output cap, and says so. Reviewing that as
+          # clean would report a scan that never happened, so it is a failure.
+          if [ -z "${LINT_FINDINGS_JSON:-}" ]; then
+            echo "::error::lint-gate published no findings output; refusing to review without a scan"
+            exit 1
+          fi
+          printf '%s\n' "$LINT_FINDINGS_JSON" > "$findings"
+
+          # Changed files, from the compare API. NOT `--paginate`: pagination
+          # repeats the whole compare payload on every page and only the
+          # `files` array advances, so paginating and concatenating would count
+          # the first page's files once per page. 300 is the per-page maximum;
+          # past it the count stops growing and the review says so rather than
+          # claiming a scan of files it did not count.
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}?per_page=300" \
+            --jq '{files: [.files[] | select(.status != "removed") | .filename], total: (.files | length)}' \
+            > "$RUNNER_TEMP/guaranteed-review-compare.json"
+          jq '.files' "$RUNNER_TEMP/guaranteed-review-compare.json" > "$changed"
+          total=$(jq '.total' "$RUNNER_TEMP/guaranteed-review-compare.json")
+          counted=$(jq 'length' "$changed")
+          if [ "$total" -ge 300 ]; then
+            echo "::warning::the compare API returned its 300-file page cap; the review's file count covers the first page only"
+          fi
+          echo "counting $counted changed file(s) ($total including removed)"
+
+          # `--paginate` emits ONE JSON DOCUMENT PER PAGE, and a pull request
+          # with more than 100 reviews spans pages. Concatenating them is not
+          # valid JSON, so read the pages into one array and flatten it.
+          # `jq -s` rather than gh's own page-wrapping flag: gh refuses to
+          # combine that flag with `--jq`, and this repo settled on `jq -s`
+          # for exactly this case (tests/ci_economy_assets.rs pins it).
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+            | jq -s 'add' > "$reviews"
+
+          # The decision, inlined. See the job comment for why it is not a
+          # checked-out script. tests/test_post_deterministic_review.py holds
+          # this block equal to maxi-review/post-deterministic-review.py.
+          python3 - "$EVENT_NAME" "$HEAD_REF" "$ACTOR" "$AUTHOR" \
+            "$findings" "$changed" "$reviews" "$decision" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from dataclasses import dataclass
+          from typing import Any
+
+
+          import argparse
+          # The app the review is posted as. Both spellings, for the same reason
+          # FANOUT_AUTHORS carries both: REST brackets a Bot login, GraphQL does not, and
+          # "[" and "]" are not legal in a login, so the bracketed form is unspoofable.
+          REVIEWER_LOGIN = "maxi-reviewer[bot]"
+          REVIEWER_LOGINS = frozenset({REVIEWER_LOGIN, "maxi-reviewer"})
+
+          REVIEW_STATE = "COMMENT"
+
+          # The marker the expensive lane's own reviews carry (`COMMENT_MARKER` in
+          # maxi-reviewer's src/github.ts). Present so a reader, and any later tooling
+          # that keys on it, sees one kind of review from this author.
+          COMMENT_MARKER = "<!-- maxi-review -->"
+
+          # A GitHub review body is capped at 65536 characters. The review lists every
+          # finding up to this budget and then says how many it did not list, so a long
+          # scan truncates visibly rather than failing the POST -- a failed POST is a
+          # missing review, which is the defect this step exists to close.
+          BODY_BUDGET = 60000
+
+          # Fan-out identity, held equal to ci/fanout-identity.toml by
+          # tests/test_fanout_identity_is_one_copy.py. Duplicated rather than imported:
+          # this file is what the workflow checks out, and select-roster.py is not on
+          # that checkout's path. The test is the thing that keeps the two honest.
+          FANOUT_BRANCH_PREFIXES = ("maxi-config-sync/",)
+          FANOUT_BRANCH_NAMES = ("ci/fanout-pin",)
+          FANOUT_AUTHORS = frozenset({"maxi-tools-auth", "maxi-tools-auth[bot]"})
+
+          # Dependabot runs get the Dependabot secrets scope, which holds no app key, so
+          # the token step cannot mint anything. Keyed on the ACTOR, matching the
+          # workflow's other guards: a human pushing to a dependabot/* branch has
+          # ordinary secrets and should be reviewed.
+          DEPENDABOT_ACTORS = frozenset({"dependabot", "dependabot[bot]"})
+
+          # The allowlist `lint-gate` pins, split by what maxi-lint's own README says
+          # about each rule. CI-blocking rules deny; `print-hygiene` is the one advisory
+          # rule in that list. A rule in neither set is `unknown` -- reported, never
+          # dropped.
+          DENY_RULES = frozenset({
+              "serialization", "ansi", "yaml", "queue", "async", "jsonl",
+              "reqwest-ssrf", "audit", "injection", "backup-files", "database",
+              "mcp-envelope", "unwrap", "timeout-fence", "hidden-spawn",
+          })
+          WARN_RULES = frozenset({"print-hygiene"})
+
+          DENY = "deny"
+          WARN = "warn"
+          UNKNOWN = "unknown"
+
+
+          @dataclass(frozen=True)
+          class Decision:
+              """What the step should do. `body` is empty when `post` is false."""
+
+              post: bool
+              state: str
+              body: str
+              reason: str
+
+              def as_dict(self) -> dict[str, Any]:
+                  return {
+                      "post": self.post,
+                      "state": self.state,
+                      "body": self.body,
+                      "reason": self.reason,
+                  }
+
+
+          import json
+          import sys
+          from dataclasses import dataclass
+          from typing import Any
+
+
+          def eligible(event_name: str, head_ref: str, actor: str, author: str) -> bool:
+              """Would this run be allowed to post? False means skip before any API call.
+
+              `event_name` is checked rather than assumed, because a workflow trigger
+              list grows and a step that posts on an event it was not written for would
+              do it silently.
+              """
+              if event_name != "pull_request":
+                  return False
+              if actor in DEPENDABOT_ACTORS:
+                  return False
+              fanout_branch = (
+                  head_ref.startswith(FANOUT_BRANCH_PREFIXES) or head_ref in FANOUT_BRANCH_NAMES
+              )
+              if fanout_branch and author in FANOUT_AUTHORS:
+                  return False
+              return True
+
+
+          def already_reviewed(reviews: list[dict[str, Any]]) -> bool:
+              """Has maxi-reviewer already submitted a counted review on this PR?
+
+              Any state counts. A CHANGES_REQUESTED from the expensive lane is still a
+              review, and posting a COMMENTED one beside it would not add a reviewer --
+              it would add a second opinion that disagrees with the first by construction,
+              since this one never reads the diff.
+              """
+              for review in reviews:
+                  author = review.get("user") or {}
+                  login = author.get("login", "") if isinstance(author, dict) else ""
+                  if login in REVIEWER_LOGINS and review.get("state"):
+                      return True
+              return False
+
+
+          def classify(finding: dict[str, Any]) -> str:
+              """The level the workflow's deny gate cannot read off the JSON itself.
+
+              maxi-lint emits no severity field, so the rule is the only signal. Unknown
+              rules are reported as unknown rather than folded into deny: calling an
+              unrecognised rule a denial would fail a gate on a rule nobody configured.
+              """
+              rule = str(finding.get("rule") or "")
+              if rule in DENY_RULES:
+                  return DENY
+              if rule in WARN_RULES:
+                  return WARN
+              return UNKNOWN
+
+
+          def _one_line(finding: dict[str, Any]) -> str:
+              """One finding, one line, with the control characters a suggestion can
+              carry stripped -- the same stance filter-maxi-lint-findings.py takes,
+              because this line is going into a review body."""
+              path = str(finding.get("file") or finding.get("path") or "(no file)")
+              path = path.removeprefix("pr-code/")
+              line = finding.get("line")
+              rule = str(finding.get("rule") or "(no rule)")
+              suggestion = str(finding.get("suggestion") or "").replace("\n", " ").strip()
+              where = f"{path}:{line}" if isinstance(line, int) else path
+              text = f"- {where} [{rule}] {suggestion}".rstrip()
+              return "".join(ch for ch in text if ch >= " " or ch == "\t")
+
+
+          def render_body(findings: list[dict[str, Any]], changed_files: list[str]) -> str:
+              """The review text: a count plus the deny and warn items, or clean.
+
+              Listed deny first, then warn, then unknown, because the deny items are what
+              a reader acts on and a truncation must eat the least important first.
+              """
+              files = [f for f in changed_files if f.strip()]
+              grouped: dict[str, list[dict[str, Any]]] = {DENY: [], WARN: [], UNKNOWN: []}
+              for finding in findings:
+                  if isinstance(finding, dict):
+                      grouped[classify(finding)].append(finding)
+
+              counts = {level: len(items) for level, items in grouped.items()}
+              total = sum(counts.values())
+              file_word = "file" if len(files) == 1 else "files"
+
+              lines = [COMMENT_MARKER, "## Maxi Review", ""]
+              if total == 0:
+                  lines.append(
+                      f"maxi-lint: clean on {len(files)} changed {file_word}."
+                  )
+              else:
+                  lines.append(
+                      "maxi-lint: "
+                      f"{counts[DENY]} deny, {counts[WARN]} warn, "
+                      f"{counts[UNKNOWN]} unrecognised on {len(files)} changed {file_word}."
+                  )
+                  for level, heading in (
+                      (DENY, "Deny"),
+                      (WARN, "Warn"),
+                      (UNKNOWN, "Unrecognised rule"),
+                  ):
+                      items = grouped[level]
+                      if not items:
+                          continue
+                      lines.append("")
+                      lines.append(f"### {heading}")
+                      lines.append("")
+                      lines.extend(_one_line(item) for item in items)
+
+              lines.append("")
+              lines.append(
+                  "_Posted from the lint-gate scan, without an AI review. "
+                  "One review per pull request._"
+              )
+              body = "\n".join(lines) + "\n"
+
+              if len(body) <= BODY_BUDGET:
+                  return body
+              note = "\n\n_...truncated; the lint artifact carries every finding._\n"
+              return body[: BODY_BUDGET - len(note)] + note
+
+
+          def decide(
+              findings: list[Any],
+              changed_files: list[str],
+              reviews: list[dict[str, Any]],
+          ) -> Decision:
+              """Post once, skip thereafter. The findings only affect the text."""
+              if already_reviewed(reviews):
+                  return Decision(False, "", "", "maxi-reviewer has already reviewed this pull request")
+              clean = [f for f in findings if isinstance(f, dict)]
+              return Decision(
+                  True,
+                  REVIEW_STATE,
+                  render_body(clean, changed_files),
+                  "no maxi-reviewer review on this pull request yet",
+              )
+
+          import json
+          import sys
+
+          event_name, head_ref, actor, author = sys.argv[1:5]
+          findings, changed, reviews = (json.load(open(p)) for p in sys.argv[5:8])
+          if not all(isinstance(v, list) for v in (findings, changed, reviews)):
+              print("findings, changed files and reviews must all be JSON arrays", file=sys.stderr)
+              raise SystemExit(2)
+          if not eligible(event_name, head_ref, actor, author):
+              outcome = Decision(False, "", "", "not an in-scope pull request")
+          else:
+              outcome = decide(findings, [str(p) for p in changed], reviews)
+          json.dump(outcome.as_dict(), open(sys.argv[8], "w"))
+          PY
+
+          post=$(jq -r .post "$decision")
+          echo "decision: $(jq -r .reason "$decision") (post=$post)"
+          if [ "$post" != "true" ]; then
+            exit 0
+          fi
+
+          # Re-read immediately before posting. The concurrency group above
+          # queues a second run rather than letting it overlap, but the
+          # decision above was made against the reviews fetched at the start
+          # of THIS run, and the run ahead of it may have posted since. A
+          # review that landed in that gap must suppress this one: one review
+          # per pull request, not one per queued run.
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+            | jq -s 'add' > "$reviews"
+          if jq -e --argjson logins "$REVIEWER_LOGINS" \
+              '[.[].user.login] | any(. as $l | $logins | index($l))' \
+              "$reviews" >/dev/null; then
+            echo "a maxi-reviewer review landed while this run was queued; not posting another"
+            exit 0
+          fi
+
+          jq -n \
+            --arg sha "$HEAD_SHA" \
+            --arg body "$(jq -r .body "$decision")" \
+            --arg event "$(jq -r .state "$decision")" \
+            '{commit_id: $sha, body: $body, event: $event}' \
+            | gh api -X POST \
+                "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --input -
+
+          # Read it back. A 2xx from the POST is not evidence the review
+          # exists -- the gate reads the reviews list, so that is what is
+          # checked.
+          if ! gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --jq '.[].user.login' \
+              | grep -qx 'maxi-reviewer\[bot\]'; then
+            echo "::error::the review POST succeeded but no maxi-reviewer review is on the pull request"
+            exit 1
+          fi
+          echo "posted a maxi-reviewer review"
 
   review:
     needs: lint-gate

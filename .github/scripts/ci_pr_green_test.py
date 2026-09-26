@@ -8,7 +8,10 @@ workflow run.
 
 # maxi-config-owned PR greenness judge tests.
 
+import contextlib
 import importlib.util
+import io
+import json
 import pathlib
 import unittest
 
@@ -18,6 +21,19 @@ SCRIPT = pathlib.Path(__file__).with_name("ci_pr_green.py")
 # one copy would quietly change which group a row lands in.
 GATE = "Review Gate"
 CI = "CI"
+# The fake resolved paths the gate-stamp test asserts on. Named because the
+# whole point of that test is that the binary EXECUTED and the path REPORTED
+# are the same string; spelling it three times invites them to drift apart,
+# which is the very defect being guarded.
+FAKE_MAXI = "/opt/fake/maxi"
+FAKE_GH = "/opt/fake/gh"
+
+# The two literals the hollow-success fixtures repeat most -- nine and five
+# times respectively. Named for the same reason as the pair above: a fixture
+# whose context string and the assertion about it drift apart stops testing
+# what it claims to.
+QLTY = "qlty check"
+QLTY_NO_MINUTES = "Qlty did not run because you are out of minutes."
 T0 = "2026-09-11T17:00:00Z"
 T1 = "2026-09-11T18:00:00Z"
 
@@ -210,6 +226,155 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(len(hollow), 1)
         self.assertIn("some-bot", hollow[0])
 
+    def test_a_qlty_out_of_minutes_error_is_noticed_but_still_green(self):
+        """The qlty wedge: state=error + 'did not run' is a quota outage, not a finding.
+
+        On maxi-sandbox#140 (2026-09-22) the org's qlty minutes ran out, so
+        qlty posted `state: error` with `description: "Qlty did not run
+        because you are out of minutes."` on every PR in the org. The merge
+        gate treated the quota outage as a code defect and every PR was
+        unmergeable until the minutes topped up. The fix: this is a
+        did-not-run claim on a non-success state, which gets the same
+        NOTICE-bucket, GREEN-passing treatment as the rate-limited success
+        above.
+
+        Deliberately narrow: a real qlty finding has a real summary attached
+        and the regex must not match it, otherwise the gate ignores qlty
+        errors wholesale. Pinned by the next two tests.
+        """
+        statuses = [{"context": QLTY, "state": "error",
+                     "description": QLTY_NO_MINUTES}]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual((failures, pending, stale), ([], [], []),
+                         "an out-of-minutes error must not withhold GREEN")
+        self.assertEqual(len(hollow), 1)
+        self.assertIn(QLTY, hollow[0])
+        self.assertIn("did not run", hollow[0])
+        self.assertEqual(
+            mod.verdict_of(failures, pending, stale), "GREEN",
+            "a quota exhaustion is not the author's doing; failing the PR "
+            "would wedge every merge until the minutes top up")
+
+    def test_a_qlty_check_run_out_of_minutes_is_noticed_but_still_green(self):
+        """Same shape, different channel: a qlty CHECK-RUN with conclusion=error.
+
+        qlty Cloud posts both -- a commit STATUS and a check RUN -- and the
+        same description ("did not run because ... minutes") can land on
+        either. The check-run path carries prose in `output.title` rather
+        than in `state.description`, so it is the symmetric case: same
+        exclusion, same NOTICE bucket.
+        """
+        row = check(QLTY, suite=1, started=T0, conclusion="error")
+        row["output"] = {"title": QLTY_NO_MINUTES,
+                         "summary": ""}
+        failures, pending, stale, hollow, _ = mod.judge([], [row], [])
+        self.assertEqual((failures, pending, stale), ([], [], []),
+                         "the did-not-run conclusion=error must not withhold GREEN")
+        self.assertEqual(len(hollow), 1)
+        self.assertIn(QLTY, hollow[0])
+        self.assertIn("did not run", hollow[0])
+        self.assertEqual(mod.verdict_of(failures, pending, stale), "GREEN")
+
+    def test_a_qlty_finding_with_no_did_not_run_phrasing_still_fails(self):
+        """The narrow pattern must not launder real findings.
+
+        Acceptance criterion 3 of t_409d42df: a qlty that ran and objected is
+        not the same as one that never started, and collapsing those is how
+        this class of bug gets made in the first place. A real qlty finding
+        has a real summary (issues, smells, complexity), not "did not run".
+        The regex must not match it.
+        """
+        statuses = [{"context": QLTY, "state": "error",
+                     "description": "Found 3 issues: complex function on line 42; "
+                                    "duplicated block in src/foo.rs."}]
+        failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(failures), 1,
+                         "a real qlty finding must still be a failure")
+        self.assertEqual(hollow, [], "the description has no did-not-run phrase")
+        self.assertEqual(mod.verdict_of(failures, _p, _stale), "NOT_GREEN")
+
+    def test_a_codacy_internal_error_with_no_did_not_run_phrasing_still_fails(self):
+        """A non-success description that is NOT a did-not-run claim still fails.
+
+        HOLLOW_NOT_RUN is deliberately narrow. A bot that posts state=error
+        for any other reason -- network, auth, internal -- stays a failure.
+        The pattern matches what the bot SAYS, not just the fact that the
+        state is non-success.
+        """
+        statuses = [{"context": "Codacy Static Code Analysis", "state": "error",
+                     "description": "Internal server error"}]
+        failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(hollow, [])
+        self.assertEqual(mod.verdict_of(failures, _p, _stale), "NOT_GREEN")
+
+    def test_a_hollow_not_run_alone_is_GREEN(self):
+        """The verdict, not the buckets. Verifies hollow-not-run does not
+        withhold GREEN, by way of `verdict_of` -- the same property M3
+        exposed for the success-side hollow.
+        """
+        statuses = [{"context": QLTY, "state": "error",
+                     "description": QLTY_NO_MINUTES}]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(hollow), 1, "precondition: this row IS hollow")
+        self.assertEqual(
+            mod.verdict_of(failures, pending, stale), "GREEN",
+            "a quota outage must not block the merge; the bot's quota is "
+            "not the author's doing")
+
+    def test_a_real_failure_beside_a_hollow_not_run_is_NOT_GREEN(self):
+        """The hollow must not become a way to launder a failure either.
+
+        Same shape as the success-side hollow test: a real red beside the
+        hollow keeps the verdict NOT_GREEN. Otherwise a hollow exclusion
+        would let any PR with a quota outage slip a real failure past the
+        gate.
+        """
+        statuses = [
+            {"context": QLTY, "state": "error",
+             "description": QLTY_NO_MINUTES},
+            {"context": "review-gate/threads", "state": "failure"},
+        ]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(hollow), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(mod.verdict_of(failures, pending, stale), "NOT_GREEN")
+
+    def test_a_qlty_analysis_timeout_is_hollow_not_run(self):
+        """The qlty Cloud race the troubleshooting docs name.
+
+        "Pull request analysis starts, but Qlty hasn't posted a conclusive
+        status back to GitHub within 15 minutes. At that point, Qlty will
+        mark ... as `error`." That is still a did-not-run claim delivered via
+        state=error -- an analysis that began and never completed -- and
+        belongs in `hollow` for the same reason an explicit
+        out-of-minutes error does.
+        """
+        statuses = [{"context": QLTY, "state": "error",
+                     "description": "Analysis timeout: 15-minute window expired."}]
+        failures, _p, _stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(failures, [])
+        self.assertEqual(len(hollow), 1)
+        self.assertIn("Analysis timeout", hollow[0])
+
+    def test_a_hollow_not_run_does_not_also_appear_in_failures(self):
+        """The pre-pass guarantees a row lands in exactly one bucket.
+
+        The did-not-run check-run above would otherwise be added to BOTH
+        `failures` (by the bucketing loop) and `hollow` (by the pre-pass),
+        which still withholds GREEN. The pre-pass's `skip_check_ids` is what
+        makes the bucketing loop skip it. If this test starts failing the
+        pre-pass's skip set has drifted.
+        """
+        row = check(QLTY, suite=1, started=T0, conclusion="error")
+        row["output"] = {"title": QLTY_NO_MINUTES,
+                         "summary": ""}
+        failures, _p, _stale, hollow, _ = mod.judge([], [row], [])
+        self.assertEqual(failures, [],
+                         "the pre-pass must skip the row in the bucketing loop")
+        self.assertEqual(len(hollow), 1)
+        self.assertEqual(mod.verdict_of(failures, _p, _stale), "GREEN")
+
     def test_commit_status_failure_is_reported(self):
         statuses = [{"context": "review-gate/threads", "state": "failure"}]
         failures, _p, _stale, _hollow, _ = mod.judge([], [], statuses)
@@ -236,6 +401,22 @@ class JudgeTest(unittest.TestCase):
         failures, _p, _stale, _hollow, considered = mod.judge(runs, [], [])
         self.assertEqual(len(failures), 1)
         self.assertEqual(considered, 2)
+
+
+class ConclusionSetsTest(unittest.TestCase):
+    def test_success_is_inside_ok_conclusions(self):
+        # Pins the premise of a simplification. The hollow pre-pass read
+        # `conclusion == "success" or conclusion in OK_CONCLUSIONS`; the first
+        # disjunct is dead only while "success" is a member of the set, so it
+        # was removed. If someone later narrows OK_CONCLUSIONS, that removal
+        # silently changes which rows reach the hollow check -- exactly the
+        # kind of change that looks like a no-op in review.
+        self.assertIn("success", mod.OK_CONCLUSIONS)
+        # The two sets must also stay disjoint, or which bucket a row skips
+        # into stops being well defined.
+        self.assertEqual(
+            mod.OK_CONCLUSIONS & mod.NO_VERDICT_CONCLUSIONS, frozenset()
+        )
 
 
 class StaleTest(unittest.TestCase):
@@ -523,6 +704,120 @@ class UnknownTest(unittest.TestCase):
         finally:
             mod.head_sha = original
         self.assertEqual(code, 2)
+
+
+
+
+class GateBinaryTest(unittest.TestCase):
+    def test_discover_gate_stamp_returns_none_when_no_maxi(self):
+        # When maxi is not on PATH (the common case on CI hosts that only
+        # have gh + python), discover_gate_stamp must return None, not crash.
+        orig_which = mod.shutil.which
+        mod.shutil.which = lambda name: None
+        try:
+            self.assertIsNone(mod.discover_gate_stamp())
+        finally:
+            mod.shutil.which = orig_which
+
+    def test_gate_binary_appears_in_json_report(self):
+        # The point of the change: a caller (or a later Rust port) can see
+        # exactly which binary produced the verdict. So this asserts on the
+        # JSON REPORT, which is the thing the name promises.
+        #
+        # It did not, until now. The old body called mod.main(...) and
+        # asserted NOTHING about it, then asserted on discover_gate_stamp()
+        # directly. That main() call could never have reached the stamp:
+        # fake_which returned None for "gh", so GhTransport.__init__ raised
+        # "gh is not on PATH", main caught it and returned 2, and the only
+        # thing printed was {"verdict": "UNKNOWN", ...} -- no gate_binary key
+        # in it at all. Measured: main() returned 2 and the sole PATH lookup
+        # made was "gh". A test named for the JSON report never once looked
+        # at the JSON report, which is exactly the "absence reads as success"
+        # shape this whole script exists to catch, turned on the script.
+        orig_which = mod.shutil.which
+        orig_run = mod.subprocess.run
+        orig_transport = mod.GhTransport
+
+        class FakeTransport:
+            """Enough of the API for main() to reach a real verdict.
+
+            One successful status and no runs/checks: `considered` must be
+            non-zero or main short-circuits to UNKNOWN via report_unknown,
+            which does not carry gate_binary either.
+            """
+
+            def __init__(self, binary=None):
+                # Intentionally empty: the real __init__ resolves `gh` on
+                # PATH and raises when it is absent, which is the exact
+                # behaviour this double exists to avoid.
+                pass
+
+            # The arity mirrors GhTransport on purpose -- a double that does
+            # not match the real call shape stops catching a caller passing
+            # the wrong thing, which is most of what this double is for. The
+            # unused ones carry a leading underscore because THIS FILE IS
+            # FANNED OUT: an "I have a good reason to leave this finding"
+            # costs one merge-gating review thread per consuming repo per
+            # sync, and there are ~50 of them. S1172 was declined here once
+            # and came straight back as threads on freya#45, coreml-rs#78,
+            # maxi-reviewer#147 and every other consumer. The bar for leaving
+            # a finding in a distributed payload is not the bar for leaving
+            # one in a repo that owns its own file.
+            def items(self, path, _key, _params=None):
+                if path.endswith("/statuses"):
+                    return [{"context": CI, "state": "success",
+                             "description": ""}]
+                return []
+
+            def one(self, _path, _params=None):
+                return {}
+
+        class FakeProc:
+            returncode = 0
+            stdout = "2.0.0 (build 42, deadbeef1234567, 2026-09-21)\n"
+            stderr = ""
+
+        argvs = []
+
+        def fake_run(*a, **k):
+            argvs.append(a[0] if a else k.get("args"))
+            return FakeProc()
+
+        mod.shutil.which = lambda name: (
+            FAKE_MAXI if name == "maxi" else FAKE_GH
+        )
+        mod.subprocess.run = fake_run
+        mod.GhTransport = FakeTransport
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                code = mod.main(["--repo", "o/n", "--sha", "abc", "--json"])
+        finally:
+            mod.shutil.which = orig_which
+            mod.subprocess.run = orig_run
+            mod.GhTransport = orig_transport
+
+        # Assert the exit code. The old test discarded it, which is what let
+        # a silent return of 2 sit here unnoticed.
+        self.assertEqual(code, 0)
+        report = json.loads(buf.getvalue())
+        self.assertEqual(report["verdict"], "GREEN")
+        stamp = report["gate_binary"]
+        self.assertEqual(stamp["path"], FAKE_MAXI)
+        self.assertEqual(stamp["sha"], "deadbeef1234567")
+        self.assertEqual(stamp["date"], "2026-09-21")
+        self.assertEqual(
+            stamp["version_long"],
+            "2.0.0 (build 42, deadbeef1234567, 2026-09-21)",
+        )
+        # The version must be read from the SAME binary whose path is
+        # reported. Going back through PATH -- ["/usr/bin/env", "maxi", ...]
+        # -- would let stamp["path"] and stamp["version_long"] describe two
+        # different files, so the argv is asserted rather than assumed.
+        # Without this the whole test still passes with the env form, because
+        # a stubbed subprocess.run accepts any argv at all.
+        self.assertEqual(argvs, [[FAKE_MAXI, "--version"]])
+
 
 
 if __name__ == "__main__":

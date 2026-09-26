@@ -64,8 +64,28 @@ select = [
 # modules that live beside the code they exercise. This is a best effort against
 # known layouts, not a proof — a consumer with a genuinely unusual arrangement
 # should add its own per-file-ignores rather than assume this covers it.
-"**/tests/**" = ["S101"]
-"**/test/**" = ["S101"]
-"**/test_*.py" = ["S101"]
-"**/*_test.py" = ["S101"]
-"**/conftest.py" = ["S101"]
+# S103 joins S101 for the same reason and with the same scope. A test that
+# stands a stub executable in front of the code under test has to make it
+# executable, and a stub `gh` without the exec bit cannot stand in for `gh` --
+# so the finding is on the act of testing, not on a permission decision.
+# tests/test_fanout_language_gate.py does exactly this to exercise a bash
+# function against a fake API.
+#
+# Here rather than in `.qlty/qlty.toml`, deliberately. Ruff's own
+# per-file-ignores are the mechanism this file already uses for S101, they
+# travel to every consumer with this file, and they apply to ruff run by
+# anything -- qlty, Codacy, a pre-commit hook, an editor. A qlty triage block
+# would have covered only the one caller. (codacy, #824, which asked for the
+# ruff and bandit suppressions to be symmetrical; they should be equivalent,
+# but each belongs in its own tool's config.)
+#
+# Not added: S404, S603, S607. They are the ruff twins of bandit's
+# subprocess rules, and they are NOT in the select list above, so a
+# per-file-ignore for them would excuse nothing -- the same trap the S101
+# comment records. Enabling them is a separate decision, and it should be
+# made where it can be measured rather than pre-suppressed here.
+"**/tests/**" = ["S101", "S103"]
+"**/test/**" = ["S101", "S103"]
+"**/test_*.py" = ["S101", "S103"]
+"**/*_test.py" = ["S101", "S103"]
+"**/conftest.py" = ["S101", "S103"]

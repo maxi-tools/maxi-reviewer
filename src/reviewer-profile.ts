@@ -41,7 +41,23 @@ export const BOT_REVIEWERS = [
 
 export type BotReviewer = (typeof BOT_REVIEWERS)[number];
 
-export type ReviewOutcome = "accepted" | "dismissed" | "unaddressed";
+/**
+ * `unknown` is not a verdict about the finding, it is the ABSENCE of one:
+ * the paths touched after the comment could not be determined, so there is
+ * no evidence either way.
+ *
+ * It exists because the alternative is worse. Without it, a failed lookup
+ * produces an empty `subsequentTouchedPaths`, which is indistinguishable
+ * from "nothing was touched" and classifies as `dismissed` — a real verdict,
+ * against the reviewer, manufactured out of a network error. That is how a
+ * 270-PR harvest reported a 0% accept rate for all seven bot reviewers at
+ * once while every commit fetch was failing (#133).
+ *
+ * `unknown` findings are counted and reported separately; they never enter
+ * an accept rate.
+ */
+export type ReviewOutcome =
+  "accepted" | "dismissed" | "unaddressed" | "unknown";
 
 export interface InlineReviewFinding {
   /** The bot's GitHub login. Must be one of BOT_REVIEWERS. */
@@ -62,11 +78,53 @@ export interface InlineReviewFinding {
    * edit.
    */
   subsequentTouchedPaths: string[];
+  /**
+   * Whether `subsequentTouchedPaths` is a real observation.
+   *
+   * `false` means the commit walk for this PR did not complete, so an empty
+   * list means "we could not look", NOT "nothing was touched". Defaults to
+   * `true` when omitted so existing callers keep their meaning; the
+   * harvester sets it explicitly.
+   */
+  touchedPathsKnown?: boolean;
+  /**
+   * How many commits landed on the PR after this comment was posted.
+   *
+   * `0` means the finding had no opportunity to be actioned: the PR merged
+   * or closed without another commit, so nothing about it can be read as
+   * evidence for or against the reviewer. See `classifyOutcome`.
+   *
+   * Recorded as a COUNT rather than derived from `subsequentTouchedPaths`
+   * being empty. The two are nearly equivalent -- that list is the union of
+   * every path from every later commit -- but "nearly" is the whole subject
+   * of this file: an empty array standing in for a fact nobody measured is
+   * the shape of #133. A commit that reports no files (an empty commit, or
+   * one whose file list we could not read) would make the array empty while
+   * a commit really did land, and the count says so.
+   *
+   * Optional for backwards compatibility with callers written before this
+   * existed; `undefined` means "not recorded" and preserves the old
+   * behaviour. The harvester always sets it, and "records the commit count
+   * so an un-amendable PR is measurable" in
+   * tests/reviewer-profile-build.test.ts fails if that stops being true.
+   */
+  subsequentCommitCount?: number;
 }
 
 export interface PathGroupStats {
+  /** Findings with a KNOWN outcome. The denominator of `acceptRate`. */
   n: number;
   acceptRate: number;
+  /**
+   * Findings whose outcome could not be determined, excluded from `n` and
+   * from `acceptRate`.
+   *
+   * A consumer that ignores this field still gets a correct rate over the
+   * evidence that exists. A consumer that reads it can tell a genuine 0%
+   * from a harvest that measured nothing — which is the distinction #133
+   * was about.
+   */
+  unknownN: number;
 }
 
 export interface ReviewerStats {
@@ -169,12 +227,30 @@ export function pathGroupFor(path: string): string {
 
 /**
  * Decide what happened to one inline review finding. A thread is:
- *   - "accepted" when a commit AFTER it landed touched the file. This covers
+ *   - "accepted" when a commit AFTER it landed touched THAT FILE. This covers
  *     the most common case (the author fixed the line in a follow-up commit)
  *     and the case where the comment author is satisfied by an unrelated
- *     touch to the same file. We use file-level granularity because most bot
+ *     touch to the same file. File-level, not line-level, because most bot
  *     threads do not preserve line numbers across rebases and the harvest
  *     window often spans pushes that move lines.
+ *
+ *     It compared the PATH GROUP as well until 2026-09-19, which is not what
+ *     the paragraph above has ever described. `pathGroupFor` buckets coarsely
+ *     -- every `.rs` file outside a test directory is `rust-src` -- so a
+ *     finding on `crates/a/src/foo.rs` was accepted by a later commit to
+ *     `crates/z/src/unrelated.rs`. On a Rust PR that means any subsequent
+ *     Rust commit accepted every Rust finding on the PR.
+ *
+ *     It is visible in the first harvest that produced real numbers
+ *     (2026-09-19, 6357 measured): `rust-src` was the top group for six of
+ *     seven reviewers (87-100%) while `docs`, `lockfile` and `config` sat
+ *     lowest. That ordering tracks how BROAD each bucket is, not how good
+ *     any reviewer is. Cross-group comparison was measuring the bucketer.
+ *
+ *     Rates drop after this change, and they should: the old ones counted
+ *     coincidence. Comparisons WITHIN one path group were always sound --
+ *     every reviewer in a group was scored through the same clause -- so the
+ *     routing signal survives; the absolute numbers do not.
  *   - "dismissed" when the thread was resolved with no subsequent commit on
  *     the same file. Resolved is treated as a deliberate close by either the
  *     thread author or the PR author; "no commit on the file" is the evidence
@@ -187,23 +263,75 @@ export function pathGroupFor(path: string): string {
  * classifier does not look at the network.
  */
 export function classifyOutcome(finding: InlineReviewFinding): ReviewOutcome {
-  const touched = finding.subsequentTouchedPaths.some(
-    (p) => p === finding.path || pathGroupFor(p) === pathGroupFor(finding.path)
-  );
+  // No evidence is not evidence. If the commit walk did not complete, an
+  // empty touched-paths list means "we could not look", and reading it as
+  // "nothing was touched" would classify the finding as `dismissed` — a
+  // verdict against the reviewer invented from a failed request.
+  if (finding.touchedPathsKnown === false) return "unknown";
+  const touched = finding.subsequentTouchedPaths.includes(finding.path);
   if (touched) return "accepted";
+  // NO COMMIT COULD HAVE LANDED, so the silence says nothing.
+  //
+  // `dismissed` and `unaddressed` both mean "the author saw this and did not
+  // change the code". That reading requires the author to have been ABLE to
+  // change the code. On a PR that merged with no further commit they were
+  // not, and the strongest case is the one this org generates most: 1,237 of
+  // the 3,039 PRs merged across maxi-tools in the 30 days to 2026-09-21 --
+  // 41% -- are `maxi-config-sync/*` fan-out PRs, whose every file carries the
+  // `# maxi-config-owned ` marker that `check-owned-files.py` refuses to let
+  // a consumer touch. The only moves available are "merge exactly as
+  // generated" or "close".
+  //
+  // Scoring those as not-accepted made a reviewer's rate a function of how
+  // much fan-out traffic the window happened to contain. Worse, the CORRECT
+  // response to a finding there -- fix it at the source in maxi-config and
+  // re-fan -- produced no commit on the consumer PR, so being right and
+  // acting on it scored against the reviewer.
+  //
+  // This is the same principle as the `touchedPathsKnown` clause above, from
+  // #133: an absent observation must not become a verdict. There the paths
+  // could not be read; here there was nothing to read. Both are `unknown`,
+  // counted in `unknownN` and excluded from every accept rate.
+  if (finding.subsequentCommitCount === 0) return "unknown";
   if (finding.threadResolved) return "dismissed";
   return "unaddressed";
 }
 
-function statsFor(counts: { accepted: number; total: number }): PathGroupStats {
+function statsFor(counts: {
+  accepted: number;
+  total: number;
+  unknown: number;
+}): PathGroupStats {
   return {
     n: counts.total,
     acceptRate: counts.total > 0 ? counts.accepted / counts.total : 0,
+    unknownN: counts.unknown,
   };
 }
 
 function emptyStats(): PathGroupStats {
-  return { n: 0, acceptRate: 0 };
+  return { n: 0, acceptRate: 0, unknownN: 0 };
+}
+
+/** Fold one finding into a running bucket. */
+function accumulate(
+  prev: PathGroupStats,
+  outcome: ReviewOutcome
+): PathGroupStats {
+  if (outcome === "unknown") {
+    // Counted, but kept out of the numerator AND the denominator: an
+    // unmeasurable finding must not move a rate in either direction.
+    return statsFor({
+      accepted: prev.acceptRate * prev.n,
+      total: prev.n,
+      unknown: prev.unknownN + 1,
+    });
+  }
+  return statsFor({
+    accepted: prev.acceptRate * prev.n + (outcome === "accepted" ? 1 : 0),
+    total: prev.n + 1,
+    unknown: prev.unknownN,
+  });
 }
 
 /**
@@ -225,17 +353,13 @@ export function aggregateReviewerProfiles(
   for (const finding of findings) {
     const stats = reviewers[finding.reviewer];
     if (!stats) continue;
-    const accepted = classifyOutcome(finding) === "accepted" ? 1 : 0;
-    stats.overall = statsFor({
-      accepted: stats.overall.acceptRate * stats.overall.n + accepted,
-      total: stats.overall.n + 1,
-    });
+    const outcome = classifyOutcome(finding);
+    stats.overall = accumulate(stats.overall, outcome);
     const group = pathGroupFor(finding.path);
-    const prev = stats.byPathGroup[group] ?? emptyStats();
-    stats.byPathGroup[group] = statsFor({
-      accepted: prev.acceptRate * prev.n + accepted,
-      total: prev.n + 1,
-    });
+    stats.byPathGroup[group] = accumulate(
+      stats.byPathGroup[group] ?? emptyStats(),
+      outcome
+    );
   }
 
   return {

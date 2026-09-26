@@ -25,17 +25,56 @@
 # repo that runs it. That is what lets the analyze job key on the matrix
 # without a separate empty-matrix guard.
 #
-# NIXOS. The Linux X64 pool is the NixOS fleet (maxibaobab-1..6, ml-node-1..4;
-# maxi-nix modules/github-runner.nix). The CodeQL bundle is FHS glibc
-# binaries -- the `codeql` launcher, a bundled JDK, the per-language
-# extractors -- and it runs there because the runner unit exports NIX_LD and
-# NIX_LD_LIBRARY_PATH (same module, "allow downloaded FHS binaries ... to
-# find glibc"), which is the mechanism cargo-nextest and actions/setup-node
-# binaries already ride. Nothing here has to be unset or patched; contrast
-# maxi-ui's leptos.yml, which must drop LD_LIBRARY_PATH for a nixpkgs
-# chromium because that closure carries its OWN glibc. The bundle lands in
-# the runner tool cache under /data/ci/<runner>/_work/_tool and is reused
-# across jobs on the same slot.
+# ONE LANGUAGE PER PULL REQUEST, ALL OF THEM NIGHTLY. Four `Analyze` jobs per
+# PR, on every PR in the org, were the largest single item in the Linux queue
+# (2026-09-18: ~22 of 71 queued jobs on a 14-slot pool). A PR is analysed in
+# the ONE language most of its changed files belong to -- a workflow-only PR
+# in a Rust repo gets `actions`, not a 10-minute Rust extraction it did not
+# touch -- and the nightly schedule (and workflow_dispatch) still analyses
+# every detected language, so nothing stops being scanned; it stops being
+# scanned four times per push. Push to main follows the PR rule: the nightly
+# is the baseline, and a merge re-checks the language the merge changed.
+#
+# LINUX, X64 ONLY. `runs-on` is `[self-hosted, Linux, X64]`: the X64 pool is
+# the NixOS fleet (maxibaobab-1..6, maxicoconut-1..4, ml-node-1..4; maxi-nix
+# modules/github-runner.nix) and the ARM64 pool is the DGX boxes (jasper,
+# pearl, peridot, Ubuntu). CodeQL CLI does NOT support linux/arm64 -- only
+# x86-64 -- per the System requirements table at
+# https://codeql.github.com/docs/codeql-overview/system-requirements/
+# ("Linux: Ubuntu 22.04 / Ubuntu 24.04, x86-64"). Routing without an X64
+# label landed CodeQL on the DGX boxes and burst every `Initialize CodeQL`
+# step:
+#
+#   .../tools/CodeQL/2.27.0/arm64/codeql/codeql: 149:
+#       .../tools/linux-arm64/java/bin/java: not found
+#   ##[error]Unable to download and extract CodeQL CLI: The CodeQL CLI does
+#       not support the platform/architecture combination of linux/arm64
+#
+# The previous header asserted that codeql-bundle-v2.27.0 ships a usable
+# linux/arm64 binary. It does not: the bundle lays down a
+# `tools/linux-arm64/...` directory for macOS-arm64 detection, but the
+# file `tools/linux-arm64/java/bin/java` is missing -- so
+# github/codeql-action/init aborts with `tools/linux-arm64/java/bin/java:
+# not found` and treats it as a hard unsupported-platform error rather
+# than falling back to the x86_64 build (no emulation, no cross-arch
+# runner). Observed 2026-09-19 on `pearl-1` (maxi-config#734) and
+# `jasper-2`/`pearl-1` (maxi-config#732); a re-run on `ml-node-2` (X64)
+# passed unchanged. Pin the arch label so routing cannot place it on
+# the ARM64 fleet; do NOT drop the label back to `[self-hosted, Linux]`
+# even when CodeQL CLI ships a real linux/arm64 build -- audit first,
+# since every runner in the X64 lane today is NixOS and the bundle's
+# FHS packaging has had its own surprises below.
+#
+# NIXOS. On the X64 pool the CodeQL bundle is FHS glibc binaries -- the
+# `codeql` launcher, a bundled JDK, the per-language extractors -- and it
+# runs there because the runner unit exports NIX_LD and NIX_LD_LIBRARY_PATH
+# (same module, "allow downloaded FHS binaries ... to find glibc"), which is
+# the mechanism cargo-nextest and actions/setup-node binaries already ride.
+# Nothing here has to be unset or patched; contrast maxi-ui's leptos.yml,
+# which must drop LD_LIBRARY_PATH for a nixpkgs chromium because that closure
+# carries its OWN glibc. The bundle lands in the runner tool cache under
+# /data/ci/<runner>/_work/_tool and is reused across jobs on the same slot.
+# The Ubuntu ARM64 boxes need none of that.
 #
 # BUILD MODE. Every language here is analysed with `build-mode: none`: rust
 # and actions support only that mode, python and javascript-typescript never
@@ -55,9 +94,13 @@ on:
   push:
     branches: [main]
   schedule:
-    # Sunday 03:17 UTC. Off the Monday-morning window the maxi-config
-    # distributors use, and outside working hours in every fleet timezone.
-    - cron: "17 3 * * 0"
+    # Nightly 03:17 UTC, not weekly. A pull request analyses ONE language now
+    # (see `detect`), so this is where the other languages get their turn --
+    # every night, so an alert in a language a PR did not touch surfaces the
+    # next morning rather than the next Sunday. Off the Monday-morning window
+    # the maxi-config distributors use, and outside working hours in every
+    # fleet timezone.
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 # One in-flight analysis per PR or branch; a superseded push cancels the older
@@ -121,10 +164,20 @@ jobs:
           # Nothing here pushes, and the job runs PR code: no credential on
           # disk beside it.
           persist-credentials: false
+          # 2, not 1: the one-language rule below diffs the commit against its
+          # first parent. On a pull request the checkout is the merge commit,
+          # whose first parent is the base branch, so `HEAD^1..HEAD` is the
+          # PR's own change set; on a push to main it is the merge commit or
+          # the pushed commit against what main was. Depth 2 fetches exactly
+          # those parents and nothing older -- `fetch-depth: 0` on maxi-core
+          # would cost more than the analysis it is trying to save.
+          fetch-depth: 2
 
       - name: Detect the CodeQL languages this repository has files for
         id: detect
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           # Tracked files only. A git pathspec `*` crosses directory
@@ -139,6 +192,55 @@ jobs:
           has '.github/workflows/*.yml' '.github/workflows/*.yaml' \
               '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
             && langs+=(actions)
+
+          # ONE language on a pull request or a push; every language on the
+          # nightly schedule and on a dispatch (which is how an operator asks
+          # for the full scan on demand). The one language is the one with the
+          # most changed files in this commit's diff against its first parent;
+          # ties and a diff that touches none of them (docs, TOML, a lockfile)
+          # fall back to the detection order above, so a Rust repo's
+          # docs-only PR still scans rust rather than nothing -- the matrix
+          # must never be empty (see the `actions` note in the header).
+          narrow=false
+          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "push" ]; then
+            # A diff that cannot be taken (no HEAD^1: a root commit, or a
+            # checkout shallower than the fetch-depth above) is NOT an empty
+            # diff. Empty would pick the default language and look like a
+            # decision; unreadable means we do not know, and the honest answer
+            # to not knowing is the full set, said out loud.
+            if changed="$(git diff --name-only HEAD^1 HEAD)"; then
+              narrow=true
+            else
+              echo "::warning::could not diff HEAD^1..HEAD; analysing every detected language rather than guessing one"
+            fi
+          fi
+          if [ "$narrow" = true ]; then
+            count() { printf '%s\n' "$changed" | grep -c -E "$1" || true; }
+            best=""
+            best_n=0
+            for lang in "${langs[@]}"; do
+              n=0
+              case "$lang" in
+                rust) n="$(count '\.rs$|(^|/)Cargo\.(toml|lock)$')" ;;
+                python) n="$(count '\.py$')" ;;
+                javascript-typescript) n="$(count '\.(js|jsx|mjs|cjs|ts|tsx|mts|cts)$')" ;;
+                actions) n="$(count '^\.github/(workflows/[^/]+\.ya?ml|actions/[^/]+/action\.ya?ml)$')" ;;
+              esac
+              # Strictly greater: the first language in detection order wins
+              # a tie, and a zero count never displaces the default.
+              if [ "$n" -gt "$best_n" ]; then
+                best="$lang"
+                best_n="$n"
+              fi
+            done
+            if [ -z "$best" ] && [ "${#langs[@]}" -gt 0 ]; then
+              best="${langs[0]}"
+            fi
+            echo "One-language rule ($EVENT_NAME): ${best:-none} (${best_n} changed files; full set was ${langs[*]:-none})"
+            langs=()
+            [ -n "$best" ] && langs+=("$best")
+          fi
+
           json="[]"
           if [ "${#langs[@]}" -gt 0 ]; then
             printf -v joined '"%s",' "${langs[@]}"
@@ -286,8 +388,11 @@ jobs:
           # 32 GB keeps two concurrent analyses inside RAM with ~59 GB left for
           # everything else on the box, and is ample for the largest crate
           # graph in the org. Fixed rather than proportional because
-          # `runs-on` is always this one Linux X64 pool, for every repo the
-          # fan-out reaches.
+          # `runs-on` is always this one Linux pool, for every repo the
+          # fan-out reaches. (Now X64 only -- the `LINUX, X64 ONLY` header
+          # block at the top of this file -- so the parenthetical about
+          # the ARM64 DGX boxes is historical: CodeQL no longer lands
+          # there.)
           # 16 GiB, sized for the WORST case on the biggest host rather than
           # for two jobs. maxibaobab serves six runner slots and ml-node four,
           # and the fan-out gives every repo the same schedule, so six Rust

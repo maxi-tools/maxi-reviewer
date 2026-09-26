@@ -981,6 +981,159 @@ describe("jules.ts", () => {
         "Jules API rejected request (403 Forbidden). Check JULES_API_KEY is valid."
       );
     });
+
+    it("does not let a hung hydrate() call outlive the poll deadline", async () => {
+      const mockSession = mockSessionWithHistory([]);
+      // Never resolves: a real hang looks exactly like this to the caller.
+      mockSession.hydrate = vi
+        .fn()
+        .mockImplementation(() => new Promise(() => {}));
+
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(mockSession),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      // The hung hydrate() eats the whole 60s deadline before its per-call
+      // timeout fires; the post-catch poll delay is then min(20s, remaining)
+      // so the loop exits instead of sleeping past the deadline. Without the
+      // per-call timeout this hydrate() call would never settle and this
+      // advance would leave `promise` pending.
+      await vi.advanceTimersByTimeAsync(90 * 1000);
+
+      const result = await promise;
+      expect(result).toEqual({
+        reviewResult: null,
+        sessionId: "test-session-id",
+      });
+    });
+
+    it("does not let a hung session.info() in waitUntilSessionReady outlive the deadline", async () => {
+      const mockSession = mockSessionWithHistory([]);
+      mockSession.info = vi
+        .fn()
+        .mockImplementation(() => new Promise(() => {}));
+
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(mockSession),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      let settled = false;
+      promise.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        }
+      );
+
+      await vi.advanceTimersByTimeAsync(61 * 1000);
+      expect(settled).toBe(true);
+      await expect(promise).rejects.toThrow(/session\.info\(\) timed out/);
+    });
+
+    it("does not let a hung createReviewSession on the fresh-session path outlive the deadline", async () => {
+      const mockJulesWith = vi.fn().mockReturnValue({
+        // Never resolves: this is the SDK call behind createReviewSession,
+        // the common (non-resume) path. Without a withTimeout wrap it would
+        // hold the action past the wall-clock deadline — the #53 hang.
+        session: vi.fn().mockImplementation(() => new Promise(() => {})),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      let settled = false;
+      promise.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        }
+      );
+
+      await vi.advanceTimersByTimeAsync(61 * 1000);
+      expect(settled).toBe(true);
+      await expect(promise).rejects.toThrow(/createReviewSession timed out/);
+    });
+
+    it("does not let a hung session.send() outlive the remaining budget", async () => {
+      const badReview = "not valid json at all";
+      let historyCalls = 0;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockImplementation(() => new Promise(() => {})),
+        history: async function* () {
+          historyCalls++;
+          if (historyCalls === 1) return;
+          yield { type: "agentMessaged", message: badReview };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      let settled = false;
+      promise.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        }
+      );
+
+      await vi.advanceTimersByTimeAsync(61 * 1000);
+      expect(settled).toBe(true);
+      await expect(promise).rejects.toThrow(/session\.send\(\) timed out/);
+    });
+
+    it("bounds a JSON-repair round to the remaining budget, not a fresh full one", async () => {
+      const badReview = "not valid json at all";
+      let historyCalls = 0;
+      const session = {
+        id: "test-session-id",
+        info: vi.fn().mockResolvedValue({}),
+        hydrate: vi.fn().mockResolvedValue(1),
+        prompt: vi.fn().mockResolvedValue({}),
+        history: async function* () {
+          historyCalls++;
+          // First attempt: no reply yet, so the initial poll consumes 20s of
+          // the 60s budget before returning badReview on the second attempt.
+          if (historyCalls === 1) return;
+          yield { type: "agentMessaged", message: badReview };
+        },
+      };
+      const mockJulesWith = vi.fn().mockReturnValue({
+        session: vi.fn().mockResolvedValue(session),
+      });
+      (jules as any).with = mockJulesWith;
+
+      const promise = runJulesReview("api-key", "prompt", {}, 1);
+      let settled = false;
+      promise.then(() => {
+        settled = true;
+      });
+
+      // Total budget is 60s. The initial poll used ~20s to get badReview;
+      // a repair round reusing the remaining ~40s (not a fresh 60s) must
+      // have given up well before 61s.
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(settled).toBe(true);
+
+      const result = await promise;
+      expect(result.validationErrors?.[0]).toContain(
+        "Failed to parse Jules response"
+      );
+    });
   });
 
   describe("startJulesHandsOnFix", () => {

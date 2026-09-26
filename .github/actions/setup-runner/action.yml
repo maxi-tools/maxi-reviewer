@@ -309,7 +309,15 @@ runs:
           # common cause -- and that node still has an AMD GPU worth reporting
           # and installing for. Under the old `elif` those nodes read "CPU only"
           # because the lspci fallback was unreachable whenever rocminfo existed.
-          if [ "$HAS_ROCM" != true ] && lspci 2>/dev/null | grep -qiE "$amd_pci_re"; then
+          # `{ lspci || true; }`, not a bare `lspci`. `grep -q` exits at its
+          # FIRST match, so the producer's next write gets EPIPE and dies of
+          # SIGPIPE -- status 141 -- and `pipefail` hands that status to the
+          # `if`. A guard whose pattern MATCHED then reads as "no AMD GPU".
+          # Measured 2026-09-21: a two-line faked lspci was enough to lose that
+          # race on maxibaobab-5, and the step printed "CPU only". Real lspci
+          # prints forty lines with the AMD entry rarely last, so the node this
+          # probe exists for is the likeliest one to hit it.
+          if [ "$HAS_ROCM" != true ] && { lspci 2>/dev/null || true; } | grep -qiE "$amd_pci_re"; then
             # GPU present but ROCm not usable — we'll install it
             HAS_AMD_GPU=true
             AMD_GPU="$(lspci 2>/dev/null | grep -iE "$amd_pci_re" | head -1 | sed 's/.*: //' || true)"
@@ -349,14 +357,17 @@ runs:
         if [ "$OS" = "linux" ]; then
           # Intel Meteor Lake / Arrow Lake NPU (VPU)
           intel_npu_re='Intel.*VPU|Intel.*NPU|Intel.*AI Boost'
-          if lspci 2>/dev/null | grep -qiE "$intel_npu_re"; then
+          # Producer guarded for the same reason as the AMD probe above: under
+          # `pipefail`, SIGPIPE from an early `grep -q` exit would answer this
+          # question with a race instead of with the PCI table.
+          if { lspci 2>/dev/null || true; } | grep -qiE "$intel_npu_re"; then
             HAS_NPU_INTEL=true
             NPU_NAME="$(lspci 2>/dev/null | grep -iE "$intel_npu_re" | head -1 | sed 's/.*: *//' || true)"
             SUMMARY="${SUMMARY}Intel NPU: ${NPU_NAME:-unknown Intel NPU}; "
           fi
           # AMD XDNA NPU (Ryzen AI)
           amd_npu_re='AMD.*IPU|AMD.*XDNA|AMD.*AIE'
-          if lspci 2>/dev/null | grep -qiE "$amd_npu_re"; then
+          if { lspci 2>/dev/null || true; } | grep -qiE "$amd_npu_re"; then
             HAS_NPU_AMD=true
             NPU_NAME="$(lspci 2>/dev/null | grep -iE "$amd_npu_re" | head -1 | sed 's/.*: *//' || true)"
             SUMMARY="${SUMMARY}AMD NPU: ${NPU_NAME:-unknown AMD NPU}; "
@@ -398,6 +409,95 @@ runs:
         echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
         echo "::notice::Accelerators: $SUMMARY"
 
+    # ── Repoint CARGO_HOME / RUSTUP_HOME off the Windows LocalSystem home ──
+    # The Actions runner service on Windows runs as LocalSystem, so $HOME (and
+    # therefore the default CARGO_HOME / RUSTUP_HOME) resolves under
+    # `C:\Windows\System32\config\systemprofile\`. That prefix alone consumes
+    # ~55 of the 260-char MAX_PATH budget before any repo content is added;
+    # `maximoji-core`'s generated `data/surface_token_profiles.generations/
+    # <64-char-hash>/...` path consumes the rest, and libgit2 -- which cargo
+    # uses for git deps -- fails with `class=Filesystem (30)` rather than a
+    # named git error because it does NOT honour `core.longpaths`. The same
+    # lane succeeded on `audioplaytest` and failed on `maxiblack` with no code
+    # change between runs: the difference is the host, not the workflow.
+    #
+    # The systemprofile dir is NEVER a deliberate operator choice; it is the
+    # service account's fallback home. ml-node's `/data/rust/<runner>/cargo`
+    # is a deliberate systemd-unit setting and survives this step untouched
+    # (Linux never reaches here; a Windows runner that has been given an
+    # explicit CARGO_HOME elsewhere is also left alone). Rewrite only when
+    # the resolved value lives under systemprofile, export via GITHUB_ENV so
+    # every later step and every cargo invocation inherits it, and create
+    # the replacement dir so cargo's first write doesn't race the install.
+    #
+    # Also enables `git config --global core.longpaths true` in the same
+    # step. It is cheap, it is independent, and it protects against the next
+    # long path -- but it is NOT a substitute for the repoint, which is
+    # precisely what the libgit2 error above demonstrates.
+    #
+    # Verified 2026-09-21: the replacement is reached before `Setup PATH`
+    # below, so `${CARGO_HOME:-$HOME/.cargo}/bin` evaluates to the short
+    # path on Windows and cargo-installed binaries land on PATH. The
+    # rewrite fires for the FIRST step that exports the var and no later
+    # step in this action touches GITHUB_ENV for CARGO_HOME or RUSTUP_HOME,
+    # so the "appended GITHUB_ENV: last entry wins" rule gives the rewrite
+    # priority end-to-end. (maxi-dist #267)
+    - name: Rewrite Windows LocalSystem CARGO_HOME / RUSTUP_HOME
+      id: rewrite-windows-cargo-home
+      if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        # Self-gate on RUNNER_OS so the test harness can drive this step
+        # directly with `RUNNER_OS=Windows` in the env, bypassing the
+        # composite-action `if:` (which only the runner evaluates).
+        if [ "${RUNNER_OS:-}" != "Windows" ]; then
+          exit 0
+        fi
+        git config --global core.longpaths true 2>/dev/null || true
+
+        # Normalise the resolved path: case-fold and convert back-slashes
+        # to forward-slashes, then prefix-match against the systemprofile
+        # root. An explicit CARGO_HOME that merely shares a substring with
+        # "systemprofile" (no such path exists today, but a future operator
+        # choice must not be silently clobbered) must survive untouched.
+        sysprofile_root='c:/windows/system32/config/systemprofile'
+        rewrite_if_under_sysprofile() {
+          local var="$1" replacement="$2"
+          # Resolve the default when the var is unset. Subsequent steps
+          # fall back to `$HOME/.$suffix` (e.g. `$HOME/.cargo`), so an
+          # unset var on a LocalSystem runner still lands under
+          # systemprofile and must be rewritten. The suffix is the var
+          # name with `_HOME` stripped and lowercased: CARGO_HOME -> cargo,
+          # RUSTUP_HOME -> rustup.
+          local suffix
+          suffix=$(printf '%s' "${var%_HOME}" | tr '[:upper:]' '[:lower:]')
+          local current="${!var:-$HOME/.$suffix}"
+          [ -n "$current" ] || return 0
+          local normalised
+          normalised=$(printf '%s' "$current" | tr '[:upper:]' '[:lower:]' | tr '\\' '/')
+          # Strip an optional leading slash (Git for Windows reports
+          # `C:\...` as `/C:/...` in some shells) and any trailing slash
+          # so the prefix match is exact against the systemprofile root.
+          normalised="${normalised#/}"
+          normalised="${normalised%/}"
+          case "$normalised" in
+            "${sysprofile_root}"|"${sysprofile_root}"/*)
+              mkdir -p "$replacement" 2>/dev/null || true
+              echo "::warning title=Repointed $var::$var=$current is under the Actions runner service's systemprofile home on $(hostname -s); using $replacement for the rest of this job to stay under MAX_PATH"
+              export "$var=$replacement"
+              # GITHUB_ENV is appended; last entry wins for a repeated key,
+              # so an append here is sufficient because no prior step in
+              # this action writes CARGO_HOME or RUSTUP_HOME to GITHUB_ENV.
+              # If that ever changes, this comment is the place to add an
+              # explicit de-dup pass.
+              echo "$var=$replacement" >> "$GITHUB_ENV"
+              ;;
+          esac
+        }
+
+        rewrite_if_under_sysprofile CARGO_HOME 'C:\cargo'
+        rewrite_if_under_sysprofile RUSTUP_HOME 'C:\rustup'
+
     # ── PATH setup for self-hosted runners ──────────────────────────────
     - name: Setup PATH
       shell: bash
@@ -405,6 +505,9 @@ runs:
         # CARGO_HOME, not $HOME/.cargo: the NixOS ml-node runners point it at
         # /data/rust/<runner>/cargo, where a hardcoded path puts the wrong
         # directory on PATH and cargo-installed binaries go unfound.
+        # On Windows LocalSystem runners the preceding `Rewrite Windows
+        # LocalSystem CARGO_HOME / RUSTUP_HOME` step will have exported a
+        # short replacement into GITHUB_ENV, which this step inherits.
         echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
         [ -d "/opt/homebrew/bin" ] && echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
         [ -d "$HOME/.local/bin" ] && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -596,26 +699,82 @@ runs:
       id: metal-tools
       shell: bash
       run: |
+        # A `.metal` file actually compiles to `.air` is the only honest probe
+        # for whether the toolchain will work in this job. `xcrun metal --version`
+        # is not a valid invocation -- it exits non-zero on every healthy host --
+        # so a check built on it would flag every runner as broken. `xcrun
+        # --find metal` is worse: it returns a path on a freshly-provisioned
+        # host whose download has been silently dropped from xcrun's cache, so
+        # the broken host passes and the lane fails 45 minutes later, deep in a
+        # cargo invocation that does not name the cause.
+        #
+        # Since Xcode 26 the Metal compiler ships as a SEPARATELY DOWNLOADABLE
+        # component (`xcodebuild -downloadComponent MetalToolchain`), not part
+        # of Xcode.app. Release run 35664872199 lost three macOS lanes on a
+        # host that had Xcode 27 but not the component, and 2 of 12 fleet Macs
+        # were unprovisioned on 2026-09-21. This step probes first, downloads
+        # only when the probe fails, and forces xcrun to drop its cache after
+        # the download -- because the download alone leaves xcrun serving the
+        # stale answer that the lane just failed on.
+        #
+        # See the sibling step below for the iOS simulator pattern this was
+        # modelled on.
         METAL_OK=true
         METAL_SUMMARY=""
+        PROBE_DIR=$(mktemp -d -t metal-probe.XXXXXX)
+        trap 'rm -rf "$PROBE_DIR"' EXIT
+        PROBE_FILE="$PROBE_DIR/probe.metal"
+        printf 'kernel void k(){}\n' > "$PROBE_FILE"
 
-        # Metal shader compiler
-        if xcrun --find metal &>/dev/null; then
-          METAL_VER=$(xcrun metal --version 2>&1 | head -1)
-          METAL_SUMMARY="metal compiler: ${METAL_VER}"
-          echo "Metal compiler: $METAL_VER"
+        metal_compile_ok() {
+          # `-c` is "compile to AIR (object)", `-o` is the output. If `metal`
+          # cannot find its toolchain this exits non-zero with the exact
+          # "cannot execute tool 'metal' due to missing Metal Toolchain"
+          # error a Cargo build later produces.
+          xcrun metal -c "$PROBE_FILE" -o "$PROBE_DIR/probe.air" \
+            >/dev/null 2>&1
+        }
+
+        if metal_compile_ok; then
+          echo "Metal shader toolchain: present (compile probe succeeded)"
         else
-          METAL_OK=false
-          echo "::error::xcrun metal not found — Metal shader compilation will fail"
-          echo "  Install Xcode.app (not just CLT) for Metal compiler support"
+          echo "Metal shader toolchain: probe failed — installing MetalToolchain component"
+          # Same `perl alarm` envelope as the iOS simulator step above:
+          # macOS ships no GNU `timeout`, and a missing `timeout` under `if !`
+          # is a silent `|| true` masquerading as a download timeout.
+          if ! perl -e "alarm shift; exec @ARGV" 1800 xcodebuild -downloadComponent MetalToolchain; then
+            echo "::error::xcodebuild -downloadComponent MetalToolchain failed or timed out after 30 minutes. Provision this runner manually: xcodebuild -downloadComponent MetalToolchain && xcrun --kill-cache"
+            exit 1
+          fi
+
+          # The download reports success while xcrun still serves a stale
+          # tool-resolution answer from its cache -- a probe run here would
+          # re-confirm the broken state and the lane would fail in cargo
+          # 45 minutes later. `xcrun --kill-cache` is what unsticks it; no
+          # reboot required. Drop this line and the fix is silently undone.
+          echo "Invalidating xcrun tool-resolution cache after MetalToolchain install"
+          xcrun --kill-cache
+
+          if metal_compile_ok; then
+            echo "Metal shader toolchain: installed and verified by compile"
+          else
+            METAL_OK=false
+            echo "::error::Metal shader toolchain still does not compile a trivial .metal → .air after download + xcrun --kill-cache. Provision this runner manually before any Metal-dependent lane is routed here."
+            # DO NOT exit 0 with a warning here. A silent skip is exactly the
+            # bug this card exists to fix -- it makes the lane fail later, in
+            # a place that does not name the cause. Loud failure at setup time
+            # is the contract.
+            exit 1
+          fi
         fi
 
-        # Metal linker (metallib)
+        # Auxiliary sanity checks. None of these are sufficient on their own
+        # (the compile probe above is the gate), but each one tells operators
+        # which capability is missing when something else goes wrong.
         if xcrun --find metallib &>/dev/null; then
           echo "metallib linker: available"
         else
-          METAL_OK=false
-          echo "::error::xcrun metallib not found — Metal library linking will fail"
+          echo "::warning::xcrun metallib not found — Metal library linking will fail"
         fi
 
         # Metal Performance Shaders framework
@@ -634,6 +793,16 @@ runs:
           METAL_SUMMARY="${METAL_SUMMARY}; GPU: ${METAL_FAMILY}"
         fi
 
+        # Prepend `;` only when METAL_SUMMARY is non-empty, so a healthy
+        # macOS box with no detectable GPU family ends up with
+        # `metal compile probe: ok` rather than `; metal compile probe: ok`
+        # (Codacy). The two strings are concatenated with `; ` as the
+        # separator when both are present.
+        if [ -n "$METAL_SUMMARY" ]; then
+          METAL_SUMMARY="${METAL_SUMMARY}; metal compile probe: ok"
+        else
+          METAL_SUMMARY="metal compile probe: ok"
+        fi
         echo "metal_ok=$METAL_OK" >> $GITHUB_OUTPUT
         echo "metal_summary=$METAL_SUMMARY" >> $GITHUB_OUTPUT
 

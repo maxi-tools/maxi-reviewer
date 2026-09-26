@@ -184,7 +184,32 @@ jobs:
                 process.exit(1);
               }
             }
-            console.log("reviewer-profiles.json OK:", Object.keys(data.reviewers).length, "reviewers,", data.windowDays, "day window");
+            // A structurally valid file full of zeroes is the failure this
+            // check missed the first time. #133 published exactly that: seven
+            // reviewers, correct schema, 6358 samples, and every accept rate
+            // 0% because every commit fetch was throwing. Shape alone cannot
+            // tell that apart from a real measurement — the counts can.
+            let known = 0, unknown = 0;
+            for (const bot of expected) {
+              const o = data.reviewers[bot].overall || {};
+              known += o.n || 0;
+              unknown += o.unknownN || 0;
+            }
+            if (known === 0 && unknown > 0) {
+              console.error(
+                "every one of " + unknown + " findings has an unknown outcome: " +
+                "the harvest measured nothing, so every accept rate would be 0% " +
+                "over an empty denominator. Refusing to publish."
+              );
+              process.exit(1);
+            }
+            if (unknown > known) {
+              console.error(
+                "::warning::" + unknown + " unknown vs " + known + " known outcomes; " +
+                "the commit walk is failing on most PRs"
+              );
+            }
+            console.log("reviewer-profiles.json OK:", Object.keys(data.reviewers).length, "reviewers,", data.windowDays, "day window,", known, "measured,", unknown, "unmeasurable");
           '
 
       - name: Publish release
@@ -205,7 +230,7 @@ jobs:
           # pointer at the most recent publish.
           if gh release view reviewer-profiles-latest >/dev/null 2>&1; then
             echo "Deleting existing reviewer-profiles-latest release"
-            gh release delete reviewer-profiles-latest --yes --cleanup-tags
+            gh release delete reviewer-profiles-latest --yes --cleanup-tag
           fi
           gh release create reviewer-profiles-latest \
             --title "reviewer-profiles-latest" \

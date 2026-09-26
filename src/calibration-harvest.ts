@@ -21,6 +21,7 @@
 import * as core from "@actions/core";
 import * as path from "node:path";
 import { runScheduledHarvest } from "./reviewer-profile-build.js";
+import { renderReport } from "./reviewer-profile-report.js";
 
 function readInput(name: string, fallback: string): string {
   const raw = process.env["INPUT_" + name.toUpperCase()];
@@ -74,6 +75,27 @@ async function main(): Promise<void> {
   if (result.profiles) {
     process.stdout.write(
       `REVIEWER_PROFILES_PATH=${profilesPath}\nCALIBRATION_PATH=${calibrationPath}\n`
+    );
+  }
+
+  // Publish the analysis beside the data, on every run.
+  //
+  // The first harvest that produced real numbers was read by hand with
+  // throwaway scripts, and two of the three conclusions drawn from it were
+  // wrong. Reviewer behaviour drifts, so this measurement is never final --
+  // and anything that has to be re-derived by hand will be re-derived
+  // differently, or not at all. Writing the report here means the next
+  // reading is a re-run, not a research project.
+  //
+  // Non-fatal: a summary that cannot be written must never lose a harvest
+  // that succeeded. GITHUB_STEP_SUMMARY is absent when this is run locally.
+  try {
+    await core.summary.addRaw(renderReport(result.profiles)).write();
+  } catch (err) {
+    core.warning(
+      `could not write the run summary: ${
+        err instanceof Error ? err.message : String(err)
+      }`
     );
   }
 

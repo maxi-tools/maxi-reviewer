@@ -20,8 +20,18 @@ jobs:
       startsWith(github.event.comment.body, '/maxi fix')
     # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
     # jobs never get a runner assigned, so this command lane silently did
-    # nothing on every invocation. Routed to the self-hosted Linux x64 fleet.
-    runs-on: [self-hosted, Linux, X64]
+    # nothing on every invocation. Routed to the self-hosted Linux fleet --
+    # either arch: a Jules session driven over an API, nothing here is
+    # arch-shaped (ci/runner-routing.toml, [lanes.linux-any]).
+    runs-on: [self-hosted, Linux]
+    # Unbounded before this: a wedged Jules session held a fleet runner until
+    # the 6-hour GitHub default (#249). 40, not the 10 maxi-apply.yml uses --
+    # this job runs a Jules hands-on session rather than a short scripted
+    # command, so it needs the same budget as maxi-review.yml's Jules-review
+    # step: the Jules session's own budget plus cleanup headroom (see the
+    # `timeout-minutes: 40` comment on the Jules review step in
+    # maxi-review.yml for the derivation).
+    timeout-minutes: 40
     steps:
       - name: Authorize requester
         id: authorize
@@ -71,7 +81,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
           private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: |

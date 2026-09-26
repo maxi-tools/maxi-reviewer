@@ -13,27 +13,132 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
-concurrency:
-  group: maxi-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+# No workflow-level concurrency group.
+#
+# A workflow-level group is PR-wide and cancels the whole run, so it takes the
+# `review` job with it; a job-level `cancel-in-progress: false` cannot override
+# a cancellation issued at the workflow level. Because `review` also excludes
+# `synchronize`, the replacement run starts no review, and the PR ends with no
+# completed AI review -- indistinguishable on the PR face from a review that
+# ran and found nothing (cubic, P1 on #621).
+#
+# Cancellation belongs to the cheap half only, so it is declared per job:
+# lint-gate cancels, review does not.
 
 jobs:
   lint-gate:
+    # Superseded lint verdicts are worthless and restarting is cheap, so this
+    # half keeps the cancel-on-push behaviour the workflow-level group used to
+    # provide -- scoped to this job so it cannot reach `review`.
+    #
+    # Keyed on the ACTION as well as the PR, so a run only ever cancels work
+    # doing the same job. With one group per PR, a `synchronize` run cancelled
+    # the lint-gate of an `opened`/`reopened`/`ready_for_review`/`labeled` run;
+    # that run's `review` then failed its `needs: lint-gate` + `success()`
+    # gate, and the `synchronize` run skips `review` by design -- so the review
+    # vanished with nothing replacing it. Same disappearance as the
+    # workflow-level group produced, reached by a different path
+    # (CodeRabbit, Major on #621).
+    #
+    # Two pushes in a row still cancel each other, which is the point: both are
+    # `synchronize`, so they are competing attempts at one task.
+    concurrency:
+      group: maxi-review-lint-${{ github.event.pull_request.number }}-${{ github.event.action }}
+      cancel-in-progress: true
     # Same-repository only: this job uses org app credentials to install the
     # private maxi-lint scanner. It checks changed files only and fails solely
     # on deny-level deterministic findings.
+    #
+    # NOT maxi-config's own fan-out. Every branch the distributor pushes is
+    # named maxi-config-sync/<manifest> (scripts/sync-maxi-review.sh), and what
+    # it carries is a byte-for-byte copy of a payload already reviewed on the
+    # maxi-config PR that changed it -- including this very file. The fan-out
+    # reaches ~31 repos, so without this the org re-derives one verdict
+    # thirty-one times per change, on the same self-hosted lane the repos' real
+    # CI is queued on.
+    #
+    # `github.head_ref` and not `github.event.pull_request.head.ref`: they
+    # agree on pull_request events, and head_ref is the spelling every other
+    # branch guard in this fleet already uses (`startsWith(github.head_ref,
+    # 'salvage/') == false`), so a reader recognises the shape.
+    #
+    # THE AUTHOR IS CHECKED TOO, and the condition is the De Morgan of "skip
+    # when it is the fan-out": run unless the branch prefix AND the identity
+    # both say fan-out. A head ref is chosen by whoever pushes the branch, so
+    # the prefix alone would let anyone opt out of the org's review lanes by
+    # naming a branch. This matches pr_review_gate.py, which gates its bypass
+    # on the same pair -- and the two must not disagree, or the gate and the
+    # reviewers it counts would classify the same PR differently.
+    #
+    # Spelled `maxi-tools-auth[bot]` WITH the suffix, unlike the Python gate's
+    # bare slug. `github.event.*` is the raw webhook payload, i.e. REST shape,
+    # and REST spells a Bot actor with the suffix -- confirmed on a live
+    # fan-out PR (maxi-kvm#24: `user.login = "maxi-tools-auth[bot]"`, `type =
+    # "Bot"`), where the same actor reads as `maxi-tools-auth` over GraphQL.
+    # The two literals differ because the two APIs differ, not by accident.
+    #
+    # NOR A DEPENDABOT RUN, for a different reason: it cannot work at all.
+    # `secrets.APP_ID` / `APP_PRIVATE_KEY` are ordinary Actions secrets, and a
+    # Dependabot-triggered run gets the DEPENDABOT secrets scope instead --
+    # which this org has never populated. So both arrive as empty strings and
+    # the app-token step below dies with `The 'client-id' (or deprecated
+    # 'app-id') input must be set to a non-empty string`, ~5s in, having
+    # scanned nothing. That is maxi-kvm#4-#7 exactly. A job that cannot reach
+    # its scanner should SKIP and say so, not report the PR broken.
+    #
+    # Keyed on `github.actor`, not on the PR author, because the actor is what
+    # GitHub keys the secrets restriction on: when a human pushes to a
+    # dependabot/* branch the actor becomes that human, ordinary secrets ARE
+    # available, and this lane should run normally. maxi-core's ci.yml keys its
+    # eleven dependabot guards the same way, for the same reason.
+    #
+    # The review gate's non-author-review leg is what makes this safe to skip
+    # rather than merely quiet: pr_review_gate.py waives THAT CONDITION ONLY on
+    # a dependabot/* PR, because these two jobs are the only non-author
+    # reviewers such a PR ever gets and no push can summon them -- the next
+    # push is Dependabot's too. It does NOT waive the unresolved-threads
+    # condition, which stays measurable via the human-push case above.
+    #
+    # This exclusion is only half of the change. `review-gate`'s
+    # non-author-review leg counts DISTINCT NON-AUTHOR reviewers, and on a
+    # fan-out PR those reviewers were maxi-reviewer and CodeRabbit -- exactly
+    # what is being suppressed. maxi-config's pr_review_gate.py therefore
+    # bypasses the same branch prefix, and MUST be deployed first, or every
+    # fan-out PR is gate-red with no push that can fix it.
+    # `ci/fanout-pin` is the SECOND producer on these consumers:
+    # maxi-tools/ci's fanout-ci-pin.yml advances the pinned `uses:` sha, one
+    # branch per consumer. Same App, and suppressed here for the same reason
+    # -- nine reviewers reading a one-line sha change 49 times per tip. It
+    # was not enrolled when it shipped, and the measured consequence was 49
+    # PRs no reviewer would touch and no gate would clear
+    # (maxi-config#784). Both halves still required, together.
     if: >
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
       (
-        vars.CI_ENFORCEMENT_MODE == 'strict' ||
-        contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
+        (
+          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
+          github.head_ref != 'ci/fanout-pin'
+        ) ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
       )
+    # NOT gated on CI_ENFORCEMENT_MODE or `run-maxi-review`. It was, and
+    # that is what left a non-strict repo with no review at all: the label
+    # this condition required is applied by the roster step, which lives in
+    # `review`, which requires the label, so nothing could ever start. The
+    # scan is cheap and it is a merge gate, so it runs on every in-scope PR.
+    # The expensive half keeps the condition; see `review` below.
     # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
     # jobs are rejected before a runner is assigned -- zero steps, no log, ~3s
     # to "failure" -- so this gate reported every PR broken without scanning a
     # single line. Same-repository PRs only (the `if` above), so this is org
     # code on the org's own fleet, not fork code.
-    runs-on: [self-hosted, Linux, X64]
+    #
+    # No arch label: the X64 pool was 14/14 busy with 71 queued on 2026-09-18
+    # while ARM64 had a slot idle, and this job's tools (gh, python, cargo
+    # for the pinned maxi-lint install) are present on both pools
+    # (ci/runner-routing.toml, [lanes.linux-any]).
+    runs-on: [self-hosted, Linux]
     timeout-minutes: 10
     permissions:
       contents: read
@@ -51,7 +156,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
           private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: |
@@ -77,6 +182,130 @@ jobs:
           sparse-checkout: maxi-review
           persist-credentials: false
           token: ${{ steps.app-token.outputs.token }}
+
+      # Refuses a PR that edits a file the distributor overwrites. Deterministic,
+      # so it belongs in this job rather than the AI lane -- and this job is the
+      # one repos can require as a merge gate.
+      #
+      # The file list comes from the API, not `git diff`: the PR head above is
+      # checked out at depth 1, so the base commit is absent and a diff would
+      # fail. Widening the clone for every repo on every PR is a real cost for
+      # a list the API already holds.
+      #
+      # --paginate matters. Without it a PR over 100 files is judged on its
+      # first page and the gate passes on files it never saw -- silently, which
+      # is the exact failure mode it exists to catch.
+      - name: Refuse edits to centrally-owned files
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        shell: bash
+        working-directory: pr-code
+        run: |
+          set -euo pipefail
+          # The .maxi-config checkout above takes maxi-config's DEFAULT branch,
+          # so this helper is whatever main holds right now -- deliberately, as
+          # a pinned ref would freeze a centrally-owned check in 46 repos. The
+          # cost is that a rollback of maxi-config main removes it under us, and
+          # `python3 <missing>` fails with a bare ENOENT and no hint of why.
+          helper="$GITHUB_WORKSPACE/.maxi-config/maxi-review/check-owned-files.py"
+          if [ ! -f "$helper" ]; then
+            echo "::error::$helper is missing from maxi-config's default" \
+              "branch. This gate fails closed rather than passing a PR it" \
+              "never checked; restore the helper on maxi-config main."
+            exit 1
+          fi
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename' > "$RUNNER_TEMP/changed-files.txt"
+          # --labels=VALUE, not --labels VALUE: a label beginning with '-' is
+          # parsed as an option in the separated form and argparse exits 2.
+          python3 "$helper" \
+            --files="$RUNNER_TEMP/changed-files.txt" \
+            --labels="$PR_LABELS"
+
+      # Refuses a PR that pins one maxi-tools repo to a commit of another.
+      #
+      # Reuses the file list and the helper checkout above rather than fetching
+      # either again -- same sparse maxi-review/ tree, same default-branch
+      # reasoning, same fail-closed-if-absent posture.
+      #
+      # FAILS ONLY ON A PIN THIS PR ADDED, and warns about the rest. Judging
+      # the whole tree would fail every repo that already carries one, on its
+      # next unrelated PR, which is how a guard gets labelled noise and turned
+      # off. The failure mode worth eliminating is a NEW pin.
+      #
+      # "Added" is judged against the base branch's copy of each changed
+      # manifest, not against the changed-file list: Cargo.lock is in the diff
+      # of nearly every dependency bump, and a pre-existing pin in it must not
+      # re-block each one. The checkout is depth 1 (see above), so the base
+      # copies come from the contents API -- only for the changed
+      # Cargo.toml/Cargo.lock files, which is usually none and rarely more
+      # than two. A 404 is a file the PR created; any other failure is a
+      # lookup this gate must not paper over, so it fails closed.
+      #
+      # A repo whose pin is load-bearing rather than lazy declares it in
+      # `.github/intra-org-pins.tsv` (repo, what-ends-it, why) and stops
+      # needing the `pin-intra-org` label on every PR that touches it. A
+      # declared pin is still refused unless its revision is reachable from the
+      # dependency's default branch -- that is the line between freezing to a
+      # merged state, which a correctness pin needs, and freezing to a side
+      # branch, which is always wrong. The reachability lookup uses GH_TOKEN
+      # below and fails closed.
+      #
+      # An INHERITED pin needs no declaration: it is in Cargo.lock and in no
+      # manifest this project owns, so a dependency pins it and the lock only
+      # records what the resolver found. It is reported every run and never
+      # blocks, because only the repository that WROTE it can remove it, and
+      # refusing the consumer asks the wrong project to act.
+      #
+      # The merged-state check is BEST EFFORT with the token below, which is
+      # scoped to maxi-config, maxi-libs, maxi-lint and the repository under
+      # review. `compare` on a dependency outside that set 404s, and the gate
+      # says so and allows the pin on its declaration alone rather than
+      # reporting "not on the default branch" for a question it could not ask.
+      # Making it a hard check means widening this token to read the
+      # dependency repositories, which is a permissions decision rather than a
+      # lint one.
+      - name: Refuse intra-org dependency pins
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        shell: bash
+        working-directory: pr-code
+        run: |
+          set -euo pipefail
+          helper="$GITHUB_WORKSPACE/.maxi-config/maxi-review/check-intra-org-pins.py"
+          if [ ! -f "$helper" ]; then
+            echo "::error::$helper is missing from maxi-config's default" \
+              "branch. This gate fails closed rather than passing a PR it" \
+              "never checked; restore the helper on maxi-config main."
+            exit 1
+          fi
+          base_dir="$RUNNER_TEMP/base-manifests"
+          mkdir -p "$base_dir"
+          while IFS= read -r path; do
+            case "${path##*/}" in Cargo.toml|Cargo.lock) ;; *) continue ;; esac
+            mkdir -p "$base_dir/$(dirname "$path")"
+            err="$RUNNER_TEMP/base-fetch.err"
+            if gh api -H 'Accept: application/vnd.github.raw+json' \
+                 "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=${BASE_SHA}" \
+                 > "$base_dir/$path" 2> "$err"; then
+              continue
+            fi
+            rm -f "$base_dir/$path"
+            if grep -q 'HTTP 404' "$err"; then
+              continue  # not on the base branch: the PR created it
+            fi
+            echo "::error::could not fetch the base-branch copy of $path:"
+            cat "$err"
+            exit 1
+          done < "$RUNNER_TEMP/changed-files.txt"
+          python3 "$helper" \
+            --files="$RUNNER_TEMP/changed-files.txt" \
+            --base-dir="$base_dir" \
+            --labels="$PR_LABELS"
 
       - name: Run maxi-lint deny gate
         id: maxilint
@@ -270,11 +499,494 @@ jobs:
             maxi-lint-findings.md
           if-no-files-found: error
 
+  # The review the gate can always count on.
+  #
+  # `review-gate/non-author-review` requires a GitHub REVIEW from someone other
+  # than the author, and the bots a trivial PR is sent to submit one only when
+  # they have findings. A clean PR therefore got zero reviews and the gate
+  # stayed red -- the one outcome the gate exists to prevent. A special case in
+  # the gate was rejected for the same reason: it would let a PR merge with no
+  # review at all.
+  #
+  # So maxi-reviewer posts one itself, from the scan `lint-gate` already did.
+  # No model call. COMMENTED, never APPROVED: this lane did not read the diff,
+  # and a posted review is evidence that the deterministic scan ran, not that a
+  # reviewer was happy with the change.
+  #
+  # It runs where `review` does not. `review` excludes `synchronize` and
+  # requires strict mode or a label, so a PR opened before its lint passed is
+  # never reviewed -- the fix lands as `synchronize`, which skips the review,
+  # and the PR ends with none. This job has neither exclusion. It runs on the
+  # first push whose lint succeeds and then stops: one review per PR, because
+  # re-reviewing every push is the cost `review` was changed to stop paying.
+  #
+  # Posted with the Maxi Review app token, so the author is
+  # `maxi-reviewer[bot]` -- the login the roster asks for and the gate
+  # intersects against. `github.token` would post as `github-actions[bot]`,
+  # which the gate does not count when a roster is present.
+  #
+  # The decision logic is inlined rather than checked out. The fan-out copies
+  # workflow files only, so a script fetched from maxi-config would not exist
+  # on a consumer until the fan-out after the one that shipped this job, and
+  # the PRs that fan-out opens are among the ones this job must review.
+  # tests/test_post_deterministic_review.py holds the inlined block equal to
+  # maxi-review/post-deterministic-review.py, which is what it tests.
+  guaranteed-review:
+    needs: lint-gate
+    # Same scoping as lint-gate, restated rather than inherited. `success()`
+    # already skips this when lint-gate was skipped, but the condition a reader
+    # checks to answer "why was this not reviewed" should hold on its own.
+    #
+    # No `always()` and no `continue-on-error`. This job posts a review that
+    # says the scan was clean when it finds nothing, so it must only run when
+    # the scan actually succeeded. A failed lint-gate is a failed scan, and a
+    # review posted over it would tell the gate a reviewer looked. The next
+    # push reruns lint-gate, and this job posts then.
+    if: >
+      success() &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      (
+        (
+          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
+          github.head_ref != 'ci/fanout-pin'
+        ) ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      )
+    # Serialise per PR, and do not cancel. Two events on the same pull request
+    # (an open and a synchronize, or two labels) can both be eligible, and both
+    # would read an empty review list and both would POST. The gate needs one
+    # review, not two, and a cancelled run is not a posted one. The group name
+    # is this job's own: it must not share `review`'s group, or a queued
+    # guaranteed review would hold the AI review behind it and vice versa.
+    concurrency:
+      group: maxi-review-guaranteed-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          owner: maxi-tools
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-pull-requests: write
+
+      - name: Post the guaranteed review
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          ACTOR: ${{ github.actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          LINT_FINDINGS_JSON: ${{ needs.lint-gate.outputs.findings-json }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
+
+          # Both login spellings, matching REVIEWER_LOGINS in the decision
+          # block. Kept here as data rather than re-derived, so the re-read
+          # check below and the decision agree on who counts.
+          REVIEWER_LOGINS='["maxi-reviewer[bot]","maxi-reviewer"]'
+
+          findings="$RUNNER_TEMP/guaranteed-review-findings.json"
+          changed="$RUNNER_TEMP/guaranteed-review-changed.json"
+          reviews="$RUNNER_TEMP/guaranteed-review-reviews.json"
+          decision="$RUNNER_TEMP/guaranteed-review-decision.json"
+
+          # The scan result, from the job output lint-gate publishes. An empty
+          # output is a scan that did not complete -- lint-gate omits it when
+          # the findings exceed the output cap, and says so. Reviewing that as
+          # clean would report a scan that never happened, so it is a failure.
+          if [ -z "${LINT_FINDINGS_JSON:-}" ]; then
+            echo "::error::lint-gate published no findings output; refusing to review without a scan"
+            exit 1
+          fi
+          printf '%s\n' "$LINT_FINDINGS_JSON" > "$findings"
+
+          # Changed files, from the compare API. NOT `--paginate`: pagination
+          # repeats the whole compare payload on every page and only the
+          # `files` array advances, so paginating and concatenating would count
+          # the first page's files once per page. 300 is the per-page maximum;
+          # past it the count stops growing and the review says so rather than
+          # claiming a scan of files it did not count.
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/compare/${BASE_SHA}...${HEAD_SHA}?per_page=300" \
+            --jq '{files: [.files[] | select(.status != "removed") | .filename], total: (.files | length)}' \
+            > "$RUNNER_TEMP/guaranteed-review-compare.json"
+          jq '.files' "$RUNNER_TEMP/guaranteed-review-compare.json" > "$changed"
+          total=$(jq '.total' "$RUNNER_TEMP/guaranteed-review-compare.json")
+          counted=$(jq 'length' "$changed")
+          if [ "$total" -ge 300 ]; then
+            echo "::warning::the compare API returned its 300-file page cap; the review's file count covers the first page only"
+          fi
+          echo "counting $counted changed file(s) ($total including removed)"
+
+          # `--paginate` emits ONE JSON DOCUMENT PER PAGE, and a pull request
+          # with more than 100 reviews spans pages. Concatenating them is not
+          # valid JSON, so read the pages into one array and flatten it.
+          # `jq -s` rather than gh's own page-wrapping flag: gh refuses to
+          # combine that flag with `--jq`, and this repo settled on `jq -s`
+          # for exactly this case (tests/ci_economy_assets.rs pins it).
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+            | jq -s 'add' > "$reviews"
+
+          # The decision, inlined. See the job comment for why it is not a
+          # checked-out script. tests/test_post_deterministic_review.py holds
+          # this block equal to maxi-review/post-deterministic-review.py.
+          python3 - "$EVENT_NAME" "$HEAD_REF" "$ACTOR" "$AUTHOR" \
+            "$findings" "$changed" "$reviews" "$decision" <<'PY'
+          from __future__ import annotations
+
+          import json
+          import sys
+          from dataclasses import dataclass
+          from typing import Any
+
+
+          import argparse
+          # The app the review is posted as. Both spellings, for the same reason
+          # FANOUT_AUTHORS carries both: REST brackets a Bot login, GraphQL does not, and
+          # "[" and "]" are not legal in a login, so the bracketed form is unspoofable.
+          REVIEWER_LOGIN = "maxi-reviewer[bot]"
+          REVIEWER_LOGINS = frozenset({REVIEWER_LOGIN, "maxi-reviewer"})
+
+          REVIEW_STATE = "COMMENT"
+
+          # The marker the expensive lane's own reviews carry (`COMMENT_MARKER` in
+          # maxi-reviewer's src/github.ts). Present so a reader, and any later tooling
+          # that keys on it, sees one kind of review from this author.
+          COMMENT_MARKER = "<!-- maxi-review -->"
+
+          # A GitHub review body is capped at 65536 characters. The review lists every
+          # finding up to this budget and then says how many it did not list, so a long
+          # scan truncates visibly rather than failing the POST -- a failed POST is a
+          # missing review, which is the defect this step exists to close.
+          BODY_BUDGET = 60000
+
+          # Fan-out identity, held equal to ci/fanout-identity.toml by
+          # tests/test_fanout_identity_is_one_copy.py. Duplicated rather than imported:
+          # this file is what the workflow checks out, and select-roster.py is not on
+          # that checkout's path. The test is the thing that keeps the two honest.
+          FANOUT_BRANCH_PREFIXES = ("maxi-config-sync/",)
+          FANOUT_BRANCH_NAMES = ("ci/fanout-pin",)
+          FANOUT_AUTHORS = frozenset({"maxi-tools-auth", "maxi-tools-auth[bot]"})
+
+          # Dependabot runs get the Dependabot secrets scope, which holds no app key, so
+          # the token step cannot mint anything. Keyed on the ACTOR, matching the
+          # workflow's other guards: a human pushing to a dependabot/* branch has
+          # ordinary secrets and should be reviewed.
+          DEPENDABOT_ACTORS = frozenset({"dependabot", "dependabot[bot]"})
+
+          # The allowlist `lint-gate` pins, split by what maxi-lint's own README says
+          # about each rule. CI-blocking rules deny; `print-hygiene` is the one advisory
+          # rule in that list. A rule in neither set is `unknown` -- reported, never
+          # dropped.
+          DENY_RULES = frozenset({
+              "serialization", "ansi", "yaml", "queue", "async", "jsonl",
+              "reqwest-ssrf", "audit", "injection", "backup-files", "database",
+              "mcp-envelope", "unwrap", "timeout-fence", "hidden-spawn",
+          })
+          WARN_RULES = frozenset({"print-hygiene"})
+
+          DENY = "deny"
+          WARN = "warn"
+          UNKNOWN = "unknown"
+
+
+          @dataclass(frozen=True)
+          class Decision:
+              """What the step should do. `body` is empty when `post` is false."""
+
+              post: bool
+              state: str
+              body: str
+              reason: str
+
+              def as_dict(self) -> dict[str, Any]:
+                  return {
+                      "post": self.post,
+                      "state": self.state,
+                      "body": self.body,
+                      "reason": self.reason,
+                  }
+
+
+          import json
+          import sys
+          from dataclasses import dataclass
+          from typing import Any
+
+
+          def eligible(event_name: str, head_ref: str, actor: str, author: str) -> bool:
+              """Would this run be allowed to post? False means skip before any API call.
+
+              `event_name` is checked rather than assumed, because a workflow trigger
+              list grows and a step that posts on an event it was not written for would
+              do it silently.
+              """
+              if event_name != "pull_request":
+                  return False
+              if actor in DEPENDABOT_ACTORS:
+                  return False
+              fanout_branch = (
+                  head_ref.startswith(FANOUT_BRANCH_PREFIXES) or head_ref in FANOUT_BRANCH_NAMES
+              )
+              if fanout_branch and author in FANOUT_AUTHORS:
+                  return False
+              return True
+
+
+          def already_reviewed(reviews: list[dict[str, Any]]) -> bool:
+              """Has maxi-reviewer already submitted a counted review on this PR?
+
+              Any state counts. A CHANGES_REQUESTED from the expensive lane is still a
+              review, and posting a COMMENTED one beside it would not add a reviewer --
+              it would add a second opinion that disagrees with the first by construction,
+              since this one never reads the diff.
+              """
+              for review in reviews:
+                  author = review.get("user") or {}
+                  login = author.get("login", "") if isinstance(author, dict) else ""
+                  if login in REVIEWER_LOGINS and review.get("state"):
+                      return True
+              return False
+
+
+          def classify(finding: dict[str, Any]) -> str:
+              """The level the workflow's deny gate cannot read off the JSON itself.
+
+              maxi-lint emits no severity field, so the rule is the only signal. Unknown
+              rules are reported as unknown rather than folded into deny: calling an
+              unrecognised rule a denial would fail a gate on a rule nobody configured.
+              """
+              rule = str(finding.get("rule") or "")
+              if rule in DENY_RULES:
+                  return DENY
+              if rule in WARN_RULES:
+                  return WARN
+              return UNKNOWN
+
+
+          def _one_line(finding: dict[str, Any]) -> str:
+              """One finding, one line, with the control characters a suggestion can
+              carry stripped -- the same stance filter-maxi-lint-findings.py takes,
+              because this line is going into a review body."""
+              path = str(finding.get("file") or finding.get("path") or "(no file)")
+              path = path.removeprefix("pr-code/")
+              line = finding.get("line")
+              rule = str(finding.get("rule") or "(no rule)")
+              suggestion = str(finding.get("suggestion") or "").replace("\n", " ").strip()
+              where = f"{path}:{line}" if isinstance(line, int) else path
+              text = f"- {where} [{rule}] {suggestion}".rstrip()
+              return "".join(ch for ch in text if ch >= " " or ch == "\t")
+
+
+          def render_body(findings: list[dict[str, Any]], changed_files: list[str]) -> str:
+              """The review text: a count plus the deny and warn items, or clean.
+
+              Listed deny first, then warn, then unknown, because the deny items are what
+              a reader acts on and a truncation must eat the least important first.
+              """
+              files = [f for f in changed_files if f.strip()]
+              grouped: dict[str, list[dict[str, Any]]] = {DENY: [], WARN: [], UNKNOWN: []}
+              for finding in findings:
+                  if isinstance(finding, dict):
+                      grouped[classify(finding)].append(finding)
+
+              counts = {level: len(items) for level, items in grouped.items()}
+              total = sum(counts.values())
+              file_word = "file" if len(files) == 1 else "files"
+
+              lines = [COMMENT_MARKER, "## Maxi Review", ""]
+              if total == 0:
+                  lines.append(
+                      f"maxi-lint: clean on {len(files)} changed {file_word}."
+                  )
+              else:
+                  lines.append(
+                      "maxi-lint: "
+                      f"{counts[DENY]} deny, {counts[WARN]} warn, "
+                      f"{counts[UNKNOWN]} unrecognised on {len(files)} changed {file_word}."
+                  )
+                  for level, heading in (
+                      (DENY, "Deny"),
+                      (WARN, "Warn"),
+                      (UNKNOWN, "Unrecognised rule"),
+                  ):
+                      items = grouped[level]
+                      if not items:
+                          continue
+                      lines.append("")
+                      lines.append(f"### {heading}")
+                      lines.append("")
+                      lines.extend(_one_line(item) for item in items)
+
+              lines.append("")
+              lines.append(
+                  "_Posted from the lint-gate scan, without an AI review. "
+                  "One review per pull request._"
+              )
+              body = "\n".join(lines) + "\n"
+
+              if len(body) <= BODY_BUDGET:
+                  return body
+              note = "\n\n_...truncated; the lint artifact carries every finding._\n"
+              return body[: BODY_BUDGET - len(note)] + note
+
+
+          def decide(
+              findings: list[Any],
+              changed_files: list[str],
+              reviews: list[dict[str, Any]],
+          ) -> Decision:
+              """Post once, skip thereafter. The findings only affect the text."""
+              if already_reviewed(reviews):
+                  return Decision(False, "", "", "maxi-reviewer has already reviewed this pull request")
+              clean = [f for f in findings if isinstance(f, dict)]
+              return Decision(
+                  True,
+                  REVIEW_STATE,
+                  render_body(clean, changed_files),
+                  "no maxi-reviewer review on this pull request yet",
+              )
+
+          import json
+          import sys
+
+          event_name, head_ref, actor, author = sys.argv[1:5]
+          findings, changed, reviews = (json.load(open(p)) for p in sys.argv[5:8])
+          if not all(isinstance(v, list) for v in (findings, changed, reviews)):
+              print("findings, changed files and reviews must all be JSON arrays", file=sys.stderr)
+              raise SystemExit(2)
+          if not eligible(event_name, head_ref, actor, author):
+              outcome = Decision(False, "", "", "not an in-scope pull request")
+          else:
+              outcome = decide(findings, [str(p) for p in changed], reviews)
+          json.dump(outcome.as_dict(), open(sys.argv[8], "w"))
+          PY
+
+          post=$(jq -r .post "$decision")
+          echo "decision: $(jq -r .reason "$decision") (post=$post)"
+          if [ "$post" != "true" ]; then
+            exit 0
+          fi
+
+          # Re-read immediately before posting. The concurrency group above
+          # queues a second run rather than letting it overlap, but the
+          # decision above was made against the reviews fetched at the start
+          # of THIS run, and the run ahead of it may have posted since. A
+          # review that landed in that gap must suppress this one: one review
+          # per pull request, not one per queued run.
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
+            | jq -s 'add' > "$reviews"
+          if jq -e --argjson logins "$REVIEWER_LOGINS" \
+              '[.[].user.login] | any(. as $l | $logins | index($l))' \
+              "$reviews" >/dev/null; then
+            echo "a maxi-reviewer review landed while this run was queued; not posting another"
+            exit 0
+          fi
+
+          jq -n \
+            --arg sha "$HEAD_SHA" \
+            --arg body "$(jq -r .body "$decision")" \
+            --arg event "$(jq -r .state "$decision")" \
+            '{commit_id: $sha, body: $body, event: $event}' \
+            | gh api -X POST \
+                "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --input -
+
+          # Read it back. A 2xx from the POST is not evidence the review
+          # exists -- the gate reads the reviews list, so that is what is
+          # checked.
+          if ! gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --jq '.[].user.login' \
+              | grep -qx 'maxi-reviewer\[bot\]'; then
+            echo "::error::the review POST succeeded but no maxi-reviewer review is on the pull request"
+            exit 1
+          fi
+          echo "posted a maxi-reviewer review"
+
   review:
     needs: lint-gate
+    # Its own group, and deliberately NOT cancel-in-progress.
+    #
+    # Cancellation is declared on lint-gate instead of at workflow level
+    # precisely so it cannot reach this job. A `synchronize` run must not kill
+    # a review that is mid-flight, because the same push is filtered out by the
+    # `if:` below and nothing would replace it: the PR would end with no
+    # completed AI review, which on the PR face is indistinguishable from a
+    # review that ran and found nothing.
+    #
+    # That failure did not exist before the once-per-PR filter, because the
+    # filter was a tautology and every push started a fresh review behind the
+    # cancellation. Fixing the tautology is what exposed it (cubic, P1 on this
+    # PR). The two halves have to move together.
+    #
+    # Keyed on the PR so two reviews of the SAME pull request still serialise
+    # -- someone re-labelling twice in quick succession queues rather than
+    # racing -- while a push no longer interrupts one.
+    concurrency:
+      group: maxi-review-ai-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    # Same fan-out exclusion as lint-gate, restated rather than inherited:
+    # `always()` here means a SKIPPED lint-gate does not skip this job, so
+    # excluding only lint-gate would leave the AI reviewer -- the expensive
+    # half -- running on all ~31 copies anyway.
+    # `success()`, NOT `always()`. Under `always()` a FAILED lint-gate did not
+    # stop this job, so a PR that could not pass deterministic maxi-lint still
+    # spent a full AI review: the expensive half ran precisely when the cheap
+    # half had already found the answer. `needs: lint-gate` was ordering
+    # without gating.
+    #
+    # The fan-out exclusion below is now redundant on the skip path, since a
+    # skipped lint-gate no longer satisfies `success()`. It stays anyway: it is
+    # the condition a reader checks to answer "why was the fan-out not
+    # reviewed", and it should hold on its own terms if lint-gate's exclusion
+    # ever changes.
+    #
+    # `github.event.action != 'synchronize'` is what stops the re-review per
+    # push. It must be `event.action`, NOT `event_name`: this workflow triggers
+    # on `pull_request`, so `event_name` is the literal string "pull_request"
+    # for every type in that list and `event_name != 'synchronize'` is a
+    # tautology that filters nothing. The activity type lives in `event.action`.
+    #
+    # Recovering from a first push that fails lint-gate: `success()` skips the
+    # review, and later pushes are `synchronize` and skip too, so the PR does
+    # not review itself once the lint is fixed. That is deliberate, and the
+    # recovery is the `labeled` trigger plus `run-maxi-review` already in this
+    # condition -- adding the label re-runs the review on demand. The
+    # alternative, reviewing on every `synchronize` until one succeeds, is the
+    # 3.3x re-review this change exists to stop.
+    # MEASURED before this change: 100 Maxi Review runs covered 30 branches in
+    # maxi-dist (3.3 per branch, worst 13) and 37 in maxi-config (2.7, worst
+    # 13), with 18% and 29% cancelled mid-flight by the concurrency group --
+    # work started and thrown away. lint-gate deliberately KEEPS running on
+    # every push: it is a merge gate, and a gate that stops looking after the
+    # first commit is not one.
     if: >
-      always() &&
+      success() &&
+      github.event.action != 'synchronize' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      (
+        (
+          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
+          github.head_ref != 'ci/fanout-pin'
+        ) ||
+        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+      ) &&
       (
         vars.CI_ENFORCEMENT_MODE == 'strict' ||
         contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
@@ -285,21 +997,28 @@ jobs:
     # to "failure" -- so this gate reported every PR broken without scanning a
     # single line. Same-repository PRs only (the `if` above), so this is org
     # code on the org's own fleet, not fork code.
-    runs-on: [self-hosted, Linux, X64]
-    # Must exceed the step's 55, or the job cap fires first and the step bound
-    # — the actual runner-release watchdog — can never take effect. README:
-    # "use a step timeout-minutes of at least 55 and a job timeout above that."
     #
-    # 70, not 65, because this cap covers the WHOLE job, and everything ahead of
-    # the reviewer step here is network-bound: two app-token mints, the
-    # maxi-lint findings artifact download, the rules fetch, the per-language
-    # rule selection, the PR-head checkout, and the built-in rules fetch and
+    # No arch label: the X64 pool was 14/14 busy with 71 queued on 2026-09-18
+    # while ARM64 had a slot idle, and this job's tools (gh, python, cargo
+    # for the pinned maxi-lint install) are present on both pools
+    # (ci/runner-routing.toml, [lanes.linux-any]).
+    runs-on: [self-hosted, Linux]
+    # Must exceed the reviewer step's 40, or the job cap fires first and the
+    # step bound — the actual runner-release watchdog — can never take effect.
+    # README: "use a step timeout-minutes of at least [hard deadline + cleanup
+    # headroom] and a job timeout above that."
+    #
+    # 70 because this cap covers the WHOLE job, and everything ahead of the
+    # reviewer step here is network-bound: two app-token mints, the maxi-lint
+    # findings artifact download, the rules fetch, the per-language rule
+    # selection, the PR-head checkout, and the built-in rules fetch and
     # staging. (The pinned maxi-lint cargo install is NOT in this job — it runs
-    # in lint-gate, under its own 10-minute cap.) At 60 only five minutes covers
-    # all of that before the cap starts eating the reviewer's own budget, and a
-    # job cancellation kills the action mid-run, skipping exactly the graceful
-    # status cleanup the 55 exists to preserve. 70 leaves 15 minutes of setup
-    # headroom above the step bound and still releases the runner.
+    # in lint-gate, under its own 10-minute cap.) A job cancellation kills the
+    # action mid-run, skipping exactly the graceful status cleanup the step
+    # bound exists to preserve, so this cap must never be the one that fires.
+    # 70 leaves 30 minutes of setup headroom above the 40-minute step bound,
+    # and bounds the job far below GitHub's 6-hour default, which is what would
+    # otherwise hold the runner if both inner bounds failed to fire.
     timeout-minutes: 70
     permissions:
       pull-requests: write
@@ -311,7 +1030,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
           private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: |
@@ -395,15 +1114,337 @@ jobs:
             echo "JULES_RULES_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # The roster selector: score (T2) -> band; fetch profiles; apply
+      # min_complexity from routing; apply the accept-rate rule; publish
+      # the decision as a commit status so both humans and the gate can
+      # see it. This step ALWAYS runs on a PR the job did not skip, even
+      # when the profile asset is absent -- the status names the gap.
+      #
+      # The status is what the review gate consumes in T4. The format
+      # `asked=[...] skipped=<n>` is the contract; tests pin
+      # the shape so a future refactor cannot silently change it.
+      #
+      # The file list is re-fetched here. It is the same data
+      # `Select per-language rules from changed files` already paginated
+      # for paths only, but the roster needs additions + deletions to
+      # score, and merging the two into a single fetch would couple the
+      # selector to the rules pipeline for the sake of one API call.
+      # The PR file list is a few KB even on the busier PRs in this org.
+      #
+      # The profiles asset is OPTIONAL. T1 publishes a rolling tag the
+      # workflow fetches here; absent or older than the cadence, the
+      # selector degrades to raw metrics and the status names the gap.
+      # `gh release download --pattern` against a tag whose name is the
+      # rolling release is the shape T1 ships; the URL is interpolated
+      # rather than hard-coded so the selector stays the source of truth.
+      #
+      # The lever application (labels, post-hoc bypass) lives at the END
+      # of the step so the status is the FIRST thing published -- humans
+      # reading the PR page see the decision before the label flips.
+      - name: Select the review roster and publish `review-roster`
+        id: roster
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          # The second half of the fan-out test. The prefix alone is
+          # attacker-chosen: anyone able to push a branch could name it
+          # maxi-config-sync/* and collapse the roster to maxi-lint.
+          # REST/webhook spelling, so the bracketed Bot login.
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          # HEAD_SHA is interpolated here, not in `run:`, so the
+          # workflow-script-injection guard sees only the env declaration
+          # and the run-block uses `$HEAD_SHA` (#288).
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
+          # Full file objects (filename + additions + deletions), paginated.
+          # The list is small even on a 50-file PR; the file limit is a
+          # 1 MB job-output ceiling and a 50-file PR is ~30 KB of JSON.
+          files_json="$RUNNER_TEMP/roster-files.json"
+          # `--paginate` emits a SEPARATE JSON value per page, and this
+          # endpoint pages at 30 files, so `--jq` on its own wrote several
+          # concatenated arrays -- not valid JSON -- for any PR over 30
+          # files, and the selector rejected the whole input.
+          #
+          # `jq -s` reads those concatenated values into one array, which
+          # `add` then flattens.
+          #
+          # gh has a flag that wraps the pages itself, and it is NOT used
+          # here: gh refuses to combine that flag with `--jq`, and this
+          # repo settled on `jq -s` for exactly this case in #136.
+          # tests/ci_economy_assets.rs pins the choice by asserting this
+          # file contains "jq -s" and does NOT contain that flag, as a
+          # plain substring over the whole file -- so naming it even in a
+          # comment fails the lane. That is why it is described rather
+          # than spelled here.
+          pages_json="$RUNNER_TEMP/roster-files-pages.json"
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            > "$pages_json"
+          jq -s 'add | map(select(.status != "removed"))' \
+            "$pages_json" > "$files_json"
+          echo "roster: $(jq 'length' "$files_json") changed file(s) across \
+            $(jq -s 'length' "$pages_json") page(s)"
+
+          profiles="$RUNNER_TEMP/roster-profiles.json"
+          # T1 publishes a rolling tag named `reviewer-profiles` with one
+          # asset `reviewer-profiles.json`. Until T1 ships, this fails
+          # silently: the selector's `--profiles-path` is absent, the
+          # status says `profiles=absent`, and the routing defaults carry
+          # the decision. The `|| true` is load-bearing -- a 404 on a
+          # tag that has not been published yet must NOT fail the gate.
+          # The harvest publishes the rolling tag `reviewer-profiles-latest`
+          # in maxi-tools/maxi-reviewer (its calibration-harvest.yml), with
+          # assets reviewer-profiles.json and calibration.json.
+          #
+          # BOTH coordinates were wrong here. This read maxi-tools/maxi-config,
+          # which has no releases at all, and it named no tag -- so even
+          # against the right repo `gh release download` takes whichever
+          # release was cut most recently rather than the rolling profile
+          # tag. The `|| true` then reported the miss as `profiles=absent`,
+          # which is why accept-rate routing has never once run and nothing
+          # said so.
+          #
+          # A genuinely missing release or asset is still expected and must
+          # not fail the gate. Anything else -- auth, rate limit, network --
+          # fails loudly rather than masquerading as `absent`.
+          dl_log="$RUNNER_TEMP/roster-profiles-download.log"
+          if gh release download reviewer-profiles-latest \
+               --repo maxi-tools/maxi-reviewer \
+               --pattern 'reviewer-profiles.json' \
+               --dir "$RUNNER_TEMP" > "$dl_log" 2>&1; then
+            mv "$RUNNER_TEMP/reviewer-profiles.json" "$profiles"
+          elif grep -qiE 'release not found|not found|no asset' "$dl_log"; then
+            echo "roster: no published profiles asset yet -> profiles=absent"
+            cat "$dl_log"
+          else
+            echo "::error::gh release download failed for a reason other than a missing asset"
+            cat "$dl_log"
+            exit 1
+          fi
+
+          # Run the selector. Stdout is the JSON the rest of the step
+          # materialises. The script's exit status is non-zero on
+          # malformed input, which fails the step -- the gate MUST have a
+          # roster to consult, so a missing roster is a red build, not a
+          # green one with an empty asked list.
+          #
+          # `python3` from PATH, NOT a hard-coded /opt/homebrew/bin/python3.12.
+          # The Homebrew path is the macOS runner's convention, but this lane
+          # also runs on Linux self-hosted runners (pearl-1 et al.) where the
+          # Homebrew tree does not exist. PATH is exported at the top of this
+          # step -- `/opt/homebrew/bin` first for the macOS pool, system paths
+          # second -- so `python3` resolves to the right interpreter on every
+          # runner. The hard-coded path was the cause of every roster-step
+          # failure since the selector first shipped (#728, maxi-config#741).
+          roster_json="$RUNNER_TEMP/roster.json"
+          python3 \
+            .maxi-config/maxi-review/select-roster.py \
+              --files="$files_json" \
+              --head-ref="$HEAD_REF" \
+              --pr-author="$PR_AUTHOR" \
+              --profiles-path="$profiles" \
+              --repo-root=. \
+              --allow-escalation > "$roster_json"
+
+          # Step summary: humans read this in the run logs. The shape is
+          # the same JSON the status publishes, plus the per-reviewer
+          # reasons in two tables.
+          {
+            echo "## Review roster"
+            echo
+            echo "Status: \`$(jq -r .summary "$roster_json")\`"
+            echo
+            echo "- band: \`$(jq -r .band "$roster_json")\`"
+            echo "- effective_band: \`$(jq -r .effective_band "$roster_json")\`"
+            if [ "$(jq -r .band_escalated "$roster_json")" = "true" ]; then
+              echo "- band_escalated: \`true\` ($(jq -r .escalation_reason "$roster_json"))"
+            else
+              echo "- band_escalated: \`false\`"
+            fi
+            echo "- profiles: \`$(jq -r .profiles "$roster_json")\`"
+            age=$(jq -r .profiles_age_days "$roster_json")
+            if [ "$age" != "null" ]; then
+              echo "- profiles_age_days: \`$age\`"
+            fi
+            echo
+            echo "### Asked"
+            echo
+            jq -r '.asked[] | "- **\(.reviewer)**: \(.reason)"' "$roster_json"
+            echo
+            echo "### Skipped"
+            echo
+            jq -r '.skipped[] | "- **\(.reviewer)**: \(.reason)"' "$roster_json"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # RECONCILE THE LEVERS FIRST, THEN PUBLISH.
+          #
+          # This used to run the other way round -- status first, so a human
+          # reading the PR face saw the decision before the label flipped.
+          # That reads better and is wrong. `review-roster` is the
+          # authoritative signal and T4 waits only for the reviewers it names
+          # in `asked`, so publishing success before the label is reconciled
+          # means a failed `--add-label` leaves the status asking for
+          # claude-review while nothing can start it, and T4 waits for a
+          # check that cannot arrive. A failed `--remove-label` is the
+          # mirror: a stale label starts claude-review on a PR the roster
+          # says to skip. Two ledgers, one of them wrong, and `|| true`
+          # hiding which one.
+          #
+          # So: decide, reconcile, VERIFY by re-reading, then publish.
+          #
+          # `jq ... "$roster_json"` reads the FILE. This was
+          # `echo "$roster_json" | jq -e ...`, which piped the PATH STRING
+          # into jq; it failed to parse ("Invalid numeric literal"), so the
+          # condition was false on EVERY run -- claude-review was never
+          # labelled, and an existing label was always stripped. The lever
+          # this block exists to pull had never once fired.
+          #
+          # The label is the SHARED lever for every workflow-gated reviewer:
+          # claude-review AND qwen-coder-local (the local coder-model lane
+          # added by t_6e9a6388) both consume `run-maxi-review`, and the
+          # label fires when ANY of them is asked. Naming it `want_claude`
+          # after the first consumer made sense when it was the only one;
+          # with a second consumer it is the "any workflow reviewer wanted"
+          # predicate. The variable is renamed below for that reason.
+          want_reviewer=0
+          if jq -e '.asked | map(select(.reviewer == "claude-review" or .reviewer == "qwen-coder-local")) | length > 0' \
+               "$roster_json" >/dev/null; then
+            want_reviewer=1
+          fi
+
+          has_label() { printf '%s\n' "$1" | grep -qx "run-maxi-review"; }
+
+          label_ok=1
+          if ! labels_now=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                              --json labels --jq '.labels[].name' 2>&1); then
+            echo "::warning::could not read PR labels: $labels_now"
+            labels_now=""
+            label_ok=0
+          fi
+
+          # `gh pr edit` fails when the label does not exist in the repo.
+          # `run-maxi-review` is reconciled nightly by
+          # reconcile_repo_conformance.py, so its absence is a bug elsewhere
+          # and not this step's to own -- but it has to be VISIBLE, which is
+          # what the old `|| true` prevented.
+          if [ "$label_ok" = "1" ]; then
+            if [ "$want_reviewer" = "1" ] && ! has_label "$labels_now"; then
+              gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --add-label run-maxi-review \
+                || { echo "::warning::--add-label run-maxi-review failed"; label_ok=0; }
+            elif [ "$want_reviewer" = "0" ] && has_label "$labels_now"; then
+              gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --remove-label run-maxi-review \
+                || { echo "::warning::--remove-label run-maxi-review failed"; label_ok=0; }
+            fi
+          fi
+
+          # Re-read rather than trust the edit's exit status: an edit that
+          # reported success without taking effect is exactly the case that
+          # strands T4 on a check that never arrives.
+          if [ "$label_ok" = "1" ]; then
+            if ! labels_after=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+                                  --json labels --jq '.labels[].name' 2>&1); then
+              echo "::warning::could not re-read PR labels: $labels_after"
+              label_ok=0
+            elif [ "$want_reviewer" = "1" ] && ! has_label "$labels_after"; then
+              echo "::warning::run-maxi-review still absent after --add-label"
+              label_ok=0
+            elif [ "$want_reviewer" = "0" ] && has_label "$labels_after"; then
+              echo "::warning::run-maxi-review still present after --remove-label"
+              label_ok=0
+            fi
+          fi
+
+          # Publish the commit status. The description is the contract
+          # T4 reads; the target_url points at this run so a reader who
+          # lands on the PR page can land on the run.
+          #
+          # The description is bounded by the selector, not clipped here.
+          # Clipping would leave a string that still starts with `asked=`
+          # and no longer parses, and `parse_roster` fails that closed.
+          summary=$(jq -r .summary "$roster_json")
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$label_ok" = "1" ]; then
+            status_state=success
+          else
+            # The roster is still published -- a reader needs to see what was
+            # decided -- but it must not report success while the label state
+            # contradicts the reviewers it just asked for. The state carries
+            # that; the suffix is a hint for a human reading the description.
+            # GitHub rejects the POST above 140 characters, which is the
+            # failure this step exists to avoid, so the hint is dropped when
+            # it would not fit rather than failing the POST.
+            status_state=failure
+            if [ $(( ${#summary} + 19 )) -le 140 ]; then
+              summary="$summary label=UNRECONCILED"
+            fi
+          fi
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state="$status_state" \
+            -f context=review-roster \
+            -f description="$summary" \
+            -f target_url="$run_url" >/dev/null
+          echo "posted review-roster=$summary (state=$status_state)"
+          [ "$label_ok" = "1" ]
+
+      # Looks ACROSS review rounds, which no single review can do. A
+      # line-level reviewer is very good at "this line is wrong" and
+      # structurally unable to say "this approach guarantees more of these" --
+      # every finding is correct, every fix is correct, and the next round
+      # produces another of the same shape. Emits nothing on a converging PR,
+      # which is almost all of them.
+      - name: Detect review churn
+        id: churn
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH"
+          # PIPED, not passed as an argument. One real PR's comment payload
+          # measured 910 KB against a 1 MB ARG_MAX on these runners, and the
+          # PRs this step targets are the ones with the most comments -- so
+          # argv would have failed to exec exactly where it is needed.
+          #
+          # `|| true` and the empty default below: this step may only ever ADD a
+          # question to the review. A rate-limited call or a parse failure must
+          # leave the review exactly as it would have been and never fail the
+          # job -- the review is the product, this is a footnote on it.
+          text=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>/dev/null \
+            | python3 .maxi-config/maxi-review/detect-review-churn.py 2>/dev/null \
+            || true)
+          # A RANDOM DELIMITER, because `$text` is PR comment bodies -- data an
+          # attacker controls. With a fixed `CHURN_EOF`, a comment containing
+          # that word on a line of its own closes the heredoc early, and every
+          # line after it is parsed as a fresh `$GITHUB_OUTPUT` assignment:
+          # arbitrary step outputs, set by anyone who can comment on a PR.
+          # GitHub's own guidance for untrusted multiline output is a delimiter
+          # the writer cannot predict. (maxi-reviewer, seen on the fan-out.)
+          delim="CHURN_EOF_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
+          {
+            printf '%s\n' "text<<$delim"
+            printf '%s\n' "$text"
+            printf '%s\n' "$delim"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Prepare lint findings context
         id: maxilint
         run: |
+          # Random for the same reason as the churn block above. This one is
+          # findings text produced from the PR's own source, so it is one
+          # remove from attacker-controlled rather than two -- a lint message
+          # can quote the code that triggered it.
+          delim="MAXI_LINT_EOF_$(python3 -c 'import secrets; print(secrets.token_hex(16))')"
           {
-            echo "text<<MAXI_LINT_EOF"
+            printf '%s\n' "text<<$delim"
             if [ -s .maxi-lint-findings/maxi-lint-findings.md ]; then
               cat .maxi-lint-findings/maxi-lint-findings.md
             fi
-            echo "MAXI_LINT_EOF"
+            printf '%s\n' "$delim"
           } >> "$GITHUB_OUTPUT"
 
       - name: Checkout PR head
@@ -417,7 +1458,7 @@ jobs:
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: reviewer-token
         with:
-          app-id: ${{ secrets.APP_ID }}
+          client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: maxi-tools
           repositories: maxi-reviewer
@@ -433,7 +1474,7 @@ jobs:
           # runs the action that consumes them. Split them and the reviewer
           # grades with one revision's code against another revision's rules —
           # a mismatch nothing else in this workflow would surface.
-          ref: ae2700a9171b4204bbd5416d17e90910ace4c128
+          ref: c6dcc726ae8aeffc316ba1951b670db4c69ec0d5
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -455,36 +1496,264 @@ jobs:
       # Evaluating a newer head is a deliberate follow-up, not a drive-by bump
       # inside the PR whose job is to stop unreviewed drift.
       #
-      # ae2700a is the previous pin, 6fe937d (2026-07-22), plus exactly one
-      # commit: the fix that stops an artifact-storage outage from failing a
-      # completed review (maxi-reviewer ae2700a). It was cut FROM 6fe937d and
-      # then merged to main precisely so this pin could move by that one commit
-      # rather than by the 41 of unrelated drift that separate 6fe937d from
-      # maxi-reviewer's head.
+      # f772893 is maxi-reviewer#92's merge commit, and it is main's head as
+      # this moves -- a deliberate exception to "ancestor, not head", argued
+      # rather than assumed. Six commits touch src/ or action.yml since the
+      # previous pin ae2700a (2026-08-19): the in-process hard deadline
+      # (862f1aa), the empty-review failure and explicit review outcomes
+      # (ebdb6b4), the pending-status heartbeat and its two follow-ups
+      # (04aa040, a2729c5, b4f67fe), and the timeout message this pin exists to
+      # ship (a80aec7). The other 92 are workflow syncs and dependabot bumps
+      # that never reach the action.
+      #
+      # The dogfood evidence the old wording asked for did not exist before
+      # now. maxi-reviewer's "Verify checked-in dist" gate had been red on
+      # every PR since at least 2026-08-26: it installed with npm against a
+      # pnpm lockfile, so ncc rebuilt ~27k lines of different module
+      # bookkeeping and the diff never had anything to do with the change under
+      # review. 9b7b57f, inside this range, fixes it. f772893 is the first
+      # commit whose dist has actually been verified against its own source.
+      #
+      # Advancing this also activates `hard_timeout_minutes`, a new input
+      # defaulting to timeout_minutes + 20 = 35. Nothing in this file moves for
+      # it: the step bound below is already 40, picked so this pin could
+      # advance without dragging the timeout arithmetic behind it.
+      # Which Jules account reviews this PR.
+      #
+      # maxi-reviewer takes ONE jules_api_key, so alternating has to happen
+      # here. Two accounts exist, and until now every review across ~90 repos
+      # went to the same one -- which is the shape of the failure this workflow
+      # keeps reporting: "No review after 15 min: Jules never replied."
+      #
+      # The index is (PR number + run attempt), for two properties:
+      #
+      #   - Deterministic per PR per attempt, so every job in a run agrees on
+      #     the account and one review is never split across two sessions.
+      #   - A RE-RUN LANDS ON THE OTHER ACCOUNT. That is the point. The advice
+      #     attached to a timeout is "re-runs often pass", and re-running
+      #     against the account that just failed to answer is the weakest
+      #     version of that. Incrementing on run_attempt makes a retry a real
+      #     retry rather than the same request again.
+      #
+      # Degrades to one account: with JULES_API_KEY_2 unset this always picks
+      # primary, so the file is unchanged in behaviour for an org with one key.
+      - name: Choose a Jules account
+        id: jules_account
+        # Explicit, not inherited. The script uses `set -o pipefail` and shell
+        # arithmetic; the default shell is bash on these runners today, but a
+        # step that only works because of a default is a step that breaks when
+        # the default moves.
+        shell: bash
+        env:
+          # Comparing to '' proves the secret EXISTS without reading it; only a
+          # boolean reaches the script.
+          HAVE_SECOND: ${{ secrets.JULES_API_KEY_2 != '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          if [ "$HAVE_SECOND" != "true" ]; then
+            echo "use=primary" >> "$GITHUB_OUTPUT"
+            echo "one Jules key configured; using it"
+            exit 0
+          fi
+          # Both values come from GitHub and are integers, but they are read
+          # from the environment rather than interpolated into this script: a
+          # run block is not where you want to discover an expression was not
+          # what you assumed.
+          # Each value checked SEPARATELY. Concatenating them hid the case
+          # that actually occurs: on a non-pull_request event PR_NUMBER is
+          # empty, so "$PR_NUMBER$RUN_ATTEMPT" is just "1" -- numeric, guard
+          # passes, and the arithmetic below then runs with a missing operand.
+          for v in "$PR_NUMBER" "$RUN_ATTEMPT"; do
+            case "$v" in
+              *[!0-9]*|"")
+                echo "use=primary" >> "$GITHUB_OUTPUT"
+                echo "no usable index (pr='$PR_NUMBER' attempt='$RUN_ATTEMPT'); using primary"
+                exit 0 ;;
+            esac
+          done
+          if [ $(( (PR_NUMBER + RUN_ATTEMPT) % 2 )) -eq 0 ]; then
+            use=primary
+          else
+            use=secondary
+          fi
+          echo "use=$use" >> "$GITHUB_OUTPUT"
+          echo "PR $PR_NUMBER attempt $RUN_ATTEMPT -> $use"
+
       - name: Run maxi-reviewer
         # ~37% of invocations used to hang with no step output and hold a scarce
         # self-hosted runner until the job timeout (maxi-reviewer#53).
         #
-        # 55, not 35. The action enforces its own hard deadline in-process at
-        # `hard_timeout_minutes`, which defaults to `timeout_minutes + 20` — so
-        # 50 with the 30-minute Jules budget set below. maxi-reviewer's README
-        # requires the step bound to sit ABOVE that, at 55 or more, plus cleanup
-        # headroom: a blocked Node event loop can stop the in-process timers
-        # firing, which is exactly why this outer bound is the real
-        # runner-release watchdog. A 35-minute bound fires FIRST and kills a
-        # review still legitimately inside its own deadline, defeating the
-        # graceful status cleanup this is meant to preserve.
-        timeout-minutes: 55
-        uses: maxi-tools/maxi-reviewer@ae2700a9171b4204bbd5416d17e90910ace4c128
+        # 40, derived — do not tune it on its own. The action enforces a hard
+        # deadline in-process at `hard_timeout_minutes`, defaulting to
+        # `timeout_minutes + 20`, and maxi-reviewer's README requires this step
+        # bound to sit ABOVE that plus a few minutes of cleanup headroom.
+        # 15 + 20 = 35, + 5 = 40 — the same five-minute margin the documented
+        # 30-minute default gets (50, step 55). A bound AT 35 fires at the same
+        # instant as the in-process deadline and can kill a review still
+        # legitimately inside it, defeating the graceful status cleanup this
+        # exists to preserve. A blocked Node event loop can stop the in-process
+        # timers firing, which is why this outer bound is the real
+        # runner-release watchdog.
+        #
+        # That arithmetic first became true of the FLEET at pin f772893, and it
+        # still holds at the pin below: both carry src/hard-deadline.ts and the
+        # `hard_timeout_minutes` input, checked against each revision before
+        # moving the pin, so advancing it changes nothing about the timeout
+        # regime. The pin BEFORE f772893, ae2700a, predated
+        # src/hard-deadline.ts entirely — no `hard_timeout_minutes` input, no
+        # deadline timer in its dist — so this bound was the only thing
+        # releasing the runner, and it had to cover setup plus the whole poll
+        # rather than merely outlive a timer at 35. 40 was chosen to be correct
+        # under both regimes precisely so the pin could move without this
+        # number moving with it. Whenever `timeout_minutes` moves, this does:
+        # timeout_minutes + 25.
+        timeout-minutes: 40
+        uses: maxi-tools/maxi-reviewer@d967a344a624e6e738e97494ef2e7f20eecca567
         with:
-          jules_api_key: ${{ secrets.JULES_API_KEY }}
+          # Which account, chosen by the step above. The KEY itself is read
+          # straight from `secrets` here rather than passed through a step
+          # output, so the value never becomes an output that could be printed.
+          jules_api_key: ${{ steps.jules_account.outputs.use == 'secondary' && secrets.JULES_API_KEY_2 || secrets.JULES_API_KEY }}
+          # The OTHER account -- the inverse of the line above -- used only
+          # when a session never leaves repository setup. The reviewer
+          # recreates it there rather than waiting out a budget that cannot
+          # produce a review; see maxi-reviewer#100.
+          #
+          # Degrades to a same-account recreate in BOTH directions, which is
+          # still the cheapest thing that recovers a clone that never finished:
+          #
+          #  - JULES_API_KEY_2 unset: this renders empty, and the reviewer
+          #    reads an empty fallback as "no second account".
+          #  - JULES_API_KEY unset while the selection picked secondary: a
+          #    GitHub `A && B || C` yields C whenever B is falsy, so this
+          #    renders as JULES_API_KEY_2 -- the key already in use. There is
+          #    no expression that preserves an empty string here instead;
+          #    adding a second condition renders the literal "false", which is
+          #    worse. The reviewer covers it: `planAttempts` takes the
+          #    fallback only when it is non-empty AND differs from the active
+          #    key, so an identical one plans a fresh session on the same
+          #    account rather than a pointless switch to itself.
+          #
+          # Read straight from `secrets` for the same reason as the primary:
+          # the value never becomes a step output that could be printed.
+          jules_api_key_fallback: ${{ steps.jules_account.outputs.use == 'secondary' && secrets.JULES_API_KEY || secrets.JULES_API_KEY_2 }}
           github_token: ${{ steps.app-token.outputs.token }}
           rules_file: ""
           extra_instructions: |
             ${{ steps.rules.outputs.text }}
+            ${{ steps.churn.outputs.text }}
 
             ${{ steps.maxilint.outputs.text }}
-          timeout_minutes: "30"
-          fail_on: "blocking"
-          status_context: jules/review
+          # 15 — twice measured, from both directions.
+          #
+          # Down from 30: MEASURED on maxi-nix, the last seven completed runs
+          # under the 30-minute budget were 30.7, 30.8, 30.8, 41.1, 50.3, 50.3
+          # and 59.0 minutes -- and THREE OF THE SEVEN produced no verdict at
+          # all. Those three are the 30-minute cluster: they spent the whole
+          # budget and returned nothing, then set `advisory: maxi reviewer`
+          # red for having failed to work. On a gate every push to every PR in
+          # ~90 repos waits for, that is half an hour of dead wall-clock per
+          # bad run.
+          #
+          # Back up from 10: the premise behind 10 was "a review that has
+          # produced no agent message in ten minutes is not about to". MEASURED
+          # 2026-08-30, that is false. `pollForReview` in maxi-reviewer's
+          # src/jules.ts sleeps 20s between attempts, so 10 minutes is ~30
+          # attempts -- and two real reviews landed that day on attempt 26
+          # (~8.7 min) and attempt 29 (~9.7 min), inside the budget by seconds.
+          # maxi-reviewer's own action.yml warns that non-trivial PRs often
+          # take 15-25 minutes. 15 keeps half the saving over 30 while putting
+          # the observed successes comfortably inside the budget instead of on
+          # the cliff edge.
+          #
+          # NOT per-repository: that theory came from bootstrap and maxi-kvm
+          # being absent from Jules' connected Codebases list, and one run
+          # killed it -- bootstrap#68, still absent, came back `verdict:
+          # approve`. One observation rules the theory out without explaining
+          # the variance. Response latency looks independent of anything we
+          # send, which leaves this number as the only lever we control.
+          #
+          # Changing this number changes `timeout-minutes` on this step: the
+          # in-process hard deadline is timeout_minutes + 20 and the step bound
+          # must clear it by ~5 minutes of cleanup headroom.
+          timeout_minutes: "15"
+          # NEVER, and the context name is the short version of why: a status
+          # called `advisory:` that fails the check is not advisory. These two
+          # lines sat adjacent and contradicting for as long as they have both
+          # existed, and unlike every other input in this block, neither
+          # carried a reason.
+          #
+          # Three things this lane reports are not verdicts on the code:
+          #
+          #   1. Its own timeouts. The comment above measures three runs in
+          #      seven that spent the whole budget and returned nothing, then
+          #      "set `advisory: maxi reviewer` red for having failed to work".
+          #      Reviewer infrastructure failing is not a finding.
+          #   2. Blocking verdicts its own rules forbid. maxi-reviewer's
+          #      src/prompt.ts already says that for claims about third-party
+          #      tools and APIs, "if you are relying only on memory of an
+          #      external API, mention the uncertainty and do not use `block`".
+          #      Observed 2026-09-09 on maxi-kvm#85: High severity, High
+          #      confidence, verdict `block`, asserting that
+          #      actions/create-github-app-token requires `app-id` and rejects
+          #      `client-id`. Upstream documents the opposite -- `client-id` is
+          #      recommended and `app-id` is the legacy input -- so applying
+          #      that finding would have broken the token step it claimed to
+          #      repair. The rule is right; nothing enforces it.
+          #   3. Verdicts about a diff it did not read. The same run recorded
+          #      the new head SHA against a review of superseded content.
+          #
+          # Nothing is lost by going advisory in fact as well as in name. The
+          # findings still publish as PR review comments, and `maxi-reviewer[bot]`
+          # still counts for `review-gate/non-author-review`, which reads
+          # reviews rather than statuses. What goes away is a red check that
+          # ~90 repositories' pull requests wait on, which is red for reasons
+          # its own precision does not support.
+          #
+          # The condition for returning this to "blocking" is a measurement,
+          # not a feeling: maxi-reviewer/src/calibration.ts already aggregates
+          # per-rule precision from harvested artifacts. Point it at the block
+          # verdicts and raise this again when that number justifies a gate.
+          fail_on: "never"
+          status_context: 'advisory: maxi reviewer'
           analyzer_mode: "off"
+          # Explicit, and empty. maxi-reviewer's action.yml defaults
+          # `bypass_label` to "maxi-review-override", so leaving this unset does
+          # NOT mean "no bypass" -- it means a bypass this repository never
+          # spells anywhere, which is why `grep maxi-review-override` finds
+          # nothing in any of the ~31 repos this file lands in.
+          #
+          # Measured on maxi-config#536 (issue #555). With the label applied,
+          # `Run maxi-reviewer` logged one line -- `Bypass label
+          # "maxi-review-override" present - skipping review.` -- returned in
+          # ~0.1s, published NO `advisory: maxi reviewer` status at all, and
+          # concluded `success` under this job's `continue-on-error: true`. An
+          # invisible skip, not a red one: on the PR page it is indistinguishable
+          # from a lane that has not reported yet.
+          #
+          # And it skipped the wrong half of the system. `maxi-reviewer[bot]` is
+          # one of the non-author reviewers that satisfies
+          # `review-gate/non-author-review`, and the gate reads reviews, never
+          # labels -- so the documented escape hatch ("Bypass Maxi Review when
+          # review infrastructure is unavailable") removed a reviewer while
+          # leaving intact the requirement that a reviewer exist. A PR carrying
+          # it was STRICTLY LESS mergeable, in exactly the situation the label
+          # was built for.
+          #
+          # The capability is not deleted, it moved to the half that is
+          # load-bearing: `review-infra-unavailable` is honoured by
+          # .github/actions/pr-review-gate. Suppressing the reviewer never
+          # helped anyway -- a reviewer that RUNS and fails publishes `advisory:
+          # maxi reviewer` red, which is the evidence that the infrastructure is
+          # down; skipping it destroys that evidence.
+          #
+          # An explicitly supplied empty string overrides an action.yml default:
+          # `rules_file: ""` three lines up already relies on that, and
+          # maxi-reviewer's action.yml documents it ("Set to empty string to
+          # disable"). No label is named "", so no label bypasses.
+          # tests/ci_economy_assets.rs pins this line in BOTH copies, because
+          # deleting it does not fail anything at runtime -- it silently
+          # reinstates the default.
+          bypass_label: ""

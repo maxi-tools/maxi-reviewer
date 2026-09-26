@@ -58030,7 +58030,7 @@ const _summary = new Summary();
  * @deprecated use `core.summary`
  */
 const markdownSummary = (/* unused pure expression or super */ null && (_summary));
-const summary = (/* unused pure expression or super */ null && (_summary));
+const summary = _summary;
 //# sourceMappingURL=summary.js.map
 ;// CONCATENATED MODULE: ./node_modules/.pnpm/@actions+core@3.0.1/node_modules/@actions/core/lib/path-utils.js
 
@@ -64400,12 +64400,30 @@ function pathGroupFor(path) {
 }
 /**
  * Decide what happened to one inline review finding. A thread is:
- *   - "accepted" when a commit AFTER it landed touched the file. This covers
+ *   - "accepted" when a commit AFTER it landed touched THAT FILE. This covers
  *     the most common case (the author fixed the line in a follow-up commit)
  *     and the case where the comment author is satisfied by an unrelated
- *     touch to the same file. We use file-level granularity because most bot
+ *     touch to the same file. File-level, not line-level, because most bot
  *     threads do not preserve line numbers across rebases and the harvest
  *     window often spans pushes that move lines.
+ *
+ *     It compared the PATH GROUP as well until 2026-09-19, which is not what
+ *     the paragraph above has ever described. `pathGroupFor` buckets coarsely
+ *     -- every `.rs` file outside a test directory is `rust-src` -- so a
+ *     finding on `crates/a/src/foo.rs` was accepted by a later commit to
+ *     `crates/z/src/unrelated.rs`. On a Rust PR that means any subsequent
+ *     Rust commit accepted every Rust finding on the PR.
+ *
+ *     It is visible in the first harvest that produced real numbers
+ *     (2026-09-19, 6357 measured): `rust-src` was the top group for six of
+ *     seven reviewers (87-100%) while `docs`, `lockfile` and `config` sat
+ *     lowest. That ordering tracks how BROAD each bucket is, not how good
+ *     any reviewer is. Cross-group comparison was measuring the bucketer.
+ *
+ *     Rates drop after this change, and they should: the old ones counted
+ *     coincidence. Comparisons WITHIN one path group were always sound --
+ *     every reviewer in a group was scored through the same clause -- so the
+ *     routing signal survives; the absolute numbers do not.
  *   - "dismissed" when the thread was resolved with no subsequent commit on
  *     the same file. Resolved is treated as a deliberate close by either the
  *     thread author or the PR author; "no commit on the file" is the evidence
@@ -64418,7 +64436,13 @@ function pathGroupFor(path) {
  * classifier does not look at the network.
  */
 function classifyOutcome(finding) {
-    const touched = finding.subsequentTouchedPaths.some((p) => p === finding.path || pathGroupFor(p) === pathGroupFor(finding.path));
+    // No evidence is not evidence. If the commit walk did not complete, an
+    // empty touched-paths list means "we could not look", and reading it as
+    // "nothing was touched" would classify the finding as `dismissed` — a
+    // verdict against the reviewer invented from a failed request.
+    if (finding.touchedPathsKnown === false)
+        return "unknown";
+    const touched = finding.subsequentTouchedPaths.includes(finding.path);
     if (touched)
         return "accepted";
     if (finding.threadResolved)
@@ -64429,10 +64453,28 @@ function statsFor(counts) {
     return {
         n: counts.total,
         acceptRate: counts.total > 0 ? counts.accepted / counts.total : 0,
+        unknownN: counts.unknown,
     };
 }
 function emptyStats() {
-    return { n: 0, acceptRate: 0 };
+    return { n: 0, acceptRate: 0, unknownN: 0 };
+}
+/** Fold one finding into a running bucket. */
+function accumulate(prev, outcome) {
+    if (outcome === "unknown") {
+        // Counted, but kept out of the numerator AND the denominator: an
+        // unmeasurable finding must not move a rate in either direction.
+        return statsFor({
+            accepted: prev.acceptRate * prev.n,
+            total: prev.n,
+            unknown: prev.unknownN + 1,
+        });
+    }
+    return statsFor({
+        accepted: prev.acceptRate * prev.n + (outcome === "accepted" ? 1 : 0),
+        total: prev.n + 1,
+        unknown: prev.unknownN,
+    });
 }
 /**
  * Aggregate inline findings into per-reviewer overall + by-path-group stats.
@@ -64449,17 +64491,10 @@ function aggregateReviewerProfiles(findings, generatedAt, windowDays) {
         const stats = reviewers[finding.reviewer];
         if (!stats)
             continue;
-        const accepted = classifyOutcome(finding) === "accepted" ? 1 : 0;
-        stats.overall = statsFor({
-            accepted: stats.overall.acceptRate * stats.overall.n + accepted,
-            total: stats.overall.n + 1,
-        });
+        const outcome = classifyOutcome(finding);
+        stats.overall = accumulate(stats.overall, outcome);
         const group = pathGroupFor(finding.path);
-        const prev = stats.byPathGroup[group] ?? emptyStats();
-        stats.byPathGroup[group] = statsFor({
-            accepted: prev.acceptRate * prev.n + accepted,
-            total: prev.n + 1,
-        });
+        stats.byPathGroup[group] = accumulate(stats.byPathGroup[group] ?? emptyStats(), outcome);
     }
     return {
         schema: "maxi.review.v1.reviewer-profiles",
@@ -71194,11 +71229,6 @@ const COMMIT_PATHS_QUERY = /* GraphQL */ `
               oid
               authoredDate
               committedDate
-              changedFilesIfAvailable(first: 100) {
-                nodes {
-                  path
-                }
-              }
             }
           }
         }
@@ -71297,23 +71327,84 @@ async function listReviewThreads(octokit, pull, maxThreads) {
     return threads;
 }
 /**
- * Walk the commits on this PR, returning a per-PR list of `{oid,
- * committedDate, paths}` in reverse-chronological order. The list is
- * capped by `maxCommits` and `maxTouchedPaths` so a noisy branch can't run
- * the harvester out of memory.
- *
- * The PR's `commits` connection is used (not `repository.object`) because
- * `object(expression:)` requires a git ref (SHA, branch, or tag) — passing
- * an ISO timestamp silently returns null, which would surface as an empty
- * changed-files set on every PR. The commits connection doesn't accept a
- * date filter; instead, callers stop walking once a commit's date falls
- * before their per-thread `createdAt`.
+ * `repos.getCommit` caps a single response at 300 files. 100 per page keeps
+ * each response small; 30 pages is 3000 files, far past any real commit, so
+ * reaching the limit means something pathological rather than large.
  */
-async function listCommitsAfter(octokit, pull, maxTouchedPaths, maxCommits) {
-    const commits = [];
+const COMMIT_FILE_PAGE_SIZE = 100;
+const COMMIT_FILE_PAGE_LIMIT = 30;
+/**
+ * Every changed path on one commit, following the REST pagination.
+ *
+ * `repos.getCommit` returns at most 300 files in a single response and puts
+ * the rest behind `Link: rel="next"`. Reading only the first page and then
+ * calling the result known records an incomplete page as a complete record:
+ * a bot comment on a file that landed on page two classifies as `dismissed`
+ * rather than `accepted` — the same "partial result published as data" that
+ * #133 is about, one API boundary further down.
+ *
+ * Returns `known: false` when the page limit is reached on a full page,
+ * i.e. more files exist than this is willing to read. Extracted from
+ * `listCommitsAfter` so the paging has its own seam: it is the part that
+ * carried the bug, so it is the part worth being able to test alone.
+ */
+async function listCommitFiles(octokit, pull, oid) {
+    const paths = [];
+    for (let page = 1; page <= COMMIT_FILE_PAGE_LIMIT; page += 1) {
+        const { data } = await octokit.rest.repos.getCommit({
+            owner: pull.owner,
+            repo: pull.repo,
+            ref: oid,
+            per_page: COMMIT_FILE_PAGE_SIZE,
+            page,
+        });
+        const files = data.files ?? [];
+        for (const f of files)
+            paths.push(f.filename);
+        if (files.length < COMMIT_FILE_PAGE_SIZE)
+            return { paths, known: true };
+    }
+    // Fell out of the loop on a full page: more files exist than we read.
+    warning(`harvest: commit ${oid.slice(0, 8)} on ${pull.owner}/${pull.repo}#${pull.number} has more than ` +
+        `${COMMIT_FILE_PAGE_LIMIT * COMMIT_FILE_PAGE_SIZE} changed files; its path list is truncated`);
+    return { paths, known: false };
+}
+/**
+ * Walk the commits on this PR, returning `{oid, committedDate, paths}` in
+ * reverse-chronological order.
+ *
+ * TWO APIs, deliberately. GraphQL supplies the commit list — it paginates
+ * cleanly and gives `committedDate`, which is what slices the window. It
+ * CANNOT supply the changed paths: `Commit.changedFilesIfAvailable` is an
+ * `Int` (a count, null when GitHub cannot compute it), not a connection, and
+ * `Commit` exposes no per-commit file list at all. Confirmed by introspecting
+ * the live schema: the only file-ish fields are `changedFiles: Int!`,
+ * `changedFilesIfAvailable: Int`, `file(path:): TreeEntry` (one path in the
+ * tree, not a diff) and `tree`.
+ *
+ * This code used to select `changedFilesIfAvailable(first: 100) { nodes { path } }`,
+ * which the server rejects outright:
+ *
+ *     Selections can't be made on scalars
+ *     (field 'changedFilesIfAvailable' returns Int but has selections ["nodes"])
+ *
+ * The whole document failed, every commit walk threw, the caller downgraded
+ * it to a warning, and `paths` was empty for every finding on every PR — so
+ * `accepted` was unreachable and all seven reviewers reported a 0% accept
+ * rate over a 270-PR window (#133).
+ *
+ * So paths come from REST `repos.getCommit`, which returns `files[].filename`.
+ * That is one request per commit, so the walk is bounded twice: only commits
+ * at or after `since` (the earliest bot thread on the PR — an older commit
+ * cannot be "after" any thread and its paths are never consulted) and never
+ * more than `maxCommits`.
+ */
+async function listCommitsAfter(octokit, pull, maxTouchedPaths, maxCommits, since = null) {
+    const listed = [];
     let cursor = null;
-    let touchedPaths = 0;
-    while (commits.length < maxCommits && touchedPaths < maxTouchedPaths) {
+    let complete = true;
+    // 1. The commit list, from GraphQL.
+    while (listed.length < maxCommits) {
         const response = (await octokit.graphql(COMMIT_PATHS_QUERY, {
             owner: pull.owner,
             name: pull.repo,
@@ -71322,28 +71413,73 @@ async function listCommitsAfter(octokit, pull, maxTouchedPaths, maxCommits) {
             cursor,
         }));
         const conn = response.repository?.pullRequest?.commits;
-        if (!conn)
+        if (!conn) {
+            complete = false;
             break;
+        }
         for (const node of conn.nodes) {
-            const paths = (node.commit.changedFilesIfAvailable?.nodes ?? []).map((f) => f.path);
-            commits.push({
+            if (listed.length >= maxCommits) {
+                // Nodes remain on THIS page that we are not taking. Recorded here,
+                // before any break: the previous version only flagged truncation
+                // after the `hasNextPage` test, so hitting the cap mid-page on the
+                // LAST page dropped commits while still reporting `complete = true`.
+                complete = false;
+                break;
+            }
+            listed.push({
                 oid: node.commit.oid,
                 committedDate: node.commit.committedDate,
-                paths,
             });
-            touchedPaths += paths.length;
-            if (commits.length >= maxCommits)
-                break;
-            if (touchedPaths >= maxTouchedPaths)
-                break;
         }
         if (!conn.pageInfo.hasNextPage)
             break;
         cursor = conn.pageInfo.endCursor;
-        if (cursor === null)
+        if (cursor === null) {
+            // `hasNextPage` with no cursor: more commits exist and there is no way
+            // to reach them. Truncated, not finished.
+            complete = false;
             break;
+        }
+        if (listed.length >= maxCommits) {
+            // More commits exist than we are willing to walk. Say so rather than
+            // letting a truncated list read as the whole history.
+            complete = false;
+            break;
+        }
     }
-    return commits;
+    // Newest first, so the per-thread filter can stop at the first commit
+    // older than the thread it is accumulating for.
+    listed.sort((a, b) => (a.committedDate < b.committedDate ? 1 : -1));
+    // 2. The paths, from REST — only for commits that can matter.
+    const commits = [];
+    let touchedPaths = 0;
+    for (const entry of listed) {
+        if (since !== null && entry.committedDate < since) {
+            // Older than every thread on this PR: its paths are never consulted,
+            // so spending a request on it would be waste, not caution.
+            commits.push({ ...entry, paths: [], pathsKnown: true });
+            continue;
+        }
+        if (touchedPaths >= maxTouchedPaths) {
+            commits.push({ ...entry, paths: [], pathsKnown: false });
+            complete = false;
+            continue;
+        }
+        try {
+            const { paths, known } = await listCommitFiles(octokit, pull, entry.oid);
+            if (!known)
+                complete = false;
+            commits.push({ ...entry, paths, pathsKnown: known });
+            touchedPaths += paths.length;
+        }
+        catch (err) {
+            // One unreachable commit must not silently become "touched nothing".
+            warning(`harvest: commit ${entry.oid.slice(0, 8)} on ${pull.owner}/${pull.repo}#${pull.number}: ${String(err)}`);
+            commits.push({ ...entry, paths: [], pathsKnown: false });
+            complete = false;
+        }
+    }
+    return { commits, complete };
 }
 /**
  * End-to-end harvester: walk the org's PRs, walk their threads, walk the
@@ -71368,6 +71504,8 @@ async function harvest(octokit, org, windowDays, options = {}) {
     const findings = [];
     const calibrationInputs = [];
     let artifactsObserved = 0;
+    let degradedPulls = 0;
+    let observedPulls = 0;
     let pullIndex = 0;
     for (const pull of pulls) {
         pullIndex += 1;
@@ -71377,44 +71515,99 @@ async function harvest(octokit, org, windowDays, options = {}) {
         }
         catch (err) {
             warning(`harvest: threads fetch failed for ${pull.owner}/${pull.repo}#${pull.number}: ${String(err)}`);
+            // Counted as observed AND degraded. A `continue` alone incremented
+            // nothing, so a threads leg that failed on every PR -- an expired App
+            // token, a revoked `pull_requests: read` -- produced zero findings,
+            // zero unknowns, and an all-zero profile that the all-degraded guard
+            // below never saw. The commits leg had this covered; this one did not.
+            observedPulls += 1;
+            degradedPulls += 1;
             continue;
         }
         const botThreads = threads.filter((t) => t.firstAuthor && isBotReviewer(t.firstAuthor));
         if (botThreads.length === 0)
             continue;
+        observedPulls += 1;
         info(`harvest: PR ${pullIndex}/${pulls.length} ${pull.owner}/${pull.repo}#${pull.number}: ${botThreads.length} bot threads`);
-        // Walk the PR's commits once. The list is reverse-chronological;
-        // for each thread, accumulate the paths touched after its createdAt
-        // by stopping the per-thread filter when we hit an older commit.
-        let commits = [];
-        if (botThreads.some((t) => !t.isResolved)) {
-            try {
-                commits = await listCommitsAfter(octokit, pull, maxTouchedPathsPerPull, maxCommitsPerPull);
-            }
-            catch (err) {
-                warning(`harvest: commits fetch failed for ${pull.owner}/${pull.repo}#${pull.number}: ${String(err)}`);
-            }
+        // Walk the PR's commits once, then slice per thread. The list is
+        // reverse-chronological, so the per-thread filter stops at the first
+        // commit older than the thread it is accumulating for.
+        //
+        // Walk for EVERY PR that has bot threads, not just those with an
+        // unresolved one. A resolved thread still needs the commit list to tell
+        // `accepted` (the author pushed a fix, then closed the thread) from
+        // `dismissed` (closed with no commit touching the file) — and since the
+        // merge rules require threads to be resolved before merging, gating the
+        // walk on an unresolved thread made `accepted` unreachable for nearly
+        // every merged PR.
+        //
+        // `since` is the earliest bot thread on this PR: no commit older than
+        // that can be "after" any thread here, so its paths are never consulted
+        // and fetching them would be waste. This is what keeps the REST leg
+        // bounded.
+        const threadDates = botThreads
+            .map((t) => t.createdAt)
+            .filter((d) => Boolean(d));
+        const since = threadDates.length > 0
+            ? threadDates.reduce((a, b) => (a < b ? a : b))
+            : null;
+        let walk = { commits: [], complete: false };
+        try {
+            walk = await listCommitsAfter(octokit, pull, maxTouchedPathsPerPull, maxCommitsPerPull, since);
         }
+        catch (err) {
+            // The findings from this PR are still recorded, but as `unknown`:
+            // a failed walk must not be published as "nothing was touched".
+            warning(`harvest: commits fetch failed for ${pull.owner}/${pull.repo}#${pull.number}: ${String(err)}`);
+            walk = { commits: [], complete: false };
+        }
+        // `degraded` is decided AFTER the findings, on whether this PR yielded
+        // any known outcome -- not on `walk.complete`. A truncated walk that
+        // still closed every thread's slice taught us everything we needed, and
+        // counting it as degraded made a single-PR harvest of exactly that shape
+        // trip the all-degraded guard and throw.
         function touchedPathsAfterThread(thread) {
             if (!thread.createdAt)
-                return [];
+                return { paths: [], known: false };
             const out = [];
             // commits is reverse-chronological; once we see a commit dated
             // before the thread, no later commit is older, so we stop walking.
-            for (const c of commits) {
-                if (c.committedDate < thread.createdAt)
-                    break;
+            for (const c of walk.commits) {
+                if (c.committedDate < thread.createdAt) {
+                    // The slice is CLOSED: we found a commit older than the thread, so
+                    // everything after it is already in `out`. That is a complete
+                    // answer for THIS thread even if the walk was truncated further
+                    // back in history -- truncation drops the oldest commits, which by
+                    // definition cannot be after a thread we have already passed.
+                    //
+                    // Bailing on `!walk.complete` up front (as this did) threw away
+                    // every thread on a large PR, including recent ones whose commits
+                    // were all present.
+                    return { paths: out, known: true };
+                }
+                if (!c.pathsKnown)
+                    return { paths: [], known: false };
                 for (const p of c.paths) {
                     out.push(p);
                 }
             }
-            return out;
+            // Ran off the end without closing the slice. If the walk was truncated,
+            // a commit after this thread may be among the ones we never fetched.
+            return walk.complete
+                ? { paths: out, known: true }
+                : { paths: [], known: false };
         }
+        let knownHere = 0;
+        let addedHere = 0;
         for (const thread of botThreads) {
             const reviewer = thread.firstAuthor;
             if (!reviewer || !isBotReviewer(reviewer))
                 continue;
             const path = thread.path ?? "";
+            const touched = touchedPathsAfterThread(thread);
+            addedHere += 1;
+            if (touched.known)
+                knownHere += 1;
             findings.push({
                 reviewer: reviewer,
                 repo: `${pull.owner}/${pull.repo}`,
@@ -71422,9 +71615,15 @@ async function harvest(octokit, org, windowDays, options = {}) {
                 path,
                 line: thread.line ?? 0,
                 threadResolved: thread.isResolved,
-                subsequentTouchedPaths: touchedPathsAfterThread(thread),
+                subsequentTouchedPaths: touched.paths,
+                touchedPathsKnown: touched.known,
             });
         }
+        // Degraded means this PR taught us NOTHING -- every finding unknown --
+        // which is the state the all-degraded guard exists to catch. A PR that
+        // answered some threads and not others is partial, not blind.
+        if (addedHere > 0 && knownHere === 0)
+            degradedPulls += 1;
         // Calibration harvest: pull maxi-reviewer's `review-artifact` comments off
         // this PR, decode them, and feed each into `calibration.ts`. The thread
         // states we already walked above feed the same engine.
@@ -71455,7 +71654,30 @@ async function harvest(octokit, org, windowDays, options = {}) {
     }
     const calibration = buildCalibrationReport(calibrationInputs);
     info(`harvest: calibration report produced ${calibration.byRule.length} rule groups, ${calibration.bySeverity.length} severity groups, ${calibration.byPath.length} path groups from ${artifactsObserved} artifacts`);
-    return { findings, calibration, artifactsObserved };
+    // A harvest that could not measure anything must not look like a harvest
+    // that measured zero. #133 published a profile asset reading 0% for all
+    // seven reviewers while every commit fetch was failing, and the job was
+    // green throughout — the failures were warnings and the empty result was
+    // indistinguishable from real data.
+    if (degradedPulls > 0) {
+        warning(`harvest: ${degradedPulls}/${observedPulls} PRs had an incomplete commit walk; ` +
+            "their findings are recorded as outcome=unknown and excluded from every accept rate");
+    }
+    if (observedPulls > 0 && degradedPulls === observedPulls) {
+        // Not a warning. Every single PR failed, so the accept rates are
+        // vacuous and publishing them would put a table of zeroes in front of
+        // the router as though it were evidence.
+        throw new Error(`harvest: the commit walk failed on all ${observedPulls} PRs with bot threads. ` +
+            "Every accept rate would be computed from zero observations, so this is a " +
+            "failed harvest, not an empty one. See the warnings above for the cause.");
+    }
+    return {
+        findings,
+        calibration,
+        artifactsObserved,
+        degradedPulls,
+        observedPulls,
+    };
 }
 async function runScheduledHarvest(options) {
     const octokit = getOctokit(options.token, {
@@ -71471,15 +71693,29 @@ async function runScheduledHarvest(options) {
     const profiles = aggregateReviewerProfiles(result.findings, new Date().toISOString(), options.windowDays);
     const totalSamples = Object.values(profiles.reviewers).reduce((sum, stats) => sum + stats.overall.n, 0);
     const reviewersWithSamples = Object.values(profiles.reviewers).filter((stats) => stats.overall.n > 0).length;
+    const totalUnknown = Object.values(profiles.reviewers).reduce((sum, stats) => sum + stats.overall.unknownN, 0);
     info(`harvest: wrote ${totalSamples} samples across ${reviewersWithSamples} bot reviewers (window=${options.windowDays}d)`);
+    // Report the unmeasured count next to the measured one. A reader who sees
+    // only "6358 samples" cannot tell that every one of them was unusable,
+    // which is exactly the state #133 shipped in.
+    info(`harvest: ${totalUnknown} finding(s) had an unknown outcome and are excluded from every accept rate ` +
+        `(${result.degradedPulls}/${result.observedPulls} PRs had an incomplete commit walk)`);
+    if (totalSamples === 0 && totalUnknown > 0) {
+        throw new Error(`harvest: all ${totalUnknown} findings are outcome=unknown, so every accept rate ` +
+            "would be 0% over an empty denominator. Refusing to publish a profile that " +
+            "cannot be distinguished from a real measurement.");
+    }
     for (const [reviewer, stats] of Object.entries(profiles.reviewers)) {
         const groups = Object.entries(stats.byPathGroup)
-            .filter(([, s]) => s.n > 0)
-            .sort((a, b) => b[1].n - a[1].n)
+            // `s.n > 0` alone would hide a group whose findings were ALL
+            // unknown, which is the state worth seeing most.
+            .filter(([, s]) => s.n > 0 || s.unknownN > 0)
+            .sort((a, b) => b[1].n + b[1].unknownN - (a[1].n + a[1].unknownN))
             .slice(0, 3);
         if (groups.length > 0) {
             const summary = groups
-                .map(([g, s]) => `${g}=${s.n}@${(s.acceptRate * 100).toFixed(0)}%`)
+                .map(([g, s]) => `${g}=${s.n}@${(s.acceptRate * 100).toFixed(0)}%` +
+                (s.unknownN > 0 ? `+${s.unknownN}?` : ""))
                 .join(", ");
             info(`harvest: ${reviewer}: ${summary}`);
         }
@@ -71501,7 +71737,163 @@ async function runScheduledHarvest(options) {
         profiles,
         calibration: result.calibration,
         artifactsObserved: result.artifactsObserved,
+        degradedPulls: result.degradedPulls,
+        observedPulls: result.observedPulls,
     };
+}
+
+;// CONCATENATED MODULE: ./src/reviewer-profile-report.ts
+/**
+ * Render a `reviewer-profiles.json` as a readable report.
+ *
+ * WHY THIS IS CHECKED IN. The first harvest that produced real numbers was
+ * read by hand with throwaway scripts, and two of the three conclusions drawn
+ * from it were wrong:
+ *
+ *   - `overall` was quoted as the headline. Three reviewers sat within 0.9
+ *     points of each other there, which looked like a broken measurement. It
+ *     was aggregation flattening a 44-point gap that existed one level down.
+ *   - the per-group table was read as a quality ranking. It was partly
+ *     measuring how broad each path bucket is.
+ *
+ * Reviewer behaviour drifts, so these numbers are never final. Anything that
+ * has to be re-derived by hand will be re-derived differently, or not at all.
+ * This module exists so the next reading is a re-run rather than a project.
+ *
+ * It is pure: it takes a parsed profile and returns markdown. The harvest
+ * workflow writes the result to `$GITHUB_STEP_SUMMARY`, so every scheduled
+ * run publishes its own analysis beside the data it produced.
+ */
+/**
+ * Path groups below this many findings are noise, and the README already says
+ * so. They still count in `overall`; they just do not get a column.
+ */
+const MIN_GROUP_SAMPLES = 40;
+/**
+ * Below this, one finding moves a rate by more than ten points, so the cell is
+ * left blank rather than printed as though it meant something.
+ */
+const MIN_CELL_SAMPLES = 8;
+function pct(rate) {
+    return `${Math.round(rate * 100)}%`;
+}
+function rateCell(stats) {
+    if (!stats || stats.n < MIN_CELL_SAMPLES)
+        return "–";
+    return `${pct(stats.acceptRate)} <sub>n=${stats.n}</sub>`;
+}
+/** Path groups worth a column, widest bucket first. */
+function rankedGroups(profiles) {
+    const totals = new Map();
+    for (const stats of Object.values(profiles.reviewers)) {
+        for (const [group, s] of Object.entries(stats.byPathGroup)) {
+            totals.set(group, (totals.get(group) ?? 0) + s.n);
+        }
+    }
+    return [...totals.entries()]
+        .filter(([, n]) => n >= MIN_GROUP_SAMPLES)
+        .sort((a, b) => b[1] - a[1])
+        .map(([group]) => group);
+}
+/**
+ * The gap between the best and worst reviewer WITHIN one path group.
+ *
+ * This is the number the roster can act on, and the only comparison the data
+ * supports. Every reviewer in a group is scored by the same rule against the
+ * same bucket, so the gap between them is like-for-like. Comparing one GROUP
+ * against another is not: that difference is contaminated by how many files
+ * each bucket happens to catch.
+ */
+function spreads(profiles) {
+    const out = [];
+    for (const group of rankedGroups(profiles)) {
+        const rated = Object.entries(profiles.reviewers)
+            .map(([name, stats]) => ({ name, s: stats.byPathGroup[group] }))
+            .filter((r) => r.s !== undefined && r.s.n >= MIN_CELL_SAMPLES)
+            .sort((a, b) => a.s.acceptRate - b.s.acceptRate);
+        if (rated.length < 2)
+            continue;
+        const worst = rated[0];
+        const best = rated[rated.length - 1];
+        out.push({
+            group,
+            points: Math.round((best.s.acceptRate - worst.s.acceptRate) * 100),
+            best: best.name,
+            bestRate: best.s.acceptRate,
+            worst: worst.name,
+            worstRate: worst.s.acceptRate,
+        });
+    }
+    return out.sort((a, b) => b.points - a.points);
+}
+function renderReport(profiles) {
+    const names = Object.keys(profiles.reviewers).sort();
+    const groups = rankedGroups(profiles);
+    const lines = [];
+    lines.push("## Reviewer calibration");
+    lines.push("");
+    lines.push(`\`${profiles.schema}\` · ${profiles.windowDays}-day window · generated ${profiles.generatedAt}`);
+    lines.push("");
+    let measured = 0;
+    let unmeasurable = 0;
+    for (const name of names) {
+        const stats = profiles.reviewers[name];
+        measured += stats.overall.n;
+        unmeasurable += stats.overall.unknownN;
+    }
+    // A harvest that measured nothing must SAY so rather than render a table of
+    // zeroes. #133 published seven reviewers, a correct schema, 6358 samples and
+    // 0% across the board because every commit walk was throwing, and the shape
+    // was valid the entire time. A report is another place that can launder a
+    // failed measurement into data.
+    if (measured === 0) {
+        lines.push(unmeasurable > 0
+            ? `> **This harvest measured nothing.** All ${unmeasurable} findings have an unknown outcome, so every rate would be 0% over an empty denominator. Treat this as a failed run, not as a result.`
+            : "> **This harvest found no findings at all.** Nothing to report.");
+        lines.push("");
+        return lines.join("\n");
+    }
+    if (unmeasurable > measured) {
+        lines.push(`> **Degraded:** ${unmeasurable} unmeasurable against ${measured} measured. The commit walk failed on most PRs; the rates below cover only the minority that worked.`);
+        lines.push("");
+    }
+    lines.push(`**${measured} measured**, ${unmeasurable} unmeasurable.`);
+    lines.push("");
+    lines.push("Rates are *not* comparable across columns — a wider path bucket catches more incidental commits. Compare reviewers **down** a column; that is what the roster routes on.");
+    lines.push("");
+    // Built as one array per row rather than interpolating `groups.join()`
+    // between fixed columns. With no qualifying group the interpolation left a
+    // trailing empty cell -- `| reviewer | overall |  |` -- and a header one
+    // column wider than its separator renders as a broken table rather than a
+    // narrow one. That is reachable: a short window, or a new org, can leave
+    // every path group under MIN_GROUP_SAMPLES. (codacy)
+    const header = ["reviewer", "overall", ...groups];
+    lines.push(`| ${header.join(" | ")} |`);
+    lines.push(`| ${header.map((_, i) => (i === 0 ? "---" : "---:")).join(" | ")} |`);
+    for (const name of names) {
+        const stats = profiles.reviewers[name];
+        const row = [
+            name,
+            rateCell(stats.overall),
+            ...groups.map((g) => rateCell(stats.byPathGroup[g])),
+        ];
+        lines.push(`| ${row.join(" | ")} |`);
+    }
+    lines.push("");
+    const gaps = spreads(profiles);
+    if (gaps.length > 0) {
+        lines.push("### Where the roster has something to route on");
+        lines.push("");
+        lines.push("| path group | spread | best | worst |");
+        lines.push("| --- | ---: | --- | --- |");
+        for (const g of gaps) {
+            lines.push(`| ${g.group} | ${g.points} pts | ${g.best} ${pct(g.bestRate)} | ${g.worst} ${pct(g.worstRate)} |`);
+        }
+        lines.push("");
+    }
+    lines.push(`<sub>A column needs ≥${MIN_GROUP_SAMPLES} findings across all reviewers; a cell needs ≥${MIN_CELL_SAMPLES} for that reviewer, else “–”.</sub>`);
+    lines.push("");
+    return lines.join("\n");
 }
 
 ;// CONCATENATED MODULE: ./src/calibration-harvest.ts
@@ -71524,6 +71916,7 @@ async function runScheduledHarvest(options) {
  *                               own-artifacts report from calibration.ts).
  *   - INPUT_DRY_RUN          — `1` writes to /tmp and skips the release push.
  */
+
 
 
 
@@ -71565,6 +71958,23 @@ async function main() {
     info(`calibration-harvest done: ${Object.values(result.profiles.reviewers).filter((stats) => stats.overall.n > 0).length} reviewers sampled, ${result.artifactsObserved} calibration artifacts`);
     if (result.profiles) {
         process.stdout.write(`REVIEWER_PROFILES_PATH=${profilesPath}\nCALIBRATION_PATH=${calibrationPath}\n`);
+    }
+    // Publish the analysis beside the data, on every run.
+    //
+    // The first harvest that produced real numbers was read by hand with
+    // throwaway scripts, and two of the three conclusions drawn from it were
+    // wrong. Reviewer behaviour drifts, so this measurement is never final --
+    // and anything that has to be re-derived by hand will be re-derived
+    // differently, or not at all. Writing the report here means the next
+    // reading is a re-run, not a research project.
+    //
+    // Non-fatal: a summary that cannot be written must never lose a harvest
+    // that succeeded. GITHUB_STEP_SUMMARY is absent when this is run locally.
+    try {
+        await summary.addRaw(renderReport(result.profiles)).write();
+    }
+    catch (err) {
+        warning(`could not write the run summary: ${err instanceof Error ? err.message : String(err)}`);
     }
     // Set outputs for downstream steps (release creation).
     setOutput("profiles-path", profilesPath);

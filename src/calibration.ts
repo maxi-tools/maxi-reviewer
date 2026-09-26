@@ -3,7 +3,11 @@ import {
   JulesReview,
   ReviewArtifact,
   ReviewResult,
+  ThreadState,
 } from "./types.js";
+import { validateReviewArtifact, validateThreadState } from "./schema.js";
+
+export type { ThreadState };
 
 /**
  * Closing the feedback loop (issue #17). ReviewArtifacts are harvestable after
@@ -28,13 +32,6 @@ export interface EmittedFinding {
   line: number;
 }
 
-/** Merge-time state of a review thread, as observed on the PR. */
-export interface ThreadState {
-  path: string;
-  line: number;
-  resolved: boolean;
-}
-
 export interface OutcomeRecord extends EmittedFinding {
   outcome: FindingOutcome;
 }
@@ -55,6 +52,17 @@ export interface CalibrationReport {
   byPath: CalibrationGroup[];
 }
 
+/** One harvested row the engine refused to correlate, with a visible reason. */
+export interface ExcludedObservation {
+  index: number;
+  reason: string;
+}
+
+export interface CalibrationInput {
+  artifact: ReviewArtifact;
+  threads: ThreadState[];
+}
+
 export interface LowPrecisionOptions {
   /** Minimum decided (accepted + dismissed) samples before a rule is judged. */
   minSamples?: number;
@@ -62,10 +70,19 @@ export interface LowPrecisionOptions {
   maxAcceptRate?: number;
 }
 
-function pathGroupOf(path: string): string {
-  if (!path) return "(unknown)";
-  const slash = path.indexOf("/");
-  return slash === -1 ? path : path.slice(0, slash);
+/**
+ * The top-level path segment used to bucket a finding for `byPath`. Exported
+ * so callers can bucket paths the same way this module does.
+ *
+ * Strips leading `/` (and repeats of it) before bucketing so a repository
+ * path with a leading slash, e.g. `/src/a.ts`, lands in the same `src`
+ * bucket as `src/a.ts` instead of the meaningless `""` key.
+ */
+export function pathGroupOf(path: string): string {
+  const normalized = (path || "").replace(/^\/+/, "");
+  if (!normalized) return "(unknown)";
+  const slash = normalized.indexOf("/");
+  return slash === -1 ? normalized : normalized.slice(0, slash);
 }
 
 interface CommentRow {
@@ -75,24 +92,38 @@ interface CommentRow {
   sourceFindingIds?: string[];
 }
 
-function reviewCommentRows(
-  review: JulesReview | ReviewResult | null | undefined
-): CommentRow[] {
+function reviewCommentRows(review: unknown, excluded?: string[]): CommentRow[] {
   if (!review || typeof review !== "object") return [];
   if (Array.isArray((review as JulesReview).comments)) {
-    return (review as JulesReview).comments.map((c) => ({
-      path: c.path || "",
-      line: c.line || 0,
-      severity: String(c.severity || "Unknown"),
-      sourceFindingIds: c.sourceFindingIds,
-    }));
+    return (review as JulesReview).comments.flatMap((c, i) => {
+      if (c == null || typeof c !== "object") {
+        excluded?.push(`comments[${i}] must be an object`);
+        return [];
+      }
+      return [
+        {
+          path: c.path || "",
+          line: c.line || 0,
+          severity: String(c.severity || "Unknown"),
+          sourceFindingIds: c.sourceFindingIds,
+        },
+      ];
+    });
   }
   if (Array.isArray((review as ReviewResult).newComments)) {
-    return (review as ReviewResult).newComments.map((c) => ({
-      path: c.file || "",
-      line: c.line || 0,
-      severity: String(c.severity || "Unknown"),
-    }));
+    return (review as ReviewResult).newComments.flatMap((c, i) => {
+      if (c == null || typeof c !== "object") {
+        excluded?.push(`newComments[${i}] must be an object`);
+        return [];
+      }
+      return [
+        {
+          path: c.file || "",
+          line: c.line || 0,
+          severity: String(c.severity || "Unknown"),
+        },
+      ];
+    });
   }
   return [];
 }
@@ -112,16 +143,27 @@ function ruleFor(
 
 /** Extract the findings a review artifact emitted, attributed to a rule. */
 export function extractEmittedFindings(
-  artifact: ReviewArtifact
+  artifact:
+    | {
+        analyzerFindings?: readonly unknown[] | null;
+        validatedReview?: unknown;
+      }
+    | null
+    | undefined,
+  excluded?: string[]
 ): EmittedFinding[] {
+  if (!artifact || typeof artifact !== "object") return [];
   const analyzerRule = new Map<string, string>();
-  for (const finding of artifact.analyzerFindings ?? []) {
+  const findings = Array.isArray(artifact.analyzerFindings)
+    ? artifact.analyzerFindings
+    : [];
+  for (const finding of findings) {
     if (finding && typeof finding === "object") {
       const af = finding as AnalyzerFinding;
       if (af.id) analyzerRule.set(af.id, af.ruleId || af.tool || "analyzer");
     }
   }
-  return reviewCommentRows(artifact.validatedReview).map((row) => ({
+  return reviewCommentRows(artifact.validatedReview, excluded).map((row) => ({
     rule: ruleFor(row.sourceFindingIds, analyzerRule),
     severity: row.severity,
     path: row.path,
@@ -136,11 +178,17 @@ export function extractEmittedFindings(
  *  - dismissed: no surviving thread (deleted/minimized) for the emitted finding.
  */
 export function correlateOutcomes(
-  findings: EmittedFinding[],
-  threads: ThreadState[]
+  findings: EmittedFinding[] | null | undefined,
+  threads: Array<ThreadState | null | undefined> | null | undefined
 ): OutcomeRecord[] {
-  return findings.map((finding) => {
-    const match = threads.find(
+  const safeFindings = Array.isArray(findings) ? findings : [];
+  const safeThreads = Array.isArray(threads)
+    ? threads.filter(
+        (t): t is ThreadState => t != null && typeof t === "object"
+      )
+    : [];
+  return safeFindings.map((finding) => {
+    const match = safeThreads.find(
       (t) => t.path === finding.path && t.line === finding.line
     );
     let outcome: FindingOutcome;
@@ -207,16 +255,79 @@ export function lowPrecisionRules(
   );
 }
 
+/**
+ * Validated-input boundary for harvested artifacts and thread observations.
+ * Malformed items are counted, not thrown or silently coerced.
+ */
+export function ingestCalibration(items: unknown): {
+  report: CalibrationReport;
+  excluded: ExcludedObservation[];
+} {
+  const excluded: ExcludedObservation[] = [];
+  if (!Array.isArray(items)) {
+    return {
+      report: aggregateCalibration([]),
+      excluded: [{ index: -1, reason: "items must be an array" }],
+    };
+  }
+
+  const records: OutcomeRecord[] = [];
+  items.forEach((item, index) => {
+    if (item == null || typeof item !== "object") {
+      excluded.push({ index, reason: "item must be an object" });
+      return;
+    }
+    const rec = item as { artifact?: unknown; threads?: unknown };
+    if (rec.artifact == null) {
+      excluded.push({ index, reason: "artifact is missing" });
+      return;
+    }
+    const artifactResult = validateReviewArtifact(rec.artifact);
+    if (!artifactResult.ok || !artifactResult.value) {
+      excluded.push({
+        index,
+        reason: `artifact is invalid: ${artifactResult.errors.join("; ")}`,
+      });
+      return;
+    }
+    const artifact = artifactResult.value;
+
+    const threads: ThreadState[] = [];
+    if (rec.threads == null) {
+      // Missing threads is "no surviving thread", not a malformed item.
+    } else if (!Array.isArray(rec.threads)) {
+      excluded.push({ index, reason: "threads must be an array" });
+      return;
+    } else {
+      rec.threads.forEach((thread, threadIndex) => {
+        const result = validateThreadState(thread);
+        if (!result.ok || !result.value) {
+          excluded.push({
+            index,
+            reason: `threads[${threadIndex}] is invalid: ${result.errors.join("; ")}`,
+          });
+          return;
+        }
+        threads.push(result.value);
+      });
+    }
+
+    const commentExcluded: string[] = [];
+    const findings = extractEmittedFindings(artifact, commentExcluded);
+    for (const reason of commentExcluded) {
+      excluded.push({ index, reason });
+    }
+
+    if (artifact.outcome !== "REVIEWED_WITH_FINDINGS") return;
+    records.push(...correlateOutcomes(findings, threads));
+  });
+
+  return { report: aggregateCalibration(records), excluded };
+}
+
 /** End-to-end: build a calibration report from harvested artifacts + outcomes. */
 export function buildCalibrationReport(
-  items: Array<{ artifact: ReviewArtifact; threads: ThreadState[] }>
+  items: Array<CalibrationInput>
 ): CalibrationReport {
-  const records: OutcomeRecord[] = [];
-  for (const item of items) {
-    if (item.artifact.outcome !== "REVIEWED_WITH_FINDINGS") continue;
-    records.push(
-      ...correlateOutcomes(extractEmittedFindings(item.artifact), item.threads)
-    );
-  }
-  return aggregateCalibration(records);
+  return ingestCalibration(items).report;
 }

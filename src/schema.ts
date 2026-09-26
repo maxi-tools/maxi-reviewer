@@ -2,6 +2,7 @@ import {
   AnalyzerFinding,
   JulesReview,
   ReviewArtifact,
+  ThreadState,
   ValidationResult,
 } from "./types.js";
 
@@ -157,6 +158,30 @@ export function validateReviewArtifact(
   return { ok: errors.length === 0, value: value as ReviewArtifact, errors };
 }
 
+/**
+ * Runtime check for a harvested merge-time thread observation. `path` may be
+ * empty and `line` may be 0 because GraphQL thread payloads use those as
+ * stand-ins for a missing location; requiring a non-empty path / positive
+ * line would drop real harvest rows and change outcome semantics (#17).
+ */
+export function validateThreadState(
+  value: unknown
+): ValidationResult<ThreadState> {
+  const errors: string[] = [];
+  const record = asRecord(value, errors, "thread");
+  if (!record) return { ok: false, errors };
+  if (typeof record.path !== "string") {
+    errors.push("path must be a string");
+  }
+  if (typeof record.line !== "number" || !Number.isInteger(record.line)) {
+    errors.push("line must be an integer");
+  }
+  if (typeof record.resolved !== "boolean") {
+    errors.push("resolved must be a boolean");
+  }
+  return { ok: errors.length === 0, value: value as ThreadState, errors };
+}
+
 function validateReviewOutcomeMetadata(
   record: Record<string, unknown>,
   errors: string[]
@@ -255,6 +280,24 @@ function validateArtifactReview(value: unknown): string[] {
   }
   if (!Array.isArray(record.newComments)) {
     errors.push("validatedReview.newComments must be an array");
+  } else {
+    record.newComments.forEach((comment, index) => {
+      const item = asRecord(
+        comment,
+        errors,
+        `validatedReview.newComments[${index}]`
+      );
+      if (!item) return;
+      const prefix = `validatedReview.newComments[${index}].`;
+      requireString(item, "file", undefined, errors, prefix);
+      requirePositiveInt(item, "line", errors, prefix);
+      optionalPositiveInt(item, "startLine", errors, prefix);
+      optionalPositiveInt(item, "endLine", errors, prefix);
+      requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
+      requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
+      requireString(item, "message", undefined, errors, prefix);
+      validateFix(item.fix, errors, `${prefix}fix`);
+    });
   }
   return errors;
 }

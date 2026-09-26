@@ -51,6 +51,7 @@ documentation that cost a red check; the usage line above is the documentation.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess  # nosec B404 -- the optional `gh` transport, never a shell
 import sys
@@ -68,6 +69,27 @@ OK_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 # calling it a pass is worse. It gets its own bucket, and it still withholds
 # GREEN.
 NO_VERDICT_CONCLUSIONS = frozenset({"cancelled", "stale"})
+
+# A success whose OWN DESCRIPTION says it did not do the work.
+#
+# CodeRabbit posts `state: success` with `description: "Review rate limited"`.
+# Seen four times on 2026-09-19 across maxi-config PRs. It did not review, and
+# it reported green. Checked on #753: it posted no review at all -- the status
+# was its only trace, and the rollup, `gh pr checks` and this script all
+# counted it as a pass. A reader seeing that tick believes a review happened.
+#
+# This does NOT withhold GREEN, and the distinction matters. A reviewer's rate
+# limit is not the author's doing, and failing the PR would wedge every merge
+# until the bot recovers -- trading a silent problem for a stuck one. The
+# defect here is that the claim is INVISIBLE, not that it is green. So it gets
+# a bucket and a line, on the same principle as everything else in this file:
+# say what you actually judged.
+#
+# Deliberately narrow. Only phrases that mean "I could not do the work" belong
+# here; "skipped by configuration" and friends are real, deliberate passes and
+# are not listed. Add a pattern when a bot is OBSERVED doing this, not when one
+# might.
+HOLLOW_SUCCESS = re.compile(r"rate.?limit|quota exceeded", re.I)
 
 
 class GhTransport:
@@ -230,20 +252,31 @@ def live_rows(runs, checks):
     superseded = {
         s for s in ({r.get("check_suite_id") for r in runs} - live_suites) if s is not None
     }
-    # Keyed by app as well as name: two apps can post a check with the same
-    # name, and collapsing them by name alone would let one app's pass hide the
-    # other's failure.
+    # Keyed by app, suite AND name: two apps can post a check with the same
+    # name (Codacy vs review-gate, say), and every GitHub Actions check-run is
+    # posted under the SAME app id, so two check-runs from two DIFFERENT
+    # workflows sharing a job name would otherwise collapse to one. The
+    # superseded filter above already drops rows whose suite a newer run
+    # replaced; widening the key here is for the case neither suite is
+    # superseded -- two live workflows, same name, different conclusions --
+    # where timestamp-newest on the collapsed row could drop a live failure.
     keep_checks = newest(
         [c for c in checks if (c.get("check_suite") or {}).get("id") not in superseded],
-        lambda c: ((c.get("app") or {}).get("id"), c.get("name")),
+        lambda c: ((c.get("app") or {}).get("id"),
+                   (c.get("check_suite") or {}).get("id"),
+                   c.get("name")),
     )
     return keep_runs, keep_checks
 
 
 def judge(runs, checks, statuses):
-    """Return (failures, pending, stale, considered) after discarding superseded rows."""
+    """Return (failures, pending, stale, hollow, considered) after discarding superseded rows.
+
+    `hollow` is advisory: rows that PASSED while saying they did not do the
+    work. It never changes the verdict, only what gets printed.
+    """
     keep_runs, keep_checks = live_rows(runs, checks)
-    failures, pending, stale = [], [], []
+    failures, pending, stale, hollow = [], [], [], []
 
     buckets = {"failing": failures, "pending": pending, "stale": stale}
     rows = [(f"{r.get('name') or r.get('workflow_id')} (workflow)", r) for r in keep_runs]
@@ -258,15 +291,44 @@ def judge(runs, checks, statuses):
     for status in newest(statuses, lambda s: s.get("context")):
         label = f"{status.get('context')} (status)"
         state = status.get("state")
+        description = status.get("description") or ""
         if state == "pending":
             pending.append(f"{label}: pending")
         elif state != "success":
             failures.append(f"{label}: {state}")
+        elif HOLLOW_SUCCESS.search(description):
+            hollow.append(f'{label}: success, but says "{description}"')
+
+    # Check runs carry their own prose in `output.title`. Same rule, same
+    # reason -- a bot that reports success while its title says it was rate
+    # limited is making the same claim through a different channel.
+    for check in keep_checks:
+        if check.get("conclusion") != "success":
+            continue
+        title = ((check.get("output") or {}).get("title")) or ""
+        if HOLLOW_SUCCESS.search(title):
+            hollow.append(f'{check.get("name")} (check): success, but says "{title}"')
 
     considered = (
         len(keep_runs) + len(keep_checks) + len({s.get("context") for s in statuses})
     )
-    return failures, pending, stale, considered
+    return failures, pending, stale, hollow, considered
+
+def verdict_of(failures, pending, stale):
+    """GREEN only when nothing failed, nothing is running, nothing is stale.
+
+    `hollow` is deliberately NOT a parameter. A reviewer that reported success
+    while saying it was rate limited is still a pass as far as merging goes --
+    the bot's quota is not the author's doing, and blocking on it would wedge
+    every merge until it recovers, trading a silent problem for a stuck one.
+
+    Extracted as a function so that exclusion is a testable property rather
+    than an incidental one. It was incidental: a mutation adding `or hollow`
+    to the old inline expression passed the whole suite, because the tests
+    asserted on the judge() buckets and nothing asserted on the verdict.
+    """
+    return "GREEN" if not (failures or pending or stale) else "NOT_GREEN"
+
 
 def collect(repo, sha, gh):
     return (
@@ -311,6 +373,11 @@ def render(report, as_json):
         print(f"  PENDING  {line}")
     for line in report["stale"]:
         print(f"  STALE    {line}")
+    for line in report["hollow"]:
+        # NOTICE, not FAILING: the verdict above already accounts for this row
+        # as a pass. The line exists so a green verdict cannot quietly include
+        # a reviewer that said it did nothing.
+        print(f"  NOTICE   {line}")
 
 
 def main(argv=None):
@@ -338,7 +405,7 @@ def main(argv=None):
         # ValueError (JSONDecodeError subclasses it).
         return report_unknown(args, f"could not read check state: {exc}", args.sha)
 
-    failures, pending, stale, considered = judge(runs, checks, statuses)
+    failures, pending, stale, hollow, considered = judge(runs, checks, statuses)
     if considered == 0:
         # Nothing was read: an empty response, a shape this does not recognise,
         # or a SHA with no CI at all. None of those are evidence of health, and
@@ -351,7 +418,7 @@ def main(argv=None):
             "nothing was read, which is not the same as nothing being wrong",
             sha,
         )
-    verdict = "GREEN" if not (failures or pending or stale) else "NOT_GREEN"
+    verdict = verdict_of(failures, pending, stale)
     report = {
         "verdict": verdict,
         "sha": sha,
@@ -359,6 +426,8 @@ def main(argv=None):
         "failures": failures,
         "pending": pending,
         "stale": stale,
+        # Advisory. Deliberately not part of the verdict -- see HOLLOW_SUCCESS.
+        "hollow": hollow,
     }
     render(report, args.as_json)
     return 0 if verdict == "GREEN" else 1

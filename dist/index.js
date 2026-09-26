@@ -69649,6 +69649,28 @@ function validateReviewArtifact(value) {
     validateReviewOutcomeMetadata(record, errors);
     return { ok: errors.length === 0, value: value, errors };
 }
+/**
+ * Runtime check for a harvested merge-time thread observation. `path` may be
+ * empty and `line` may be 0 because GraphQL thread payloads use those as
+ * stand-ins for a missing location; requiring a non-empty path / positive
+ * line would drop real harvest rows and change outcome semantics (#17).
+ */
+function validateThreadState(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "thread");
+    if (!record)
+        return { ok: false, errors };
+    if (typeof record.path !== "string") {
+        errors.push("path must be a string");
+    }
+    if (typeof record.line !== "number" || !Number.isInteger(record.line)) {
+        errors.push("line must be an integer");
+    }
+    if (typeof record.resolved !== "boolean") {
+        errors.push("resolved must be a boolean");
+    }
+    return { ok: errors.length === 0, value: value, errors };
+}
 function validateReviewOutcomeMetadata(record, errors) {
     const fields = [
         "outcomeSchema",
@@ -69721,6 +69743,22 @@ function validateArtifactReview(value) {
     }
     if (!Array.isArray(record.newComments)) {
         errors.push("validatedReview.newComments must be an array");
+    }
+    else {
+        record.newComments.forEach((comment, index) => {
+            const item = asRecord(comment, errors, `validatedReview.newComments[${index}]`);
+            if (!item)
+                return;
+            const prefix = `validatedReview.newComments[${index}].`;
+            requireString(item, "file", undefined, errors, prefix);
+            requirePositiveInt(item, "line", errors, prefix);
+            optionalPositiveInt(item, "startLine", errors, prefix);
+            optionalPositiveInt(item, "endLine", errors, prefix);
+            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
+            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
+            requireString(item, "message", undefined, errors, prefix);
+            validateFix(item.fix, errors, `${prefix}fix`);
+        });
     }
     return errors;
 }
@@ -70515,12 +70553,22 @@ async function runJulesReview(apiKey, prompt,
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 source, timeoutMinutes, options = {}) {
     const customJules = jules.with({ apiKey });
-    const { session, afterMessage, resumed } = await startReviewSession(customJules, prompt, source, options.previousSessionId);
+    // One wall-clock deadline for the whole review, including session setup,
+    // every SDK await, and every repair/retrieval round below. Each round
+    // previously requested a fresh `timeoutMinutes * 60 * 1000` budget of its
+    // own, so a slow-but-not-hung initial poll plus a repair round could
+    // together run for up to double the configured timeout instead of being
+    // bound by it. session.info() / session.send() were also unbounded, so a
+    // hang there was the same "step 12 hangs with no output" failure as a
+    // hung hydrate()/history().
+    const deadline = Date.now() + timeoutMinutes * 60 * 1000;
+    const remainingBudgetMs = () => Math.max(0, deadline - Date.now());
+    const { session, afterMessage, resumed } = await startReviewSession(customJules, prompt, source, options.previousSessionId, remainingBudgetMs);
     core/* info */.pq(`Jules session: ${session.id}`);
     if (!afterMessage) {
-        await waitUntilSessionReady(session);
+        await waitUntilSessionReady(session, remainingBudgetMs);
     }
-    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress, setupBudgetFor(resumed, options));
+    let reviewMessage = await pollForReview(session, remainingBudgetMs(), afterMessage, options.onProgress, setupBudgetFor(resumed, options));
     core/* info */.pq(`Collected review (${reviewMessage.length} chars)`);
     if (!reviewMessage) {
         return { reviewResult: null, sessionId: session.id };
@@ -70530,7 +70578,7 @@ source, timeoutMinutes, options = {}) {
             session,
             firstMessage: reviewMessage,
             retrieval: options.retrieval,
-            timeoutMs: timeoutMinutes * 60 * 1000,
+            timeoutMs: remainingBudgetMs(),
             onProgress: options.onProgress,
         });
     }
@@ -70544,8 +70592,8 @@ source, timeoutMinutes, options = {}) {
     catch (err) {
         validationErrors.push(`Failed to parse Jules response: ${errorMessage(err)}`);
         core/* warning */.$e(`Failed to parse Jules response; requesting same-session JSON repair: ${err}`);
-        await sendSessionMessage(session, buildJsonRepairPrompt(reviewMessage, err));
-        const repairedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, reviewMessage, options.onProgress);
+        await sendSessionMessage(session, buildJsonRepairPrompt(reviewMessage, err), remainingBudgetMs());
+        const repairedMessage = await pollForReview(session, remainingBudgetMs(), reviewMessage, options.onProgress);
         rawResponses.push(repairedMessage);
         try {
             reviewResult = parseJulesResponse(repairedMessage);
@@ -70571,8 +70619,8 @@ source, timeoutMinutes, options = {}) {
     if (formatIssues.length > 0) {
         validationErrors.push(...formatIssues);
         core/* warning */.$e(`Jules response has ${formatIssues.length} suggested-change formatting issue(s); requesting a same-session revision.`);
-        await sendSessionMessage(session, buildFormatRepairPrompt(reviewResult, formatIssues));
-        const revisedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, latestReviewMessage, options.onProgress);
+        await sendSessionMessage(session, buildFormatRepairPrompt(reviewResult, formatIssues), remainingBudgetMs());
+        const revisedMessage = await pollForReview(session, remainingBudgetMs(), latestReviewMessage, options.onProgress);
         if (revisedMessage) {
             rawResponses.push(revisedMessage);
             try {
@@ -70597,7 +70645,7 @@ source, timeoutMinutes, options = {}) {
         const verified = await requestStructuredValidationRepair({
             session,
             latestReviewMessage,
-            timeoutMinutes,
+            timeoutMs: remainingBudgetMs(),
             verificationContext: options.verificationContext,
             onProgress: options.onProgress,
         });
@@ -70640,7 +70688,7 @@ async function runRetrievalLoop(input) {
             core/* info */.pq("Retrieval step " +
                 (step + 1) +
                 ": invalid retrieval-request; returning schema errors for repair.");
-            await sendSessionMessage(session, formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft));
+            await sendSessionMessage(session, formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft), Math.max(0, deadline - Date.now()));
             const repaired = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
             if (!repaired) {
                 core/* warning */.$e("Retrieval loop: no agent reply after invalid-request feedback; stopping.");
@@ -70660,7 +70708,7 @@ async function runRetrievalLoop(input) {
                 results.push({ tool: req.tool, ok: false, error: errorMessage(err) });
             }
         }
-        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft));
+        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft), Math.max(0, deadline - Date.now()));
         const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (!next) {
             core/* warning */.$e("Retrieval loop: no agent reply after returning results; stopping.");
@@ -70672,7 +70720,7 @@ async function runRetrievalLoop(input) {
     // for the final review so we don't return an unparseable request message.
     if (parseRetrievalRequest(message).kind !== "none") {
         core/* info */.pq("Retrieval budget exhausted; requesting the final review.");
-        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0));
+        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0), Math.max(0, deadline - Date.now()));
         const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (finalMessage)
             return finalMessage;
@@ -70681,14 +70729,14 @@ async function runRetrievalLoop(input) {
 }
 async function startReviewSession(customJules, prompt, 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-source, previousSessionId) {
+source, previousSessionId, remainingBudgetMs) {
     if (previousSessionId) {
         try {
             core/* info */.pq(`Continuing Jules review session ${previousSessionId}…`);
             const session = customJules.session(previousSessionId);
             await session.info();
             const afterMessage = await latestAgentMessage(session);
-            await sendSessionMessage(session, prompt);
+            await sendSessionMessage(session, prompt, remainingBudgetMs());
             return { session, afterMessage, resumed: true };
         }
         catch (err) {
@@ -70696,7 +70744,7 @@ source, previousSessionId) {
         }
     }
     core/* info */.pq("Creating Jules review session…");
-    const rawSession = await createReviewSession(customJules, prompt, source);
+    const rawSession = await withTimeout(createReviewSession(customJules, prompt, source), remainingBudgetMs(), "createReviewSession");
     return { session: rawSession, resumed: false };
 }
 async function createReviewSession(customJules, prompt, 
@@ -70758,8 +70806,8 @@ async function requestStructuredValidationRepair(input) {
         return null;
     const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
     core/* warning */.$e(`Jules structured review has ${issues.length} validation issue(s); requesting a same-session revision.`);
-    await sendSessionMessage(input.session, buildReviewRepairPrompt(structuredReview, issues));
-    const revisedMessage = await pollForReview(input.session, input.timeoutMinutes * 60 * 1000, input.latestReviewMessage, input.onProgress);
+    await sendSessionMessage(input.session, buildReviewRepairPrompt(structuredReview, issues), input.timeoutMs);
+    const revisedMessage = await pollForReview(input.session, input.timeoutMs, input.latestReviewMessage, input.onProgress);
     try {
         const revisedStructuredReview = parseJulesReview(revisedMessage);
         const remainingIssues = verifyJulesReview(revisedStructuredReview, input.verificationContext);
@@ -70849,12 +70897,16 @@ function convertStructuredReview(review) {
 function errorMessage(err) {
     return err instanceof Error ? err.message : String(err);
 }
-async function waitUntilSessionReady(session) {
+async function waitUntilSessionReady(session, remainingBudgetMs) {
     const maxAttempts = 20;
     let delay = 2000;
     for (let i = 0; i < maxAttempts; i++) {
+        const remaining = remainingBudgetMs();
+        if (remaining <= 0) {
+            throw new Error("Session did not become ready within timeout.");
+        }
         try {
-            await session.info();
+            await withTimeout(session.info(), remaining, "session.info()");
             core/* info */.pq(`Session ${session.id} is ready after ${i + 1} attempt(s).`);
             return;
         }
@@ -70867,7 +70919,13 @@ async function waitUntilSessionReady(session) {
                 throw new Error(`Jules session.info() failed: ${msg}`, { cause: err });
             }
             core/* info */.pq(`Session not yet ready (attempt ${i + 1}/${maxAttempts})…`);
-            await new Promise((r) => setTimeout(r, delay));
+            const sleepMs = Math.min(delay, remainingBudgetMs());
+            if (sleepMs <= 0) {
+                throw new Error("Session did not become ready within timeout.", {
+                    cause: err,
+                });
+            }
+            await new Promise((r) => setTimeout(r, sleepMs));
             delay = Math.min(delay * 1.5, 15000);
         }
     }
@@ -70977,6 +71035,28 @@ function createSetupWatch(session, startedAt, budgetMs) {
         },
     };
 }
+/**
+ * Races `promise` against a timer so a hung network call cannot outlive
+ * `ms`. Without this, `session.info()`/`session.send()`/`session.hydrate()`/
+ * `session.history()` had no timeout of their own and a single hung call
+ * could hold the poll loop (and the runner) well past `deadline`, which is
+ * exactly the "step 12 hangs with no output" failure mode this file exists
+ * to prevent.
+ */
+function withTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${ms}ms`));
+        }, Math.max(0, ms));
+        promise.then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+        }, (err) => {
+            clearTimeout(timer);
+            reject(err);
+        });
+    });
+}
 async function pollForReview(session, timeoutMs, afterMessage, onProgress, 
 // Off unless a caller opts in. Only the first poll of a session is watching
 // for a setup that never finished; by the time a repair or retrieval prompt
@@ -71002,12 +71082,14 @@ setupBudgetMs = 0) {
         // poll hiccup, so it must not land in a catch that resumes waiting.
         await setupWatch.check(attempt);
         try {
-            await session.hydrate();
+            await withTimeout(session.hydrate(), deadline - Date.now(), "session.hydrate()");
             let last = "";
-            for await (const a of session.history()) {
-                if (a.type === "agentMessaged")
-                    last = a.message;
-            }
+            await withTimeout((async () => {
+                for await (const a of session.history()) {
+                    if (a.type === "agentMessaged")
+                        last = a.message;
+                }
+            })(), deadline - Date.now(), "session.history()");
             if (last) {
                 sawAgentOutput = true;
                 if (afterMessage !== undefined && last === afterMessage) {
@@ -71036,16 +71118,19 @@ setupBudgetMs = 0) {
                 core/* info */.pq(`Review progress callback failed: ${errorMessage(err)}`);
             }
         }
-        await new Promise((r) => setTimeout(r, 20_000));
+        const remaining = deadline - Date.now();
+        if (remaining <= 0)
+            break;
+        await new Promise((r) => setTimeout(r, Math.min(20_000, remaining)));
     }
     return "";
 }
-async function sendSessionMessage(session, message) {
+async function sendSessionMessage(session, message, timeoutMs) {
     const send = session.prompt || session.message || session.sendMessage || session.send;
     if (!send) {
         throw new Error("Jules session does not expose a same-session message method for review repair.");
     }
-    await send.call(session, message);
+    await withTimeout(send.call(session, message), timeoutMs, "session.send()");
 }
 function isAuthError(msg) {
     return /\b(?:401|403)\b/.test(msg);

@@ -66,7 +66,7 @@ class JudgeTest(unittest.TestCase):
             check("review-gate / per-run: resolve-review-threads", suite=101,
                   started="2026-09-11T17:19:01Z", conclusion="success"),
         ]
-        failures, pending, _stale, _ = mod.judge(runs, checks, [])
+        failures, pending, _stale, _hollow, _ = mod.judge(runs, checks, [])
         self.assertEqual(failures, [])
         self.assertEqual(pending, [])
 
@@ -84,7 +84,7 @@ class JudgeTest(unittest.TestCase):
                   started=f"2026-09-11T17:{10 + i:02d}:05Z", conclusion="cancelled")
             for i in range(10)
         ]
-        failures, pending, _stale, _ = mod.judge(runs, checks, [])
+        failures, pending, _stale, _hollow, _ = mod.judge(runs, checks, [])
         self.assertEqual(failures, [])
         self.assertEqual(pending, [])
 
@@ -95,7 +95,7 @@ class JudgeTest(unittest.TestCase):
             run(CI, workflow_id=2, suite=301, created="2026-09-11T17:20:00Z",
                 conclusion="failure"),
         ]
-        failures, pending, _stale, _ = mod.judge(runs, [], [])
+        failures, pending, _stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(pending, [])
         self.assertEqual(len(failures), 1)
         self.assertIn("CI (workflow): failure", failures[0])
@@ -109,13 +109,13 @@ class JudgeTest(unittest.TestCase):
             run(CI, workflow_id=2, suite=401, created=T0,
                 conclusion="success"),
         ]
-        failures, _p, _stale, _ = mod.judge(runs, [], [])
+        failures, _p, _stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(len(failures), 1)
 
     def test_in_flight_run_is_pending_not_failing(self):
         runs = [run(CI, workflow_id=2, suite=500, created=T0,
                     conclusion=None, status="in_progress")]
-        failures, pending, _stale, _ = mod.judge(runs, [], [])
+        failures, pending, _stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(failures, [])
         self.assertEqual(len(pending), 1)
         self.assertIn("in_progress", pending[0])
@@ -128,7 +128,7 @@ class JudgeTest(unittest.TestCase):
                     conclusion="success")]
         checks = [check("CodeFactor", suite=999, started="2026-09-11T17:05:00Z",
                         conclusion="failure")]
-        failures, _p, _stale, _ = mod.judge(runs, checks, [])
+        failures, _p, _stale, _hollow, _ = mod.judge(runs, checks, [])
         self.assertEqual(len(failures), 1)
         self.assertIn("CodeFactor", failures[0])
 
@@ -139,12 +139,80 @@ class JudgeTest(unittest.TestCase):
             run("Docs", workflow_id=4, suite=701, created=T0,
                 conclusion="neutral"),
         ]
-        failures, pending, _stale, _ = mod.judge(runs, [], [])
+        failures, pending, _stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual((failures, pending), ([], []))
+
+    def test_a_rate_limited_success_is_noticed_but_still_green(self):
+        """CodeRabbit posts success with "Review rate limited" and no review.
+
+        Observed five times on 2026-09-19 across maxi-config PRs, including on
+        two this session merged without seeing it. Checked on #753: the status
+        was its ONLY trace -- no review was posted -- so the rollup, `gh pr
+        checks` and this script all counted a reviewer that did nothing as a
+        pass, and a reader seeing the tick believes otherwise.
+
+        GREEN is still correct. The bot's rate limit is not the author's doing
+        and failing the PR would wedge every merge until it recovers. The
+        defect is that the claim is invisible, so it gets a line and not a
+        verdict.
+        """
+        statuses = [{"context": "CodeRabbit", "state": "success",
+                     "description": "Review rate limited"}]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual((failures, pending, stale), ([], [], []),
+                         "a rate-limited success must not withhold GREEN")
+        self.assertEqual(len(hollow), 1)
+        self.assertIn("CodeRabbit", hollow[0])
+        self.assertIn("Review rate limited", hollow[0])
+
+    def test_a_hollow_notice_alone_is_still_GREEN(self):
+        """The verdict, not the buckets. This is the property M3 exposed.
+
+        An earlier version of this suite asserted only that `judge` put
+        nothing in failures/pending/stale. That is true however the verdict is
+        computed, so a mutation adding `or hollow` to the verdict expression
+        passed the entire suite -- the exclusion was incidental, not pinned.
+        """
+        statuses = [{"context": "CodeRabbit", "state": "success",
+                     "description": "Review rate limited"}]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(hollow), 1, "precondition: this row IS hollow")
+        self.assertEqual(
+            mod.verdict_of(failures, pending, stale), "GREEN",
+            "a rate-limited reviewer must not block the merge; the bot's "
+            "quota is not the author's doing")
+
+    def test_a_real_failure_beside_a_hollow_notice_is_NOT_GREEN(self):
+        # The notice must not become a way to launder a failure either.
+        statuses = [
+            {"context": "CodeRabbit", "state": "success",
+             "description": "Review rate limited"},
+            {"context": "review-gate/threads", "state": "failure"},
+        ]
+        failures, pending, stale, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(len(hollow), 1)
+        self.assertEqual(mod.verdict_of(failures, pending, stale), "NOT_GREEN")
+
+    def test_an_ordinary_success_is_not_noticed(self):
+        # The notice must be rare enough to mean something. A passing status
+        # with an ordinary description is not a hollow one.
+        statuses = [{"context": "CodeRabbit", "state": "success",
+                     "description": "Review completed"}]
+        _f, _p, _s, hollow, _ = mod.judge([], [], statuses)
+        self.assertEqual(hollow, [])
+
+    def test_a_check_run_saying_it_was_rate_limited_is_noticed_too(self):
+        # Same claim, different channel: check runs carry their prose in
+        # output.title rather than in a status description.
+        row = check("some-bot", suite=1, started=T0, conclusion="success")
+        row["output"] = {"title": "Skipped: API quota exceeded"}
+        _f, _p, _s, hollow, _ = mod.judge([], [row], [])
+        self.assertEqual(len(hollow), 1)
+        self.assertIn("some-bot", hollow[0])
 
     def test_commit_status_failure_is_reported(self):
         statuses = [{"context": "review-gate/threads", "state": "failure"}]
-        failures, _p, _stale, _ = mod.judge([], [], statuses)
+        failures, _p, _stale, _hollow, _ = mod.judge([], [], statuses)
         self.assertEqual(len(failures), 1)
         self.assertIn("review-gate/threads", failures[0])
 
@@ -155,7 +223,7 @@ class JudgeTest(unittest.TestCase):
             run(CI, workflow_id=2, suite=801, created=T0,
                 conclusion="success", rid=2),
         ]
-        failures, _p, _stale, _ = mod.judge(runs, [], [])
+        failures, _p, _stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(failures, [], "the higher id is the later run")
 
     def test_two_workflows_are_judged_independently(self):
@@ -165,7 +233,7 @@ class JudgeTest(unittest.TestCase):
             run("CodeQL", workflow_id=5, suite=901, created=T0,
                 conclusion="failure"),
         ]
-        failures, _p, _stale, considered = mod.judge(runs, [], [])
+        failures, _p, _stale, _hollow, considered = mod.judge(runs, [], [])
         self.assertEqual(len(failures), 1)
         self.assertEqual(considered, 2)
 
@@ -177,7 +245,7 @@ class StaleTest(unittest.TestCase):
         # passing, it is worse. It is its own bucket, and it still blocks GREEN.
         runs = [run(GATE, workflow_id=1, suite=100,
                     created=T1, conclusion="cancelled")]
-        failures, pending, stale, _ = mod.judge(runs, [], [])
+        failures, pending, stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(failures, [])
         self.assertEqual(pending, [])
         self.assertEqual(len(stale), 1)
@@ -186,7 +254,7 @@ class StaleTest(unittest.TestCase):
     def test_stale_still_withholds_green(self):
         runs = [run(CI, workflow_id=2, suite=110,
                     created=T1, conclusion="cancelled")]
-        failures, pending, stale, _ = mod.judge(runs, [], [])
+        failures, pending, stale, _hollow, _ = mod.judge(runs, [], [])
         verdict = "GREEN" if not (failures or pending or stale) else "NOT_GREEN"
         self.assertEqual(verdict, "NOT_GREEN")
 
@@ -199,7 +267,7 @@ class StaleTest(unittest.TestCase):
             run(CI, workflow_id=2, suite=121, created=T1,
                 conclusion="success"),
         ]
-        failures, pending, stale, _ = mod.judge(runs, [], [])
+        failures, pending, stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual((failures, pending, stale), ([], [], []))
 
 
@@ -215,7 +283,7 @@ class LiveRunWinsTest(unittest.TestCase):
             run(GATE, workflow_id=1, suite=2, created=T0,
                 conclusion="success", rid=83),
         ]
-        failures, pending, stale, _ = mod.judge(runs, [], [])
+        failures, pending, stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual((failures, pending, stale), ([], [], []))
 
     def test_an_in_flight_run_beats_a_cancelled_sibling_at_the_same_second(self):
@@ -229,7 +297,7 @@ class LiveRunWinsTest(unittest.TestCase):
             run(GATE, workflow_id=1, suite=2, created=T0,
                 conclusion=None, status="in_progress", rid=83),
         ]
-        failures, pending, stale, _ = mod.judge(runs, [], [])
+        failures, pending, stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(failures, [])
         self.assertEqual(stale, [], "a live run means the workflow is not stale")
         self.assertEqual(len(pending), 1)
@@ -240,7 +308,7 @@ class LiveRunWinsTest(unittest.TestCase):
         # sibling, cancelled is still no verdict.
         runs = [run(GATE, workflow_id=1, suite=1, created=T0,
                     conclusion="cancelled", rid=112)]
-        _f, _p, stale, _ = mod.judge(runs, [], [])
+        _f, _p, stale, _hollow, _ = mod.judge(runs, [], [])
         self.assertEqual(len(stale), 1)
 
     def test_a_newer_finished_run_beats_an_older_stuck_one(self):
@@ -253,7 +321,7 @@ class LiveRunWinsTest(unittest.TestCase):
             run(CI, workflow_id=2, suite=2, created=T1,
                 conclusion="failure", rid=2),
         ]
-        failures, pending, _s, _c = mod.judge(runs, [], [])
+        failures, pending, _s, _hollow, _c = mod.judge(runs, [], [])
         self.assertEqual(pending, [], "the newer finished run is the answer")
         self.assertEqual(len(failures), 1)
 
@@ -297,8 +365,53 @@ class AppScopedCheckTest(unittest.TestCase):
             {"name": "review", "app": {"id": 20}, "check_suite": {"id": 901},
              "started_at": T0, "status": "completed", "conclusion": "failure", "id": 2},
         ]
-        failures, _p, _s, _c = mod.judge(runs, checks, [])
+        failures, _p, _s, _hollow, _c = mod.judge(runs, checks, [])
         self.assertEqual(len(failures), 1, "the other app's failure must survive")
+    def test_same_app_same_name_in_two_live_suites_keeps_both(self):
+        # The defect: every GitHub Actions check-run is posted under the SAME
+        # app id. Two check-runs from two DIFFERENT workflows, same job name,
+        # both live -- neither suite is superseded -- used to collapse on
+        # (app_id, name) and keep whichever was newer, discarding the other's
+        # conclusion. With the suite in the key, both survive. SUCCESS is
+        # newer; if the timestamp-newest rule on the collapsed key wins, the
+        # failure is silently dropped and the judge answers GREEN.
+        checks = [
+            # newer, success
+            {"name": "lint", "app": {"id": 15368},
+             "check_suite": {"id": 7001}, "started_at": "2026-09-21T11:00:00Z",
+             "status": "completed", "conclusion": "success", "id": 2001},
+            # older, failure -- must survive
+            {"name": "lint", "app": {"id": 15368},
+             "check_suite": {"id": 7002}, "started_at": "2026-09-21T10:00:00Z",
+             "status": "completed", "conclusion": "failure", "id": 2002},
+        ]
+        failures, _p, _s, _hollow, considered = mod.judge([], checks, [])
+        self.assertEqual(
+            failures, ["lint (check): failure"],
+            "failing row in a different live suite must not be collapsed away",
+        )
+        self.assertEqual(considered, 2,
+                         "both live rows are part of what was judged")
+
+    def test_supersession_still_drops_rows_after_widening_the_key(self):
+        # Widening the group key must NOT resurrect rows the superseded filter
+        # already dropped. A cancelled run replaced by a newer run of the same
+        # workflow -- the suite IS superseded -- must stay out of the verdict.
+        runs = [
+            run(CI, workflow_id=2, suite=800, created=T0,
+                conclusion="cancelled"),
+            run(CI, workflow_id=2, suite=801, created=T1,
+                conclusion="success"),
+        ]
+        # A check run from the superseded suite would, without the filter,
+        # now find its own key and survive. The filter has to remove it first.
+        checks = [
+            check("lint", suite=800, started=T0, conclusion="failure"),
+            check("lint", suite=801, started=T1, conclusion="success"),
+        ]
+        failures, pending, stale, _hollow, _ = mod.judge(runs, checks, [])
+        self.assertEqual((failures, pending, stale), ([], [], []),
+                         "supersession still drops the older suite's rows")
 
 
 class GhTransportTest(unittest.TestCase):
@@ -355,7 +468,7 @@ class GhTransportTest(unittest.TestCase):
         ]
         statuses = gh.items("repos/o/n/commits/x/status", "statuses")
         self.assertEqual(len(statuses), 2)
-        failures, _p, _s, _c = mod.judge([], [], statuses)
+        failures, _p, _s, _hollow, _c = mod.judge([], [], statuses)
         self.assertEqual(len(failures), 1, "the second page's failure must be seen")
 
     def test_one_does_not_paginate(self):

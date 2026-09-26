@@ -6,8 +6,7 @@
 ### Features
 
 * add an OpenAI-compatible reviewer as a Jules fallback ([47d479a](https://github.com/maxi-tools/maxi-reviewer/commit/47d479ac7c4f29cfbef73691f0b081c28afc0fe5))
-* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([81e2dc3](https://github.com/maxi-tools/maxi-reviewer/commit/81e2dc3baf39ec2c7f1d51f7255fd38a297d1608))
-* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([c0d4480](https://github.com/maxi-tools/maxi-reviewer/commit/c0d44807eec63451b71085f858077361f44cb238))
+* **calibration:** weekly reviewer-profile harvest publishes reviewer-profiles.json ([81e2dc3](https://github.com/maxi-tools/maxi-reviewer/commit/81e2dc3baf39ec2c7f1d51f7255fd38a297d1608), [c0d4480](https://github.com/maxi-tools/maxi-reviewer/commit/c0d44807eec63451b71085f858077361f44cb238))
 * **harvest:** publish the analysis beside the data, every run ([f13bb84](https://github.com/maxi-tools/maxi-reviewer/commit/f13bb8459a99d4fe143d4e6846a74d8bafaada80))
 * **harvest:** publish the analysis beside the data, every run ([0704c7e](https://github.com/maxi-tools/maxi-reviewer/commit/0704c7e90f1f5ed153395006e67153017120e0ba))
 * OpenAI-compatible reviewer as a Jules fallback ([b3c5f1c](https://github.com/maxi-tools/maxi-reviewer/commit/b3c5f1cb17377285c6d7e7cf3abf3665af135b64))

@@ -1,0 +1,32 @@
+README.md
+  h_cebe5b6d461c32 152-156,215-247
+action.yml
+  h_cebe5b6d461c32 19-55
+dist/index.js
+  h_cebe5b6d461c32 71128-71568,72869,72922-72995,73005,73021-73029,73099-73101,73216,73224-73228,73232,73234
+dist/index.js.map
+  h_cebe5b6d461c32 1
+docs/qwen3-coder-vllm.md
+  h_cebe5b6d461c32 1-110
+src/openai-review.ts
+  h_cebe5b6d461c32 1-647
+src/review-pr.ts
+  h_cebe5b6d461c32 42-49,213-217,228-333,343,362-371,466-468,620,641-650,652
+tests/action-metadata.test.ts
+  h_cebe5b6d461c32 19-21
+tests/openai-review.test.ts
+  h_cebe5b6d461c32 1-638
+tests/review-pr.test.ts
+  h_cebe5b6d461c32 681-842
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "47d479ac7c4f29cfbef73691f0b081c28afc0fe5",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

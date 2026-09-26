@@ -16,6 +16,43 @@ inputs:
       never leaves repository setup: the review is recreated on this account
       instead of waiting out a budget that cannot produce one.
     required: false
+  reviewer_backend:
+    description: >-
+      Which model produces the review: jules (default) or openai. openai is
+      any OpenAI-compatible chat-completions server; the intended target is
+      Qwen3-Coder served by vLLM. Aliases: qwen, openai-compatible. A second
+      workflow job can set this to openai to post an explicit roster review
+      alongside Jules.
+    required: false
+    default: "jules"
+  openai_base_url:
+    description: >-
+      OpenAI-compatible base URL, including /v1 (for example
+      http://jasper:8000/v1). Required when reviewer_backend is openai. When
+      reviewer_backend is jules, setting this enables a fallback: if Jules
+      returns no review before timeout_minutes, the same prompt is sent here
+      instead of failing the job with an empty review.
+    required: false
+    default: ""
+  openai_api_key:
+    description: >-
+      Bearer token for the OpenAI-compatible server. Leave empty when the
+      server has no API key (a typical vLLM deployment on the private fleet).
+    required: false
+    default: ""
+  openai_model:
+    description: >-
+      Model id sent as the chat-completions `model` field. Default is the
+      Qwen3-Coder id vLLM serves on the DGX Sparks.
+    required: false
+    default: "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+  openai_timeout_minutes:
+    description: >-
+      How long to wait for one OpenAI-compatible turn. Default 8. Capped at
+      timeout_minutes so a fallback cannot hold the runner for a second full
+      Jules budget after the first one already expired.
+    required: false
+    default: ""
   github_token:
     description: "GitHub token with pull-requests:write, statuses:write, issues:read (the review fetches linked-issue acceptance criteria), and checks:read (when ci_signal is enabled) for reviews, plus contents:write and issues:write for /maxi commands. Usually the default GITHUB_TOKEN secret."
     required: true

@@ -71210,6 +71210,447 @@ async function runReviewWithSetupEscalation(args) {
     throw lastStuck ?? new Error("No review attempts were configured.");
 }
 
+;// CONCATENATED MODULE: ./src/openai-review.ts
+
+
+
+
+
+const DEFAULT_OPENAI_MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct";
+/**
+ * Fallback budget when the caller did not set one. A local vLLM reply is
+ * seconds, not the 15-25 minutes Jules takes, so a Jules-sized wait here
+ * would hide a dead endpoint behind a long silence.
+ */
+const DEFAULT_OPENAI_TIMEOUT_MINUTES = 8;
+/**
+ * A turn that produced no body because the budget ran out.
+ *
+ * Distinct from an HTTP error: the caller of {@link runOpenAiReview} turns
+ * this into "no review" so a dead Spark does not fail the whole job before
+ * the Jules path, or a configured fallback, has been considered.
+ */
+class OpenAiTimeoutError extends Error {
+    constructor(timeoutMinutes) {
+        super(`OpenAI-compatible review produced no reply within ${timeoutMinutes} minutes.`);
+        this.name = "OpenAiTimeoutError";
+    }
+}
+function parseReviewerBackend(raw) {
+    const value = (raw ?? "").trim().toLowerCase();
+    if (value === "" || value === "jules")
+        return "jules";
+    // `qwen` is the roster name operators will actually type. The wire protocol
+    // is OpenAI-compatible either way.
+    if (value === "openai" || value === "openai-compatible" || value === "qwen") {
+        return "openai";
+    }
+    throw new Error(`Invalid reviewer_backend: "${raw}". Must be one of: jules, openai.`);
+}
+/**
+ * True when a fallback endpoint is configured, even if the primary backend
+ * is still Jules. An empty base URL means "no fallback", not "call localhost".
+ */
+function openAiFallbackConfigured(getInput) {
+    return getInput("openai_base_url").trim() !== "";
+}
+function resolveOpenAiReviewConfig(getInput, julesTimeoutMinutes) {
+    const baseUrl = normalizeBaseUrl(getInput("openai_base_url"));
+    if (!baseUrl) {
+        throw new Error("openai_base_url is required when reviewer_backend is openai " +
+            "(or when it is the configured Jules-timeout fallback). " +
+            "Point it at the vLLM OpenAI server, e.g. http://jasper:8000/v1.");
+    }
+    const model = getInput("openai_model").trim() || DEFAULT_OPENAI_MODEL;
+    const key = getInput("openai_api_key").trim();
+    const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
+    // Never wait longer than the review the caller already budgeted. A fallback
+    // that outlives the Jules budget it is replacing holds the runner for a
+    // second full review after the first one already failed to arrive.
+    const timeoutMinutes = Math.min(requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES, Math.max(1, julesTimeoutMinutes));
+    return {
+        baseUrl,
+        ...(key ? { apiKey: key } : {}),
+        model,
+        timeoutMinutes,
+    };
+}
+function normalizeBaseUrl(raw) {
+    return raw.trim().replace(/\/+$/, "");
+}
+function parsePositiveInt(raw) {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return undefined;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed) || parsed < 1)
+        return undefined;
+    return parsed;
+}
+/**
+ * One chat-completions turn.
+ *
+ * Uses `fetch` rather than an SDK: the Spark serves the OpenAI wire shape
+ * through vLLM, and an SDK would pin us to one vendor's client while the
+ * point of this backend is that any compatible server will do.
+ */
+async function completeOpenAiChat(request) {
+    const timeoutMs = request.timeoutMinutes * 60 * 1000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const headers = {
+            "content-type": "application/json",
+        };
+        if (request.apiKey)
+            headers.Authorization = `Bearer ${request.apiKey}`;
+        let response;
+        try {
+            response = await fetch(`${request.baseUrl}/chat/completions`, {
+                method: "POST",
+                headers,
+                signal: controller.signal,
+                body: JSON.stringify({
+                    model: request.model,
+                    temperature: 0,
+                    messages: request.messages,
+                }),
+            });
+        }
+        catch (err) {
+            if (isAbortError(err))
+                throw new OpenAiTimeoutError(request.timeoutMinutes);
+            throw new Error(`OpenAI-compatible review request failed: ${openai_review_errorMessage(err)}`, { cause: err });
+        }
+        if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            throw new Error(`OpenAI-compatible review endpoint returned ${response.status}` +
+                (body ? `: ${body.slice(0, 300)}` : "."));
+        }
+        const payload = (await response.json());
+        const content = payload.choices?.[0]?.message?.content;
+        if (typeof content !== "string" || content.trim() === "") {
+            throw new Error("OpenAI-compatible review endpoint returned no assistant message.");
+        }
+        return content;
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+function isAbortError(err) {
+    return ((err instanceof Error && err.name === "AbortError") ||
+        (typeof DOMException !== "undefined" &&
+            err instanceof DOMException &&
+            err.name === "AbortError"));
+}
+/**
+ * Run one review against an OpenAI-compatible endpoint.
+ *
+ * The prompt, the schema, and the repair loop are the same ones Jules uses.
+ * What changes is the transport: each turn is one chat-completions call, and
+ * the conversation so far is resent because vLLM has no session to resume.
+ * A timeout returns `reviewResult: null` — the same shape Jules uses when it
+ * never replies — so the caller can fall through without a special case.
+ */
+async function runOpenAiReview(prompt, config, options = {}) {
+    const complete = options.complete ?? completeOpenAiChat;
+    const messages = [{ role: "user", content: prompt }];
+    const rawResponses = [];
+    const validationErrors = [];
+    const sessionId = `openai:${config.model}`;
+    let reply;
+    try {
+        reply = await turn(complete, config, messages, options.onProgress);
+    }
+    catch (err) {
+        if (err instanceof OpenAiTimeoutError) {
+            core/* warning */.$e(err.message);
+            return {
+                reviewResult: null,
+                sessionId: `openai:timeout:${config.model}`,
+            };
+        }
+        throw err;
+    }
+    rawResponses.push(reply);
+    if (options.retrieval) {
+        reply = await openai_review_runRetrievalLoop({
+            complete,
+            config,
+            messages,
+            firstReply: reply,
+            retrieval: options.retrieval,
+            onProgress: options.onProgress,
+        });
+        if (reply !== rawResponses[rawResponses.length - 1]) {
+            rawResponses.push(reply);
+        }
+    }
+    let reviewResult;
+    try {
+        reviewResult = parseOpenAiReview(reply);
+    }
+    catch (err) {
+        validationErrors.push(`Failed to parse OpenAI-compatible review: ${openai_review_errorMessage(err)}`);
+        core/* warning */.$e(`OpenAI-compatible review was not valid JSON; requesting a repair: ${err}`);
+        const repaired = await repairTurn(complete, config, messages, buildJsonRepairPrompt(reply, err), options.onProgress);
+        if (!repaired) {
+            return {
+                reviewResult: null,
+                sessionId,
+                rawResponses,
+                validationErrors,
+            };
+        }
+        rawResponses.push(repaired);
+        try {
+            reviewResult = parseOpenAiReview(repaired);
+            reply = repaired;
+        }
+        catch (repairErr) {
+            validationErrors.push(`Failed to parse repaired OpenAI-compatible review: ${openai_review_errorMessage(repairErr)}`);
+            return {
+                reviewResult: {
+                    summary: "The OpenAI-compatible reviewer returned a response that could not be parsed after one repair attempt. No valid code review comments are present.",
+                    verdict: "comment",
+                    resolvedCommentIds: [],
+                    newComments: [],
+                },
+                sessionId,
+                rawResponses,
+                validationErrors,
+            };
+        }
+    }
+    const formatIssues = findReviewFormatIssues(reviewResult);
+    if (formatIssues.length > 0) {
+        validationErrors.push(...formatIssues);
+        const revised = await repairTurn(complete, config, messages, buildFormatRepairPrompt(reviewResult, formatIssues), options.onProgress);
+        if (revised) {
+            rawResponses.push(revised);
+            try {
+                const revisedResult = parseOpenAiReview(revised);
+                const remaining = findReviewFormatIssues(revisedResult);
+                if (remaining.length === 0) {
+                    reviewResult = revisedResult;
+                    reply = revised;
+                }
+                else {
+                    validationErrors.push(...remaining);
+                }
+            }
+            catch (err) {
+                validationErrors.push(`Failed to parse formatting revision: ${openai_review_errorMessage(err)}`);
+            }
+        }
+    }
+    if (options.verificationContext) {
+        const verified = await requestValidationRepair({
+            complete,
+            config,
+            messages,
+            reply,
+            verificationContext: options.verificationContext,
+            onProgress: options.onProgress,
+        });
+        if (verified) {
+            reviewResult = verified.reviewResult;
+            rawResponses.push(verified.reply);
+            validationErrors.push(...verified.validationErrors);
+        }
+    }
+    const evidence = holdBlockToItsEvidence(reviewResult);
+    reviewResult = evidence.review;
+    validationErrors.push(...evidence.issues);
+    return {
+        reviewResult,
+        sessionId,
+        ...(rawResponses.length > 0 ? { rawResponses } : {}),
+        ...(validationErrors.length > 0 ? { validationErrors } : {}),
+    };
+}
+async function turn(complete, config, messages, onProgress) {
+    await notify(onProgress, false);
+    const content = await complete({ ...config, messages });
+    messages.push({ role: "assistant", content });
+    await notify(onProgress, true);
+    return content;
+}
+async function repairTurn(complete, config, messages, repairPrompt, onProgress) {
+    messages.push({ role: "user", content: repairPrompt });
+    try {
+        return await turn(complete, config, messages, onProgress);
+    }
+    catch (err) {
+        if (err instanceof OpenAiTimeoutError) {
+            core/* warning */.$e(`OpenAI-compatible repair timed out: ${err.message}`);
+            return null;
+        }
+        throw err;
+    }
+}
+async function openai_review_runRetrievalLoop(input) {
+    const { complete, config, messages, retrieval, onProgress } = input;
+    let message = input.firstReply;
+    for (let step = 0; step < retrieval.maxSteps; step++) {
+        const parsed = parseRetrievalRequest(message);
+        if (parsed.kind === "none")
+            return message;
+        const roundsLeft = retrieval.maxSteps - step - 1;
+        const followUp = parsed.kind === "invalid"
+            ? formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft)
+            : await fulfilAndFormat(retrieval, parsed.request.requests, roundsLeft);
+        const next = await repairTurn(complete, config, messages, followUp, onProgress);
+        if (!next)
+            return message;
+        message = next;
+    }
+    if (parseRetrievalRequest(message).kind !== "none") {
+        const finalMessage = await repairTurn(complete, config, messages, formatRetrievalResults(retrieval.nonce, [], 0), onProgress);
+        if (finalMessage)
+            return finalMessage;
+    }
+    return message;
+}
+async function fulfilAndFormat(retrieval, requests, roundsLeft) {
+    const results = [];
+    for (const request of requests) {
+        try {
+            results.push(await retrieval.provider.fulfill(request));
+        }
+        catch (err) {
+            results.push({
+                tool: request.tool,
+                ok: false,
+                error: openai_review_errorMessage(err),
+            });
+        }
+    }
+    return formatRetrievalResults(retrieval.nonce, results, roundsLeft);
+}
+async function requestValidationRepair(input) {
+    let structured;
+    try {
+        structured = parseJulesReview(input.reply);
+    }
+    catch {
+        return null;
+    }
+    const issues = verifyJulesReview(structured, input.verificationContext);
+    if (issues.length === 0)
+        return null;
+    const revised = await repairTurn(input.complete, input.config, input.messages, buildReviewRepairPrompt(input.reply, issues), input.onProgress);
+    if (!revised)
+        return null;
+    const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
+    try {
+        const review = parseJulesReview(revised);
+        const remaining = verifyJulesReview(review, input.verificationContext);
+        if (remaining.length > 0) {
+            validationErrors.push(...remaining.map((issue) => `${issue.kind}: ${issue.message}`));
+        }
+        // A revision that parsed is the review we have, even if a location is
+        // still off: dropping it would publish the comment the repair was asked
+        // to fix. Remaining issues stay on the artifact.
+        return {
+            reviewResult: parseOpenAiReview(revised),
+            reply: revised,
+            validationErrors,
+        };
+    }
+    catch (err) {
+        validationErrors.push(`Failed to parse validation revision: ${openai_review_errorMessage(err)}`);
+        return {
+            reviewResult: openai_review_convertStructuredReview(structured),
+            reply: input.reply,
+            validationErrors,
+        };
+    }
+}
+/**
+ * Parse a model reply into the review the rest of the action already posts.
+ *
+ * Structured `maxi.review.v1.jules-review` is the contract. A bare object in
+ * the legacy `{summary, verdict, newComments}` shape is accepted too, because
+ * a local model that followed the example's field names but dropped `schema`
+ * still produced a review, and throwing it away is the failure this backend
+ * exists to avoid.
+ */
+function parseOpenAiReview(message) {
+    try {
+        return openai_review_convertStructuredReview(parseJulesReview(message));
+    }
+    catch {
+        // Fall through to the legacy shape.
+    }
+    const fenced = message.match(/```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/i);
+    const candidates = [fenced?.[1], message];
+    let lastError;
+    for (const candidate of candidates) {
+        if (!candidate)
+            continue;
+        try {
+            const parsed = JSON.parse(candidate);
+            if (typeof parsed.summary !== "string" ||
+                !parsed.verdict ||
+                (!parsed.newComments && !parsed.comments)) {
+                throw new Error("review JSON is missing summary, verdict, or comments");
+            }
+            return {
+                summary: parsed.summary,
+                verdict: parsed.verdict,
+                resolvedCommentIds: parsed.resolvedCommentIds ?? [],
+                newComments: parsed.newComments ?? parsed.comments ?? [],
+            };
+        }
+        catch (err) {
+            lastError = err;
+            if (err instanceof Error && err.message.includes("missing summary")) {
+                throw err;
+            }
+        }
+    }
+    throw new Error("Failed to parse OpenAI-compatible review as JSON", {
+        cause: lastError,
+    });
+}
+function openai_review_convertStructuredReview(review) {
+    return {
+        summary: review.summary,
+        verdict: review.verdict,
+        resolvedCommentIds: review.resolvedCommentIds,
+        newComments: review.comments.map((comment) => ({
+            file: comment.path,
+            line: comment.line,
+            startLine: comment.startLine ?? comment.suggestion?.startLine,
+            endLine: comment.endLine ?? comment.suggestion?.endLine,
+            severity: comment.severity,
+            confidence: comment.confidence,
+            ...(comment.evidenceSource
+                ? { evidenceSource: comment.evidenceSource }
+                : {}),
+            message: comment.message,
+            promptForAgents: comment.promptForAgents ?? "",
+            suggestedReplacement: comment.suggestion?.replacement,
+            fix: comment.fix,
+        })),
+    };
+}
+async function notify(onProgress, sawAgentOutput) {
+    if (!onProgress)
+        return;
+    try {
+        await onProgress({ sawAgentOutput });
+    }
+    catch (err) {
+        core/* info */.pq(`Could not publish OpenAI review progress: ${openai_review_errorMessage(err)}`);
+    }
+}
+function openai_review_errorMessage(err) {
+    return err instanceof Error ? err.message : String(err);
+}
+
 ;// CONCATENATED MODULE: ./src/prompt.ts
 
 /**
@@ -72512,6 +72953,7 @@ function decodeXml(value) {
 
 
 
+
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON = ["never", "blocking", "any"];
 const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
@@ -72562,6 +73004,80 @@ function reviewTimeoutExplanation(timeoutMinutes) {
         "Either way, re-running this job often succeeds.",
     ].join(" ");
 }
+/**
+ * Pick the reviewer and, when Jules is primary, fall through if it never replies.
+ *
+ * Two ways the OpenAI-compatible endpoint is used, matching the two ways an
+ * operator asks for it:
+ *
+ * - `reviewer_backend=openai` (or `qwen`) runs it instead of Jules. That is the
+ *   explicit roster entry: a second workflow job can post its own review.
+ * - `reviewer_backend=jules` (the default) still runs Jules, including the
+ *   stuck-setup escalation. Only a review that came back empty — Jules timed
+ *   out, which is what happened twice on 2026-09-26 — falls through, and only
+ *   when `openai_base_url` is set. A Jules error that is not "no review" is
+ *   still a Jules error; the fallback is not a retry of a bad answer.
+ *
+ * A fallback that itself times out returns the original empty Jules result, so
+ * the harvested artifact still says the review never arrived rather than
+ * inventing a second failure mode.
+ */
+async function runSelectedReview(input) {
+    if (input.backend === "openai") {
+        return runOpenAiBackend(input.deps, input.prompt, input.timeoutMinutes, {
+            verificationContext: input.julesOptions.verificationContext,
+            retrieval: input.julesOptions.retrieval,
+            onProgress: input.julesOptions.onProgress,
+        });
+    }
+    const julesResult = await runReviewWithSetupEscalation({
+        run: input.deps.runJulesReview,
+        attempts: planAttempts(input.apiKey, input.fallbackApiKey),
+        prompt: input.prompt,
+        source: input.source,
+        timeoutMinutes: input.timeoutMinutes,
+        options: input.julesOptions,
+    });
+    if (julesResult.reviewResult || !openAiFallbackConfigured(core/* getInput */.V4)) {
+        return julesResult;
+    }
+    core/* warning */.$e(`Jules returned no review within ${input.timeoutMinutes} minutes; ` +
+        "falling back to the configured OpenAI-compatible reviewer.");
+    const fallback = await runOpenAiBackend(input.deps, input.prompt, input.timeoutMinutes, {
+        verificationContext: input.julesOptions.verificationContext,
+        retrieval: input.julesOptions.retrieval,
+        onProgress: input.julesOptions.onProgress,
+    });
+    if (!fallback.reviewResult) {
+        core/* warning */.$e("OpenAI-compatible fallback also returned no review; recording the Jules timeout.");
+        return julesResult;
+    }
+    return {
+        ...fallback,
+        // Keep Jules's silence in the harvest. The fallback is why a review exists;
+        // it is not a reason to pretend the first reviewer replied.
+        rawResponses: [
+            ...(julesResult.rawResponses ?? []),
+            ...(fallback.rawResponses ?? []),
+        ],
+        validationErrors: [
+            `Jules timed out after ${input.timeoutMinutes} minutes; review produced by OpenAI-compatible fallback (${fallback.sessionId}).`,
+            ...(julesResult.validationErrors ?? []),
+            ...(fallback.validationErrors ?? []),
+        ],
+    };
+}
+async function runOpenAiBackend(deps, prompt, timeoutMinutes, options) {
+    const config = resolveOpenAiReviewConfig(core/* getInput */.V4, timeoutMinutes);
+    if (config.apiKey)
+        core/* setSecret */.Pq(config.apiKey);
+    core/* info */.pq(`OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m`);
+    return deps.runOpenAiReview(prompt, config, {
+        verificationContext: options.verificationContext,
+        retrieval: options.retrieval,
+        onProgress: options.onProgress,
+    });
+}
 const defaultDeps = {
     fetchPullRequestContext,
     selectRuleFiles: selectRuleFiles,
@@ -72571,6 +73087,7 @@ const defaultDeps = {
     fetchExistingFindings: fetchExistingFindings,
     buildReviewPrompt: buildReviewPrompt,
     runJulesReview: runJulesReview,
+    runOpenAiReview: runOpenAiReview,
     submitReview: submitReview,
     resolveThreads: resolveThreads,
     setStatus: setStatus,
@@ -72586,8 +73103,15 @@ const defaultDeps = {
 };
 async function runReviewPr(overrides = {}) {
     const deps = { ...defaultDeps, ...overrides };
-    const apiKey = core/* getInput */.V4("jules_api_key", { required: true });
-    core/* setSecret */.Pq(apiKey);
+    const reviewerBackend = parseReviewerBackend(core/* getInput */.V4("reviewer_backend"));
+    // Jules is required only when it is the backend that will run. An explicit
+    // openai roster entry must be able to review with Jules unconfigured — that
+    // is the point of a second reviewer, not a second key for the first one.
+    const apiKey = core/* getInput */.V4("jules_api_key", {
+        required: reviewerBackend === "jules",
+    });
+    if (apiKey)
+        core/* setSecret */.Pq(apiKey);
     // Optional second Jules account. A session that never finishes cloning is
     // recreated here rather than waited out; see jules-escalation.ts.
     const fallbackApiKey = core/* getInput */.V4("jules_api_key_fallback");
@@ -72657,7 +73181,9 @@ async function runReviewPr(overrides = {}) {
     }
     try {
         try {
-            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", "Jules is reviewing this PR…");
+            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", reviewerBackend === "openai"
+                ? "Qwen is reviewing this PR…"
+                : "Jules is reviewing this PR…");
         }
         catch (err) {
             throw deps.wrapPermissionError(err, "statuses:write", "createCommitStatus");
@@ -72772,7 +73298,7 @@ async function runReviewPr(overrides = {}) {
         if (previousSessionId) {
             julesOptions.previousSessionId = previousSessionId;
         }
-        // Keep the pending status current while Jules works. Without this the
+        // Keep the pending status current while the reviewer works. Without this the
         // status is written once and never touched again, so a review that started
         // seconds ago and one that has hung for half an hour look identical from
         // the PR page — a misread that has cost several early merges.
@@ -72780,14 +73306,17 @@ async function runReviewPr(overrides = {}) {
             publish: (description) => deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", description),
             onError: (err) => core/* info */.pq(`Could not refresh review status: ${err instanceof Error ? err.message : String(err)}`),
         });
-        const { reviewResult, sessionId, rawResponses, validationErrors } = await runReviewWithSetupEscalation({
-            run: deps.runJulesReview,
-            attempts: planAttempts(apiKey, fallbackApiKey),
+        const reviewRun = await runSelectedReview({
+            deps,
+            backend: reviewerBackend,
+            apiKey,
+            fallbackApiKey,
             prompt,
             source: { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
             timeoutMinutes,
-            options: julesOptions,
+            julesOptions,
         });
+        const { reviewResult, sessionId, rawResponses, validationErrors } = reviewRun;
         const outcome = !reviewResult
             ? "TIMED_OUT_NO_CONTENT"
             : (reviewResult.newComments?.length ?? 0) > 0

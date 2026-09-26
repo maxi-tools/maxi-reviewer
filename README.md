@@ -149,6 +149,11 @@ Project-specific rules can still be supplied with `extra_instructions` or `rules
 | -------------------- | ------------------------------- | ------------------------------------------------------------- |
 | `jules_api_key`      |                                 | Required Jules API key.                                       |
 | `jules_api_key_fallback` |                             | Optional Jules API key for a second account. Used only when a session never leaves repository setup — see [Stuck sessions](#stuck-sessions). |
+| `reviewer_backend` | `jules` | `jules` (default) or `openai`. `openai` / `qwen` sends the review to an OpenAI-compatible server instead of Jules — the explicit roster entry. |
+| `openai_base_url` | | OpenAI-compatible base URL, including `/v1` (for example `http://jasper:8000/v1`). Required when `reviewer_backend` is `openai`. When the backend is Jules, setting this turns a Jules timeout into a fallback review rather than an empty one — see [OpenAI-compatible fallback](#openai-compatible-fallback). |
+| `openai_api_key` | | Bearer token for that server. Leave empty when vLLM is serving without `--api-key`. |
+| `openai_model` | `Qwen/Qwen3-Coder-30B-A3B-Instruct` | `model` field sent to the server. |
+| `openai_timeout_minutes` | `8`, capped at `timeout_minutes` | Per-turn budget for the OpenAI-compatible reviewer. |
 | `github_token`       |                                 | Required GitHub token (App installation token preferred). Reviews also read linked issues, so the token needs issues:read; /maxi commands additionally need contents:write and issues:write. Enabling `ci_signal: auto` also needs checks:read. |
 | `fail_on`            | `blocking`                      | `never`, `blocking`, or `any`. Controls commit-status state.  |
 | `skip_drafts`        | `true`                          | Skip draft PRs.                                               |
@@ -206,6 +211,39 @@ If every configured account fails to bring a session up, the job fails with an
 a review timeout. The two call for opposite responses — a timeout is worth
 re-running, a stuck clone is worth recreating elsewhere — so they are reported
 differently.
+
+## OpenAI-compatible fallback
+
+Jules is still the default reviewer. On 2026-09-26 it produced no review twice,
+each time by sitting out a 15-minute budget, and the PR had no substantive
+review. An OpenAI-compatible chat-completions server covers that gap in two
+ways, selected by config:
+
+- **Fallback.** Leave `reviewer_backend` at `jules` and set `openai_base_url`.
+  If Jules returns no review before `timeout_minutes`, the same prompt is sent
+  to that server. A Jules error that is not "no review" (auth, a stuck clone)
+  is not retried there: those are answers, and a second model should not paper
+  over them. If the fallback also returns nothing, the job still records the
+  Jules timeout — the harvest must not claim a review that neither side wrote.
+- **Roster reviewer.** Set `reviewer_backend: openai` (alias `qwen`) on a
+  second workflow job. That job reviews with the local model and does not
+  require `jules_api_key`. It posts through the same comment path, so the two
+  reviews sit side by side rather than one replacing the other.
+
+The intended server is Qwen3-Coder on vLLM, on the ARM64 DGX Sparks (jasper,
+pearl, peridot). Standing the server up is a separate step; the recipe is in
+[docs/qwen3-coder-vllm.md](docs/qwen3-coder-vllm.md). The action only needs the
+base URL. It does not take an x86 Linux lane to do that: the review job keeps
+the runner it already has, and the model runs on the Spark.
+
+```yaml
+- uses: maxi-tools/maxi-reviewer@v1
+  with:
+    jules_api_key: ${{ secrets.JULES_API_KEY }}
+    github_token: ${{ steps.app-token.outputs.token }}
+    openai_base_url: http://jasper:8000/v1
+    openai_model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+```
 
 ## Outputs
 

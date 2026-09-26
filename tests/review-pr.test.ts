@@ -678,6 +678,168 @@ describe("runReviewPr orchestration", () => {
     );
     expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(30));
   });
+
+  it("falls back to the OpenAI-compatible reviewer when Jules returns no review", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://jasper:8000/v1";
+      if (name === "openai_model") return "Qwen/Qwen3-Coder-30B-A3B-Instruct";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      buildReviewPrompt: vi.fn().mockReturnValue("review this diff"),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+        rawResponses: [],
+      }),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "comment",
+          summary: "Qwen found a panic.",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: "src/a.ts",
+              line: 1,
+              severity: "Warning",
+              confidence: "High",
+              message: "unwrap panics.",
+              promptForAgents: "Return a Result.",
+            },
+          ],
+        },
+        sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        rawResponses: ['{"verdict":"comment"}'],
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(1);
+    expect(deps.runOpenAiReview).toHaveBeenCalledWith(
+      "review this diff",
+      expect.objectContaining({
+        baseUrl: "http://jasper:8000/v1",
+        model: "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        timeoutMinutes: 8,
+      }),
+      expect.any(Object)
+    );
+    expect(deps.submitReview).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      7,
+      "head-sha",
+      expect.stringContaining("Qwen found a panic."),
+      [
+        expect.objectContaining({
+          file: "src/a.ts",
+          line: 1,
+          message: "unwrap panics.",
+        }),
+      ]
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("REVIEWED_WITH_FINDINGS");
+    expect(artifact.sessionId).toMatch(/^openai:/);
+    expect(artifact.validationErrors[0]).toContain(
+      "OpenAI-compatible fallback"
+    );
+  });
+
+  it("does not call the fallback when Jules produced a review", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "30";
+      if (name === "openai_base_url") return "http://jasper:8000/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runOpenAiReview: vi.fn(),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(1);
+    expect(deps.runOpenAiReview).not.toHaveBeenCalled();
+  });
+
+  it("uses the OpenAI backend instead of Jules when it is the selected roster reviewer", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "30";
+      if (name === "reviewer_backend") return "qwen";
+      if (name === "openai_base_url") return "http://pearl:8000/v1/";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn(),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "approve",
+          summary: "Roster review.",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        rawResponses: ["{}"],
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runJulesReview).not.toHaveBeenCalled();
+    expect(deps.runOpenAiReview).toHaveBeenCalledWith(
+      "prompt",
+      expect.objectContaining({ baseUrl: "http://pearl:8000/v1" }),
+      expect.any(Object)
+    );
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(deps.setStatus.mock.calls[0][6]).toContain("Qwen is reviewing");
+  });
+
+  it("keeps the Jules timeout when the fallback also returns nothing", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://jasper:8000/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "openai:timeout:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(1);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(15));
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
+    expect(artifact.sessionId).toBe("jules-session");
+  });
 });
 
 describe("review timeout wording", () => {

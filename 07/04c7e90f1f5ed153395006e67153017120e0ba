@@ -1,0 +1,21 @@
+src/reviewer-profile-report.ts
+  s_b1f4d8d95745a7::t_c3e271e751ee06 1-179
+tests/reviewer-profile-report.test.ts
+  s_b1f4d8d95745a7::t_bf9f43afd290c9 1-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0704c7e90f1f5ed153395006e67153017120e0ba",
+  "prompts": {},
+  "sessions": {
+    "s_b1f4d8d95745a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd3649f8-1e62-42b5-9f11-9c0187233ba8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

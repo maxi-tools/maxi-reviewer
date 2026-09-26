@@ -1,0 +1,22 @@
+dist/calibration-harvest/index.js
+  h_cebe5b6d461c32 64403,64406,64409-64426,64445
+dist/calibration-harvest/index.js.map
+  h_cebe5b6d461c32 1
+src/reviewer-profile.ts
+  h_cebe5b6d461c32 208,211,214-231,249
+tests/action-metadata.test.ts
+  h_cebe5b6d461c32 56-81,86-87,89-111,211-259,261
+tests/reviewer-profile.test.ts
+  h_cebe5b6d461c32 81-92,99-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "faf5358c8288605cdce4152f9d8f5090891c77e5",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

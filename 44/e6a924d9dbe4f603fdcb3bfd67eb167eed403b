@@ -1,0 +1,16 @@
+src/reviewer-profile-build.ts
+  h_cebe5b6d461c32 731-740
+tests/reviewer-profile-build.test.ts
+  h_cebe5b6d461c32 1459-1522
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "44e6a924d9dbe4f603fdcb3bfd67eb167eed403b",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

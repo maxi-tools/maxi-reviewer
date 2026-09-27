@@ -1,0 +1,24 @@
+dist/index.js
+  h_cebe5b6d461c32 69704-69705,69707,73750-73751
+dist/index.js.map
+  h_cebe5b6d461c32 1
+src/review-pr.ts
+  h_cebe5b6d461c32 1175
+src/schema.ts
+  h_cebe5b6d461c32 233-234,237-239
+tests/review-pr.test.ts
+  h_cebe5b6d461c32 14,29,45-54,56-68,1121-1135
+tests/schema.test.ts
+  h_cebe5b6d461c32 319-352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10afa147c3f6b4484c16f3e5edaf8513f11c5274",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

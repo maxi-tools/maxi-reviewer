@@ -862,6 +862,73 @@ describe("runReviewPr orchestration", () => {
     expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
     expect(artifact.sessionId).toBe("jules-session");
   });
+
+  it("does not block on a finding outside the PR diff", async () => {
+    // #91: a 2-line PR got a blocking failure from findings in a file the PR
+    // never touched. fail_on=blocking is the default, so this is the path the
+    // issue hit.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "blocking";
+      if (name === "timeout_minutes") return "30";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "block",
+          summary: "Blocking issues found in ci.yml.",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: ".github/workflows/ci.yml",
+              line: 118,
+              severity: "High",
+              confidence: "High",
+              message: "Workflow condition is wrong.",
+              promptForAgents: "Fix it",
+            },
+          ],
+        },
+        sessionId: "session-1",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    // The out-of-diff finding is never posted...
+    expect(deps.submitReview.mock.calls[0][6]).toEqual([]);
+    // ...and with it scoped out, the check passes instead of reporting
+    // "Blocking issues found"...
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review complete (verdict: comment)"
+    );
+    expect(deps.setStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      "Blocking issues found"
+    );
+    // ...while the dropped finding stays visible on the harvestable artifact.
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.validatedReview.verdict).toBe("comment");
+    expect(artifact.validationErrors).toContainEqual(
+      expect.stringContaining(
+        "out-of-diff finding dropped: .github/workflows/ci.yml:118"
+      )
+    );
+  });
 });
 
 describe("review timeout wording", () => {

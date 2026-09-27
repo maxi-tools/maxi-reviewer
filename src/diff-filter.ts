@@ -1,3 +1,5 @@
+import { ReviewComment, Verdict } from "./types.js";
+
 /**
  * Default globs for generated / vendored paths that bloat a PR diff without
  * being meaningful review targets. For bundled GitHub Actions the committed
@@ -102,4 +104,71 @@ export function filterDiffByPaths(
   const filtered = kept.join("");
   if (filtered.trim().length === 0) return { diff, excludedPaths: [] };
   return { diff: filtered, excludedPaths };
+}
+
+/** The review fields the diff-scope filter reads and, when needed, rewrites. */
+export interface DiffScopeReview {
+  verdict: Verdict;
+  summary: string;
+  resolvedCommentIds?: number[];
+  newComments?: ReviewComment[];
+}
+
+export interface DiffScopeResult {
+  review: DiffScopeReview;
+  droppedComments: ReviewComment[];
+  issues: string[];
+}
+
+/**
+ * Scope a review's findings to the PR's changed files (issue #91).
+ *
+ * A finding in a file the PR does not touch cannot be actioned here: there is
+ * no edit to this branch that resolves it, and GitHub rejects an inline
+ * comment on a file outside the diff, so the whole review falls back to a
+ * plain PR comment. Such findings are dropped before publishing and recorded
+ * in `issues` for the harvestable artifact.
+ *
+ * The verdict is scoped with them. When `block` was chosen and every finding
+ * behind it was dropped as out-of-diff, nothing in the diff supports a block,
+ * so the verdict is downgraded to `comment`: findings outside the diff must
+ * never block. A `block` that still has an in-diff finding is left alone, and
+ * a summary-only block (no findings either way) is not touched either — there
+ * is nothing here that identifies it as out-of-diff based.
+ */
+export function scopeReviewToDiff(
+  review: DiffScopeReview,
+  changedFiles: Iterable<string>
+): DiffScopeResult {
+  const changed = new Set(changedFiles);
+  const comments = review.newComments ?? [];
+  const kept = comments.filter((comment) => changed.has(comment.file));
+  const droppedComments = comments.filter(
+    (comment) => !changed.has(comment.file)
+  );
+  if (droppedComments.length === 0) {
+    return { review, droppedComments: [], issues: [] };
+  }
+
+  const issues = droppedComments.map(
+    (comment) =>
+      `out-of-diff finding dropped: ${comment.file}:${comment.line} is not among the PR's changed files.`
+  );
+
+  let verdict = review.verdict;
+  if (verdict === "block" && kept.length === 0) {
+    verdict = "comment";
+    const locations = droppedComments
+      .map((comment) => `${comment.file}:${comment.line}`)
+      .join(", ");
+    issues.unshift(
+      `verdict downgraded from block to comment: every finding behind it (${locations}) is outside the PR diff.`
+    );
+  }
+
+  return {
+    review: { ...review, verdict, newComments: kept },
+    droppedComments,
+    issues,
+  };
 }

@@ -60,6 +60,7 @@ import {
   filterDiffByPaths,
   matchesAnyGlob,
   parseIgnoreGlobs,
+  scopeReviewToDiff,
 } from "./diff-filter.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
@@ -672,8 +673,26 @@ export async function runReviewPr(
       timeoutMinutes,
       julesOptions,
     });
-    const { reviewResult, sessionId, rawResponses, validationErrors } =
-      reviewRun;
+    const { sessionId, rawResponses } = reviewRun;
+    // Scope the review to the PR's changed files before anything downstream
+    // reads it (issue #91). A finding in a file the diff does not touch cannot
+    // be actioned in this PR, so it is dropped before publishing, recorded on
+    // the artifact, and a `block` resting only on such findings is downgraded
+    // to `comment` — out-of-diff findings must never block.
+    const scoped = reviewRun.reviewResult
+      ? scopeReviewToDiff(reviewRun.reviewResult, context.changedFiles)
+      : null;
+    if (scoped && scoped.droppedComments.length > 0) {
+      const dropped = scoped.droppedComments
+        .map((comment) => `${comment.file}:${comment.line}`)
+        .join(", ");
+      core.warning(`Dropped out-of-diff finding(s): ${dropped}`);
+    }
+    const reviewResult = scoped ? scoped.review : null;
+    const validationErrors = [
+      ...(reviewRun.validationErrors ?? []),
+      ...(scoped?.issues ?? []),
+    ];
     const blankReview =
       reviewResult != null && isBlankReviewBody(reviewResult.summary);
     const outcome: ReviewOutcome = !reviewResult

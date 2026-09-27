@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 import unittest
 
@@ -269,6 +270,85 @@ class WorkflowPolicyTests(unittest.TestCase):
 
         self.assertIn("Linux", text)
         self.assertIn("ARM64", text)
+
+    def test_authoritative_package_manager_is_pnpm_and_only_pnpm(self) -> None:
+        # #43: this repo committed pnpm-lock.yaml (v9) but no packageManager
+        # field, and ci.yml still ran `npm install`. That is the
+        # mixed-manager, non-reproducible path the issue names. Asserted
+        # together rather than separately because each half alone is silent:
+        # a future PR could add packageManager without removing the npm
+        # lockfile, or remove the npm lockfile without pinning the manager,
+        # and either pass a one-sided test.
+        package_json = (ROOT / "package.json").read_text(encoding="utf-8")
+
+        manifest = json.loads(package_json)
+        # Exact field, not a substring: pinning the manager is the point, and
+        # a `packageManager` mention buried in a README string would pass an
+        # `assertIn` on the raw text.
+        self.assertEqual(
+            "pnpm@10.0.0",
+            manifest.get("packageManager"),
+            "package.json must pin packageManager to pnpm@10.0.0",
+        )
+
+        # No project-style npm install, `npm i`, or `npm ci` in any
+        # workflow. Scope-walked via the existing steps_of() helper rather
+        # than a literal substring, so a re-indent or formatter pass cannot
+        # disable it. `npm install -g <tool>` and `npm install --global
+        # <tool>` are allowed — that's how this workflow installs pnpm
+        # itself — so the regex allowlists exactly those two forms. Every
+        # other `npm install`, plus `npm i` (the install shorthand) and
+        # `npm ci` (which reads and rewrites the lockfile identically),
+        # touches package-lock.json and is the drift #43 names; an
+        # allowlist (rather than a deny-list on `-`) keeps a future flag
+        # like `--save` or `--omit=dev` from silently bypassing the check.
+        project_install = re.compile(
+            r"\bnpm\s+(?:install|i|ci)\b(?!\s+(?:-g|--global)\b)"
+        )
+        for workflow in (CI_WORKFLOW, RELEASE_PLEASE_WORKFLOW):
+            if not workflow.exists():
+                continue
+            text = workflow.read_text(encoding="utf-8")
+            for step in steps_of(text):
+                joined = "\n".join(step)
+                self.assertNotRegex(
+                    joined,
+                    project_install,
+                    f"{workflow.name}: step {step[0]!r} still runs a project npm install (npm install / npm i / npm ci)",
+                )
+                self.assertNotIn(
+                    "yarn install",
+                    joined,
+                    f"{workflow.name}: step {step[0]!r} runs yarn install",
+                )
+
+        # Any `pnpm install` (or `pnpm i`) step must be frozen, so a future
+        # PR that drops the flag silently rewriting the lockfile fails the
+        # policy too (pnpm itself would also fail the run, but a policy
+        # assertion names the regression in a way the build output doesn't).
+        frozen_pnpm = re.compile(r"\bpnpm\s+(?:install|i)\b(?!.*--frozen-lockfile)")
+        for workflow in (CI_WORKFLOW, RELEASE_PLEASE_WORKFLOW):
+            if not workflow.exists():
+                continue
+            text = workflow.read_text(encoding="utf-8")
+            for step in steps_of(text):
+                joined = "\n".join(step)
+                if "pnpm install" not in joined and "pnpm i" not in joined:
+                    continue
+                self.assertNotRegex(
+                    joined,
+                    frozen_pnpm,
+                    f"{workflow.name}: step {step[0]!r} runs `pnpm install` without --frozen-lockfile",
+                )
+
+        # No non-pnpm lockfile committed at the repo root. Using the bare
+        # filename (not a glob) so the test names the exact file a reviewer
+        # would need to delete to make CI green.
+        for forbidden in ("package-lock.json", "yarn.lock"):
+            self.assertFalse(
+                (ROOT / forbidden).exists(),
+                f"{forbidden} must not be committed; pnpm-lock.yaml is the only lockfile",
+            )
 
 
 if __name__ == "__main__":

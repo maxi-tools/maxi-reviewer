@@ -1,0 +1,18 @@
+dist/index.js
+  h_cebe5b6d461c32 73007-73024,73419-73427,73445
+dist/index.js.map
+  h_cebe5b6d461c32 1
+tests/review-pr.test.ts
+  h_cebe5b6d461c32 934-948,950-985
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0dc3d7534f5498764ed3e91f8511e471b23f9104",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

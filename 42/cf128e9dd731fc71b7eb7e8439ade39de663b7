@@ -1,0 +1,30 @@
+dist/index.js
+  h_cebe5b6d461c32 71213,71224-71226,71318,71342-71348,71350,71352-71359,71362-71368,71370,71380-71382,71384,71387,71390-71392,71404,71440,71462-71575,71577-71609,71612-71629,71632-71668,71670-71745
+dist/index.js.map
+  h_cebe5b6d461c32 1
+src/openai-review.ts
+  h_cebe5b6d461c32 2,4-9,11-27
+src/openai/client.ts
+  h_cebe5b6d461c32 1-214
+src/openai/conversation.ts
+  h_cebe5b6d461c32 1-68
+src/openai/parse.ts
+  h_cebe5b6d461c32 1-102
+src/openai/retrieval-loop.ts
+  h_cebe5b6d461c32 1-83
+src/openai/run.ts
+  h_cebe5b6d461c32 1-310
+tests/openai-review.test.ts
+  h_cebe5b6d461c32 322-353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "42cf128e9dd731fc71b7eb7e8439ade39de663b7",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

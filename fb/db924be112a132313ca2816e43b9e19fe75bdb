@@ -1,0 +1,22 @@
+README.md
+  h_cebe5b6d461c32 101
+src/diff-filter.ts
+  h_cebe5b6d461c32 1-2,108-174
+src/review-pr.ts
+  h_cebe5b6d461c32 63,676-695
+tests/diff-filter.test.ts
+  h_cebe5b6d461c32 2,5,10,121-212
+tests/review-pr.test.ts
+  h_cebe5b6d461c32 865-931
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fbdb924be112a132313ca2816e43b9e19fe75bdb",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

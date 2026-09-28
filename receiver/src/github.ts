@@ -51,7 +51,10 @@ async function getInstallationToken(
 }
 
 const APP_JWT_BUFFER_SECONDS = 60;
-async function getAppJwt(cache: ClientCache, config: AppConfig): Promise<string> {
+async function getAppJwt(
+  cache: ClientCache,
+  config: AppConfig
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const cached = cache.appJwts.get(config.appId);
   if (cached && cached.expiresAt > now + APP_JWT_BUFFER_SECONDS) {

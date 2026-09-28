@@ -29,7 +29,7 @@ import tseslint from "typescript-eslint";
 import prettierConfig from "eslint-config-prettier";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "coverage", "specs", ".gemini"] },
+  { ignores: ["dist", "node_modules", "coverage", "specs", ".gemini", "receiver"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   prettierConfig,

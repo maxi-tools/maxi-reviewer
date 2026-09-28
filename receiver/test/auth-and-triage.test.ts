@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import { verifyWebhookSignature, mintAppJwt } from "../src/auth.js";
-import { triage, type WebhookEvent } from "../src/triage.js";
+import { triage } from "../src/triage.js";
 
 describe("verifyWebhookSignature", () => {
   const secret = "shhh-very-secret";

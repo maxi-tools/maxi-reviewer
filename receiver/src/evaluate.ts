@@ -304,8 +304,8 @@ export function evaluate(doc: unknown, only: Only = ONLY_ALL): EvaluateResult {
   // Roster narrows condition 2 to the selectors's asked set, when one is
   // present AND non-empty. An absent roster or an empty asked list both
   // fall back to the pre-roster rule.
-  let activeRoster: Roster | null = null;
   let askedLogins: Set<string> | null = null;
+  let activeRoster: Roster | null;
   let covered: string[];
   if (roster !== null && roster.asked.length > 0) {
     activeRoster = roster;

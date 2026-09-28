@@ -63,20 +63,18 @@ export interface Env {
   HEARTBEAT_STALE_SECONDS?: string;
 }
 
-interface InstallationMap {
+interface InstallationCacheEntry {
   /** repo full_name ("o/r") -> installation id. */
-  byRepo: Map<string, number>;
-  /** installation id -> access token URL fragment, refreshed lazily. */
+  ids: Map<string, number>;
+  /** Unix-seconds when this cache entry was fetched. */
+  fetchedAt: number;
 }
 
 /**
  * Look up the installation id for a repository. The App's installations
  * endpoint returns the mapping; cached for 5 minutes inside the isolate.
  */
-const installationCache = new Map<
-  string,
-  { ids: Map<string, number>; fetchedAt: number }
->();
+const installationCache = new Map<string, InstallationCacheEntry>();
 const INSTALLATION_TTL_SECONDS = 5 * 60;
 
 async function installationIdFor(

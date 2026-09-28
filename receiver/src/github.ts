@@ -39,7 +39,7 @@ async function getInstallationToken(
   if (cached && cached.expiresAt > now + INSTALLATION_TTL_BUFFER_SECONDS) {
     return cached.token;
   }
-  const jwt = await getAppJwt(cache, config, fetchImpl);
+  const jwt = await getAppJwt(cache, config);
   const tok = await installationToken({
     appJwt: jwt,
     installationId,
@@ -51,11 +51,7 @@ async function getInstallationToken(
 }
 
 const APP_JWT_BUFFER_SECONDS = 60;
-async function getAppJwt(
-  cache: ClientCache,
-  config: AppConfig,
-  fetchImpl: typeof fetch
-): Promise<string> {
+async function getAppJwt(cache: ClientCache, config: AppConfig): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const cached = cache.appJwts.get(config.appId);
   if (cached && cached.expiresAt > now + APP_JWT_BUFFER_SECONDS) {

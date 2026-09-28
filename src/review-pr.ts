@@ -467,14 +467,41 @@ export async function runReviewPr(
 
   if (isDraft && skipDrafts) {
     core.info("Skipping draft PR.");
+    await deps.setStatus(
+      octokit,
+      owner,
+      repo,
+      headSha,
+      statusContext,
+      "success",
+      "skipped: draft"
+    );
     return;
   }
   if (isFork && skipForks) {
     core.info("Skipping fork PR (skip_forks=true).");
+    await deps.setStatus(
+      octokit,
+      owner,
+      repo,
+      headSha,
+      statusContext,
+      "success",
+      "skipped: fork"
+    );
     return;
   }
   if (labels.includes(bypassLabel)) {
     core.info(`Bypass label "${bypassLabel}" present — skipping review.`);
+    await deps.setStatus(
+      octokit,
+      owner,
+      repo,
+      headSha,
+      statusContext,
+      "success",
+      `skipped: bypass label (${bypassLabel})`
+    );
     return;
   }
 

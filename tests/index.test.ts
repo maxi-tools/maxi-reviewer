@@ -272,6 +272,15 @@ describe("index.ts", () => {
     );
     await loadIndex();
     expect(mockInfo).toHaveBeenCalledWith("Skipping draft PR.");
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "success",
+      "skipped: draft"
+    );
   });
 
   it("skips fork PR if skip_forks is true", async () => {
@@ -283,6 +292,15 @@ describe("index.ts", () => {
     await loadIndex();
     expect(mockInfo).toHaveBeenCalledWith(
       "Skipping fork PR (skip_forks=true)."
+    );
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "success",
+      "skipped: fork"
     );
   });
 
@@ -300,6 +318,15 @@ describe("index.ts", () => {
     await loadIndex();
     expect(mockInfo).toHaveBeenCalledWith(
       'Bypass label "skip-review" present — skipping review.'
+    );
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "success",
+      'skipped: bypass label (skip-review)'
     );
   });
 

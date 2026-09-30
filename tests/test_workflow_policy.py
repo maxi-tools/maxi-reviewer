@@ -309,25 +309,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         for workflow in workflows:
             for step in steps_of(workflow.read_text(encoding="utf-8")):
                 for manager, args in install_commands(step):
-                    if manager == "npm":
-                        global_install = bool(re.match(r"(?:-g|--global)(?=\s|$)", args))
-                        sdk_install = (
-                            workflow.name == "maxi-fix.yml"
-                            and step[0] == "name: Install Jules SDK"
-                            and args == "--no-save @google/jules-sdk@0.2.0"
-                        )
-                        self.assertTrue(
-                            global_install or sdk_install,
-                            f"{workflow.name}: {step[0]!r} uses a project npm install: {args}",
-                        )
-                    elif manager == "pnpm":
-                        self.assertRegex(
-                            args,
-                            r"(?:^|\s)--frozen-lockfile(?:\s|$)",
-                            f"{workflow.name}: {step[0]!r} has an unfrozen pnpm install",
-                        )
-                    else:
-                        self.fail(f"{workflow.name}: {step[0]!r} uses yarn install")
+                    self.assert_valid_install(workflow.name, step[0], manager, args)
 
         for job in ("ci", "ci-fork"):
             # Scope each install to its job; an install in ci must not vouch
@@ -346,6 +328,29 @@ class WorkflowPolicyTests(unittest.TestCase):
 
         self_test = (ROOT / ".github" / "workflows" / "self-test.yml").read_text()
         self.assertIn("pnpm install --frozen-lockfile", self_test)
+        for forbidden in ("package-lock.json", "yarn.lock"):
+            self.assertFalse((ROOT / forbidden).exists(), f"{forbidden} must not be committed")
+
+    def assert_valid_install(self, workflow: str, step: str, manager: str, args: str) -> None:
+        if manager == "npm":
+            global_install = bool(re.match(r"(?:-g|--global)(?=\s|$)", args))
+            sdk_install = (
+                workflow == "maxi-fix.yml"
+                and step == "name: Install Jules SDK"
+                and args == "--no-save @google/jules-sdk@0.2.0"
+            )
+            self.assertTrue(
+                global_install or sdk_install,
+                f"{workflow}: {step!r} uses a project npm install: {args}",
+            )
+        elif manager == "pnpm":
+            self.assertRegex(
+                args,
+                r"(?:^|\s)--frozen-lockfile(?:\s|$)",
+                f"{workflow}: {step!r} has an unfrozen pnpm install",
+            )
+        else:
+            self.fail(f"{workflow}: {step!r} uses yarn install")
 
     def test_install_command_parser_rejects_bypasses(self) -> None:
         cases = [
@@ -357,17 +362,10 @@ class WorkflowPolicyTests(unittest.TestCase):
         for command, expected in cases:
             with self.subTest(command=command):
                 self.assertEqual(expected, install_commands([command]))
-                if command.startswith("npm"):
-                    self.assertFalse(re.match(r"(?:-g|--global)(?=\s|$)", expected[0][1]))
-
-        # No non-pnpm lockfile committed at the repo root. Using the bare
-        # filename (not a glob) so the test names the exact file a reviewer
-        # would need to delete to make CI green.
-        for forbidden in ("package-lock.json", "yarn.lock"):
-            self.assertFalse(
-                (ROOT / forbidden).exists(),
-                f"{forbidden} must not be committed; pnpm-lock.yaml is the only lockfile",
-            )
+                self.assert_valid_install("ci.yml", "name: Install dependencies", "npm", "-g pnpm@10.0.0")
+                for manager, args in expected[:1]:
+                    with self.assertRaises(AssertionError):
+                        self.assert_valid_install("ci.yml", "name: Install dependencies", manager, args)
 
 
 if __name__ == "__main__":

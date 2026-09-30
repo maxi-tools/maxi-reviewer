@@ -8,6 +8,8 @@
  * truth and trimmed where the surface moved them out of view.
  */
 
+import { parseRoster as parseRosterDescription } from "./evaluate.js";
+
 const REVIEW_THREADS_QUERY = `
   query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
     repository(owner:$owner,name:$repo){
@@ -113,6 +115,18 @@ async function fetchAll<T extends object>(
   return pages;
 }
 
+function connectionNodes(
+  page: unknown,
+  field: "reviews" | "reviewThreads"
+): Array<Record<string, unknown>> {
+  const root = page as {
+    data?: { repository?: { pullRequest?: Record<string, unknown> } };
+  };
+  const connection = root.data?.repository?.pullRequest?.[field] as
+    { nodes?: Array<Record<string, unknown>> } | undefined;
+  return connection?.nodes ?? [];
+}
+
 export async function collect(
   gh: GitHubClient,
   owner: string,
@@ -204,15 +218,9 @@ export async function collect(
   }
 
   // Flatten the thread pages, pulling only the fields the gate consumes.
-  const flatThreads = threadPages.flatMap((page) => {
-    const p = page as unknown as Record<string, unknown>;
-    const dataField = p?.["data"] as Record<string, unknown> | undefined;
-    const repo = dataField?.["repository"] as
-      Record<string, unknown> | undefined;
-    const tp = repo?.["pullRequest"] as Record<string, unknown> | undefined;
-    const threads = tp?.["reviewThreads"] as { nodes?: unknown[] } | undefined;
-    return (threads?.["nodes"] ?? []) as Array<Record<string, unknown>>;
-  });
+  const flatThreads = threadPages.flatMap((page) =>
+    connectionNodes(page, "reviewThreads")
+  );
   const threads = flatThreads.map((th) => {
     const comments = th.comments as { nodes?: Array<Record<string, unknown>> };
     const c = comments?.nodes?.[0] ?? {};
@@ -227,15 +235,9 @@ export async function collect(
   });
 
   // Flatten the review pages.
-  const flatReviews = reviewPages.flatMap((page) => {
-    const p = page as unknown as Record<string, unknown>;
-    const dataField = p?.["data"] as Record<string, unknown> | undefined;
-    const repo = dataField?.["repository"] as
-      Record<string, unknown> | undefined;
-    const tp = repo?.["pullRequest"] as Record<string, unknown> | undefined;
-    const reviews = tp?.["reviews"] as { nodes?: unknown[] } | undefined;
-    return (reviews?.["nodes"] ?? []) as Array<Record<string, unknown>>;
-  });
+  const flatReviews = reviewPages.flatMap((page) =>
+    connectionNodes(page, "reviews")
+  );
   const reviews = flatReviews.map((rv) => {
     const author = rv.author as { login?: string } | undefined;
     return {
@@ -282,5 +284,3 @@ export async function collect(
 
   return payload;
 }
-
-import { parseRoster as parseRosterDescription } from "./evaluate.js";

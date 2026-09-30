@@ -616,14 +616,12 @@ export async function runReviewPr(
       ),
     });
 
-    const previousSessionId = await loadPreviousReviewSessionId(
-      deps,
-      octokit,
+    const previousSessionId = await loadPreviousReviewSessionId(deps, octokit, {
       owner,
       repo,
       prNumber,
-      baseSha
-    );
+      baseSha,
+    });
     const julesOptions = buildJulesReviewOptions(context);
     if (retrievalMode === "auto") {
       julesOptions.retrieval = {
@@ -1147,10 +1145,17 @@ function buildJulesReviewOptions(
 async function loadPreviousReviewSessionId(
   deps: ReviewPrDeps,
   octokit: Octokit,
-  owner: string,
-  repo: string,
-  prNumber: number,
-  currentBaseSha: string
+  {
+    owner,
+    repo,
+    prNumber,
+    baseSha,
+  }: {
+    owner: string;
+    repo: string;
+    prNumber: number;
+    baseSha: string;
+  }
 ): Promise<string | undefined> {
   try {
     const comments = await deps.listReviewArtifactComments(
@@ -1159,7 +1164,7 @@ async function loadPreviousReviewSessionId(
       repo,
       prNumber
     );
-    return latestReviewArtifactSessionId(comments, currentBaseSha);
+    return latestReviewArtifactSessionId(comments, baseSha);
   } catch (err) {
     core.warning(
       `Failed to load previous Maxi review artifact session: ${String(err)}`
@@ -1186,8 +1191,8 @@ export function latestReviewArtifactSessionId(
       artifact.validatedReview != null;
     if (!responded) continue;
     // Jules sessions stay pinned to the source they were created against.
-    // When the PR base has moved, resume reviews a diff that no longer exists
-    // and every finding it anchors is unpostable (maxi-reviewer#88).
+    // When the PR base has moved, resuming a review would use a diff that
+    // no longer exists, and every finding it anchors is unpostable (#88).
     if (artifact.baseSha !== currentBaseSha) continue;
     return artifact.sessionId;
   }

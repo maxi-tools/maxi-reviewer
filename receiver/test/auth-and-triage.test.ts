@@ -9,6 +9,7 @@
  * four that should re-trigger the gate.
  */
 
+import { createPrivateKey } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { verifyWebhookSignature, mintAppJwt } from "../src/auth.js";
 import { triage } from "../src/triage.js";
@@ -30,11 +31,10 @@ describe("verifyWebhookSignature", () => {
       key,
       new TextEncoder().encode(body)
     );
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const header = "sha256=" + b64;
+    const hex = Array.from(new Uint8Array(sigBuf), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
+    const header = "sha256=" + hex;
     expect(await verifyWebhookSignature(secret, body, header)).toBe(true);
   });
 
@@ -44,7 +44,7 @@ describe("verifyWebhookSignature", () => {
 
   it("rejects a signature with the wrong bytes", async () => {
     expect(
-      await verifyWebhookSignature(secret, body, "sha256=" + "A".repeat(43))
+      await verifyWebhookSignature(secret, body, "sha256=" + "A".repeat(64))
     ).toBe(false);
   });
 
@@ -65,11 +65,10 @@ describe("verifyWebhookSignature", () => {
       key,
       new TextEncoder().encode("other body")
     );
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const header = "sha256=" + b64;
+    const hex = Array.from(new Uint8Array(sigBuf), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
+    const header = "sha256=" + hex;
     expect(await verifyWebhookSignature(secret, body, header)).toBe(false);
   });
 });
@@ -109,6 +108,20 @@ describe("mintAppJwt", () => {
     );
     expect(payload.iss).toBe("123456");
     expect(payload.exp).toBe(1_700_000_000 + 9 * 60);
+    // GitHub downloads PKCS#1 PEM; it must sign as well as PKCS#8.
+    const pkcs1 = createPrivateKey({
+      key: Buffer.from(der),
+      format: "der",
+      type: "pkcs8",
+    })
+      .export({ format: "pem", type: "pkcs1" })
+      .toString();
+    const githubJwt = await mintAppJwt({
+      appId: "123456",
+      privateKeyPem: pkcs1,
+      nowSeconds: 1_700_000_000,
+    });
+    expect(githubJwt.split(".")).toHaveLength(3);
   });
 });
 
@@ -157,8 +170,34 @@ describe("triage", () => {
       pull_request: { number: 7, head: { sha: "abc123" } },
       repository: repo,
     });
-    expect(r).toMatchObject({ reason: "pull_request.opened", pr: 7 });
+    expect(r).toMatchObject({ reason: "pull_request", pr: 7 });
   });
+
+  it.each(["synchronize", "converted_to_draft", "labeled", "unlabeled"])(
+    "reevaluates pull_request %s",
+    (action) => {
+      expect(
+        triage("pull_request", {
+          action,
+          pull_request: { number: 7 },
+          repository: repo,
+        })
+      ).toMatchObject({ reason: "pull_request", pr: 7 });
+    }
+  );
+
+  it.each(["created", "deleted"])(
+    "reevaluates standalone review comment %s",
+    (action) => {
+      expect(
+        triage("pull_request_review_comment", {
+          action,
+          pull_request: { number: 7 },
+          repository: repo,
+        })
+      ).toMatchObject({ reason: "pull_request_review_comment", pr: 7 });
+    }
+  );
 
   it("ignores pull_request on closed/edited", () => {
     expect(

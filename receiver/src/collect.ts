@@ -192,8 +192,14 @@ export async function collect(
       }
       if (rosterDescription !== "") break;
     }
-  } catch {
-    // Fail-open per the comment above.
+  } catch (error) {
+    // An installation without Commit statuses: read must not silently bypass
+    // the required roster; transient API failures retain the workflow fallback.
+    if (error instanceof Error && /\b403\b/.test(error.message)) {
+      throw new Error(
+        "commit statuses: read permission required for roster lookup"
+      );
+    }
     rosterDescription = "";
   }
 

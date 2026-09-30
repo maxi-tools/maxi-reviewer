@@ -35,7 +35,8 @@ export interface Evaluation {
   reason:
     | "pull_request_review_thread"
     | "pull_request_review"
-    | "pull_request.opened"
+    | "pull_request_review_comment"
+    | "pull_request"
     | "check_run.rerequested";
 }
 
@@ -76,14 +77,34 @@ export function triage(
       if (typeof pr !== "number") return null;
       return { owner, repo, pr, headSha, reason: "pull_request_review" };
     }
+    case "pull_request_review_comment": {
+      if (body.action !== "created" && body.action !== "deleted") return null;
+      const pr = body.pull_request?.number;
+      if (typeof pr !== "number") return null;
+      return {
+        owner,
+        repo,
+        pr,
+        headSha: body.pull_request?.head?.sha,
+        reason: "pull_request_review_comment",
+      };
+    }
     case "pull_request": {
       const action = body.action;
       const pr = body.pull_request?.number;
       const headSha = body.pull_request?.head?.sha;
       if (typeof pr !== "number") return null;
-      const allowed = ["opened", "reopened", "ready_for_review"];
+      const allowed = [
+        "opened",
+        "reopened",
+        "synchronize",
+        "ready_for_review",
+        "converted_to_draft",
+        "labeled",
+        "unlabeled",
+      ];
       if (!allowed.includes(action ?? "")) return null;
-      return { owner, repo, pr, headSha, reason: "pull_request.opened" };
+      return { owner, repo, pr, headSha, reason: "pull_request" };
     }
     case "check_run": {
       if (body.action !== "rerequested") return null;

@@ -53,7 +53,7 @@ const cache: ClientCache = newClientCache();
 export interface Env {
   /** GitHub App id, as a string ("123456"). */
   APP_ID: string;
-  /** PKCS#8 PEM-encoded private key from the App settings page. */
+  /** PKCS#1 GitHub-downloaded or PKCS#8 PEM-encoded private key. */
   APP_PRIVATE_KEY: string;
   /** Shared webhook secret, base64 or hex stripped (the raw PEM-armoured form). */
   APP_WEBHOOK_SECRET: string;
@@ -77,6 +77,14 @@ interface InstallationCacheEntry {
 const installationCache = new Map<string, InstallationCacheEntry>();
 const INSTALLATION_TTL_SECONDS = 5 * 60;
 
+function findInstallation(
+  ids: Map<string, number>,
+  repoFullName: string
+): number | null {
+  const owner = repoFullName.split("/")[0];
+  return ids.get(repoFullName) ?? ids.get(`${owner}/*`) ?? null;
+}
+
 async function installationIdFor(
   repoFullName: string,
   appConfig: AppConfig,
@@ -85,7 +93,7 @@ async function installationIdFor(
   const now = Math.floor(Date.now() / 1000);
   const cached = installationCache.get(appConfig.appId);
   if (cached && now - cached.fetchedAt < INSTALLATION_TTL_SECONDS) {
-    return cached.ids.get(repoFullName) ?? null;
+    return findInstallation(cached.ids, repoFullName);
   }
   const jwt = await mintAppJwt({
     appId: appConfig.appId,
@@ -128,7 +136,7 @@ async function installationIdFor(
     }
   }
   installationCache.set(appConfig.appId, { ids, fetchedAt: now });
-  return ids.get(repoFullName) ?? null;
+  return findInstallation(ids, repoFullName);
 }
 
 /** Write the heartbeat timestamp; called only on a successful publish. */
@@ -285,19 +293,20 @@ async function handleWebhook(req: Request, env: Env): Promise<Response> {
       work.headSha
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Never expose upstream response bodies, errors, or stack traces to webhook callers.
+    console.error("receiver publish failed", err);
     return new Response(
-      JSON.stringify({ ok: false, error: message, delivery: deliveryId }),
+      JSON.stringify({
+        ok: false,
+        error: "publish failed",
+        delivery: deliveryId,
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // Only record heartbeat on a SUCCESSFUL publish; a failed publish is
-  // exactly what the monitor is supposed to surface, and writing a fresh
-  // timestamp then would defeat the whole point.
-  if (result.ok) {
-    await recordHeartbeat(env);
-  }
+  // Both check runs were published; a failing verdict is still a live receiver.
+  await recordHeartbeat(env);
 
   return new Response(
     JSON.stringify({

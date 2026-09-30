@@ -16,7 +16,7 @@ const APP_JWT_TTL_SECONDS = 9 * 60; // 9 min — under GitHub's 10-min cap
 let cachedPemKey: CryptoKey | null = null;
 let cachedPemKeyPem: string | null = null;
 
-/** Strip PEM armour and base64-decode a PKCS#8 RSA private key. */
+/** Strip PEM armour and base64-decode an RSA private key. */
 function pemToDer(pem: string): Uint8Array {
   const stripped = pem
     .replace(/-----BEGIN [^-]+-----/g, "")
@@ -49,9 +49,35 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return ab;
 }
 
+function derLength(length: number): number[] {
+  if (length < 128) return [length];
+  const bytes: number[] = [];
+  for (let value = length; value > 0; value = Math.floor(value / 256)) {
+    bytes.unshift(value % 256);
+  }
+  return [0x80 | bytes.length, ...bytes];
+}
+
+function derTag(tag: number, contents: Uint8Array): Uint8Array {
+  return new Uint8Array([tag, ...derLength(contents.length), ...contents]);
+}
+
+/** WebCrypto imports PKCS#8, while GitHub downloads PKCS#1 RSA keys. */
+function pkcs1ToPkcs8(key: Uint8Array): Uint8Array {
+  // PrivateKeyInfo: version 0, rsaEncryption OID + NULL, OCTET STRING RSAPrivateKey.
+  const prefix = new Uint8Array([
+    0x02, 0x01, 0x00, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7,
+    0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
+  ]);
+  return derTag(0x30, new Uint8Array([...prefix, ...derTag(0x04, key)]));
+}
+
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
   if (cachedPemKey && cachedPemKeyPem === pem) return cachedPemKey;
-  const der = pemToDer(pem);
+  const decoded = pemToDer(pem);
+  const der = pem.includes("-----BEGIN RSA PRIVATE KEY-----")
+    ? pkcs1ToPkcs8(decoded)
+    : decoded;
   // The WebCrypto API takes an `ArrayBuffer`, not the broader
   // `ArrayBufferLike`; copy into a fresh buffer so the call site sees a
   // plain ArrayBuffer-backed Uint8Array.
@@ -71,7 +97,7 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
 
 export interface AppJwtInputs {
   appId: string;
-  /** PKCS#8 PEM-encoded private key from the App settings page. */
+  /** PKCS#1 GitHub-downloaded or PKCS#8 PEM-encoded private key. */
   privateKeyPem: string;
   /** Optional override; defaults to "now". */
   nowSeconds?: number;
@@ -177,7 +203,9 @@ export async function verifyWebhookSignature(
     key,
     toArrayBuffer(new TextEncoder().encode(body))
   );
-  const computed = b64url(new Uint8Array(sig));
+  const computed = Array.from(new Uint8Array(sig), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
   if (provided.length !== computed.length) return false;
   let diff = 0;
   for (let i = 0; i < provided.length; i++) {

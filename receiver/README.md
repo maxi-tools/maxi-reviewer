@@ -11,7 +11,7 @@ The fix it implements is described in
 
 Resolving a review thread on a PR emits `pull_request_review_thread`
 (`resolved` / `unresolved`) — a webhook delivered to GitHub Apps but not a
-valid workflow trigger. This Worker subscribes to that webhook (and three
+valid workflow trigger. This Worker subscribes to that webhook (and four
 siblings) on behalf of the `maxi-reviewer` App, re-runs the gate logic on
 the live PR state, and posts the verdict as the App's own check run. A
 check run owned by the App is reachable through GitHub's manual re-run
@@ -24,7 +24,8 @@ Subscribed events:
 | ------------------------------------- |   |
 | `pull_request_review_thread`          | `resolved`, `unresolved`                          |
 | `pull_request_review`                 | `submitted`, `dismissed`                          |
-| `pull_request`                        | `opened`, `reopened`, `ready_for_review`          |
+| `pull_request`                        | `opened`, `reopened`, `synchronize`, `ready_for_review`, `converted_to_draft`, `labeled`, `unlabeled` |
+| `pull_request_review_comment`         | `created`, `deleted`                              |
 | `check_run`                           | `rerequested`, AND `name == maxi-reviewer/...`    |
 
 ## What is checked in
@@ -63,7 +64,7 @@ fresh, 503 when stale, so an external poller can also watch.
 | ------------------- |   |
 | `checks: write`     | posting the App's own check run            |
 | `pull_requests: read` | the GraphQL reviews + threads read       |
-| `contents: read`    | (not currently needed; reserved for future roster reads) |
+| `statuses: read`    | reading `review-roster` commit statuses         |
 
 No `contents: write`, no `actions: write`, no `workflows: write`.
 
@@ -88,7 +89,7 @@ wrangler deploy
 ```
 
 In the App's settings page, set the webhook URL to
-`https://<worker>/webhook` and subscribe to the four events above.
+`https://<worker>/webhook` and subscribe to the five events above.
 
 ## Tests
 

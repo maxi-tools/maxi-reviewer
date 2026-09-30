@@ -1,0 +1,21 @@
+# Cloudflare Worker configuration for the maxi-reviewer re-trigger receiver.
+#
+# The secrets (APP_ID, APP_PRIVATE_KEY, APP_WEBHOOK_SECRET) are set via
+# `wrangler secret put` rather than committed here. The KV namespace is
+# the heartbeat store; bind it in the dashboard before deploying.
+name = "maxi-reviewer-receiver"
+main = "src/worker.ts"
+compatibility_date = "2026-09-01"
+
+# Cron trigger — every 5 minutes. The handler only writes to KV when the
+# heartbeat is stale, so the cron costs are negligible in the steady state.
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "HEARTBEAT"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_PREVIEW_KV_ID"
+
+[observability]
+enabled = true

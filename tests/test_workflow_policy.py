@@ -141,6 +141,17 @@ def step_using(steps: list, action: str) -> list:
     return matches[0]
 
 
+def install_commands(step: list[str]) -> list[tuple[str, str]]:
+    """Return each shell install invocation and its own arguments, not its step's."""
+    commands = []
+    for line in step:
+        for segment in re.split(r"\s*(?:&&|\|\||;)\s*", line):
+            match = re.search(r"\b(npm|pnpm|yarn)\s+(install|i|ci)\b", segment)
+            if match:
+                commands.append((match.group(1), segment[match.end():].strip()))
+    return commands
+
+
 class WorkflowPolicyTests(unittest.TestCase):
     def test_trusted_ci_uses_self_hosted_and_forks_use_isolation(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
@@ -291,55 +302,63 @@ class WorkflowPolicyTests(unittest.TestCase):
             "package.json must pin packageManager to pnpm@10.0.0",
         )
 
-        # No project-style npm install, `npm i`, or `npm ci` in any
-        # workflow. Scope-walked via the existing steps_of() helper rather
-        # than a literal substring, so a re-indent or formatter pass cannot
-        # disable it. `npm install -g <tool>` and `npm install --global
-        # <tool>` are allowed — that's how this workflow installs pnpm
-        # itself — so the regex allowlists exactly those two forms. Every
-        # other `npm install`, plus `npm i` (the install shorthand) and
-        # `npm ci` (which reads and rewrites the lockfile identically),
-        # touches package-lock.json and is the drift #43 names; an
-        # allowlist (rather than a deny-list on `-`) keeps a future flag
-        # like `--save` or `--omit=dev` from silently bypassing the check.
-        project_install = re.compile(
-            r"\bnpm\s+(?:install|i|ci)\b(?!\s+(?:-g|--global)\b)"
-        )
-        for workflow in (CI_WORKFLOW, RELEASE_PLEASE_WORKFLOW):
-            if not workflow.exists():
-                continue
-            text = workflow.read_text(encoding="utf-8")
-            for step in steps_of(text):
-                joined = "\n".join(step)
-                self.assertNotRegex(
-                    joined,
-                    project_install,
-                    f"{workflow.name}: step {step[0]!r} still runs a project npm install (npm install / npm i / npm ci)",
-                )
-                self.assertNotIn(
-                    "yarn install",
-                    joined,
-                    f"{workflow.name}: step {step[0]!r} runs yarn install",
-                )
+        # Scan every workflow, not just the main CI lane. maxi-fix is synced
+        # from maxi-config and installs an exact, untracked SDK transiently;
+        # preserve that separate behavior, but reject any other local npm install.
+        workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+        for workflow in workflows:
+            for step in steps_of(workflow.read_text(encoding="utf-8")):
+                for manager, args in install_commands(step):
+                    if manager == "npm":
+                        global_install = bool(re.match(r"(?:-g|--global)(?=\s|$)", args))
+                        sdk_install = (
+                            workflow.name == "maxi-fix.yml"
+                            and step[0] == "name: Install Jules SDK"
+                            and args == "--no-save @google/jules-sdk@0.2.0"
+                        )
+                        self.assertTrue(
+                            global_install or sdk_install,
+                            f"{workflow.name}: {step[0]!r} uses a project npm install: {args}",
+                        )
+                    elif manager == "pnpm":
+                        self.assertRegex(
+                            args,
+                            r"(?:^|\s)--frozen-lockfile(?:\s|$)",
+                            f"{workflow.name}: {step[0]!r} has an unfrozen pnpm install",
+                        )
+                    else:
+                        self.fail(f"{workflow.name}: {step[0]!r} uses yarn install")
 
-        # Any `pnpm install` (or `pnpm i`) step must be frozen, so a future
-        # PR that drops the flag silently rewriting the lockfile fails the
-        # policy too (pnpm itself would also fail the run, but a policy
-        # assertion names the regression in a way the build output doesn't).
-        frozen_pnpm = re.compile(r"\bpnpm\s+(?:install|i)\b(?!.*--frozen-lockfile)")
-        for workflow in (CI_WORKFLOW, RELEASE_PLEASE_WORKFLOW):
-            if not workflow.exists():
-                continue
-            text = workflow.read_text(encoding="utf-8")
-            for step in steps_of(text):
-                joined = "\n".join(step)
-                if "pnpm install" not in joined and "pnpm i" not in joined:
-                    continue
-                self.assertNotRegex(
-                    joined,
-                    frozen_pnpm,
-                    f"{workflow.name}: step {step[0]!r} runs `pnpm install` without --frozen-lockfile",
-                )
+        for job in ("ci", "ci-fork"):
+            # Scope each install to its job; an install in ci must not vouch
+            # for a removed install in ci-fork (or vice versa).
+            job_text = CI_WORKFLOW.read_text(encoding="utf-8").split(f"  {job}:", 1)[1]
+            job_text = job_text.split("\n  ci-fork:", 1)[0] if job == "ci" else job_text
+            installs = [
+                step for step in steps_of("jobs:\n  " + job + ":\n" + job_text)
+                if step[0] == "name: Install dependencies"
+            ]
+            self.assertEqual(1, len(installs), f"{job} needs an install step")
+            self.assertIn(
+                ("pnpm", "--frozen-lockfile"), install_commands(installs[0]),
+                f"{job} needs a frozen pnpm install",
+            )
+
+        self_test = (ROOT / ".github" / "workflows" / "self-test.yml").read_text()
+        self.assertIn("pnpm install --frozen-lockfile", self_test)
+
+    def test_install_command_parser_rejects_bypasses(self) -> None:
+        cases = [
+            ("pnpm install && pnpm install --frozen-lockfile", [("pnpm", ""), ("pnpm", "--frozen-lockfile")]),
+            ("npm install --global-style", [("npm", "--global-style")]),
+            ("npm install --global=false", [("npm", "--global=false")]),
+            ("pnpm ci", [("pnpm", "")]),
+        ]
+        for command, expected in cases:
+            with self.subTest(command=command):
+                self.assertEqual(expected, install_commands([command]))
+                if command.startswith("npm"):
+                    self.assertFalse(re.match(r"(?:-g|--global)(?=\s|$)", expected[0][1]))
 
         # No non-pnpm lockfile committed at the repo root. Using the bare
         # filename (not a glob) so the test names the exact file a reviewer

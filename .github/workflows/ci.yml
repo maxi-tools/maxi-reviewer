@@ -43,7 +43,7 @@ jobs:
         # package.json and pnpm-lock.yaml fails here rather than silently
         # rewriting the lockfile mid-CI.
         run: |
-          npm install -g pnpm@10
+          npm install -g pnpm@10.0.0
           pnpm install --frozen-lockfile
 
       - name: Prettier Check
@@ -115,7 +115,7 @@ jobs:
         # package.json and pnpm-lock.yaml fails here rather than silently
         # rewriting the lockfile mid-CI.
         run: |
-          npm install -g pnpm@10
+          npm install -g pnpm@10.0.0
           pnpm install --frozen-lockfile
 
       - name: Prettier Check

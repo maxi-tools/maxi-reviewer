@@ -72735,6 +72735,46 @@ function filterDiffByPaths(diff, ignoreGlobs) {
         return { diff, excludedPaths: [] };
     return { diff: filtered, excludedPaths };
 }
+/**
+ * Scope a review's findings to the PR's changed files (issue #91).
+ *
+ * A finding in a file the PR does not touch cannot be actioned here: there is
+ * no edit to this branch that resolves it, and GitHub rejects an inline
+ * comment on a file outside the diff, so the whole review falls back to a
+ * plain PR comment. Such findings are dropped before publishing and recorded
+ * in `issues` and `droppedComments` for the harvestable artifact.
+ *
+ * The verdict is scoped with them. When `block` was chosen and every finding
+ * behind it was dropped as out-of-diff, nothing in the diff supports a block,
+ * so the verdict is downgraded to `comment`: findings outside the diff must
+ * never block. Only a retained High finding can support a block. A summary-only
+ * block (no findings either way) is not touched — nothing identifies its basis.
+ */
+function scopeReviewToDiff(review, changedFiles) {
+    const changed = new Set(changedFiles);
+    const comments = review.newComments ?? [];
+    const kept = comments.filter((comment) => changed.has(comment.file));
+    const droppedComments = comments.filter((comment) => !changed.has(comment.file));
+    if (droppedComments.length === 0) {
+        return { review, droppedComments: [], issues: [] };
+    }
+    const issues = droppedComments.map((comment) => `out-of-diff finding dropped: ${comment.file}:${comment.line} is not among the PR's changed files.`);
+    let verdict = review.verdict;
+    if (verdict === "block" && !kept.some((c) => c.severity === "High")) {
+        verdict = "comment";
+        issues.unshift("verdict downgraded from block to comment: no in-diff High finding supports a block.");
+    }
+    // The original narrative may still describe excluded files or demand fixes
+    // outside this PR. Do not publish it after filtering its supporting findings.
+    const summary = kept.length
+        ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
+        : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
+    return {
+        review: { ...review, verdict, summary, newComments: kept },
+        droppedComments,
+        issues,
+    };
+}
 
 ;// CONCATENATED MODULE: ./src/rules/select.ts
 
@@ -73433,7 +73473,26 @@ async function runReviewPr(overrides = {}) {
             timeoutMinutes,
             julesOptions,
         });
-        const { reviewResult, sessionId, rawResponses, validationErrors } = reviewRun;
+        const { sessionId, rawResponses } = reviewRun;
+        // Scope the review to the PR's changed files before anything downstream
+        // reads it (issue #91). A finding in a file the diff does not touch cannot
+        // be actioned in this PR, so it is dropped before publishing, recorded on
+        // the artifact, and a `block` resting only on such findings is downgraded
+        // to `comment` — out-of-diff findings must never block.
+        const scoped = reviewRun.reviewResult
+            ? scopeReviewToDiff(reviewRun.reviewResult, context.changedFiles)
+            : null;
+        if (scoped && scoped.droppedComments.length > 0) {
+            const dropped = scoped.droppedComments
+                .map((comment) => `${comment.file}:${comment.line}`)
+                .join(", ");
+            core/* warning */.$e(`Dropped out-of-diff finding(s): ${dropped}`);
+        }
+        const reviewResult = scoped ? scoped.review : null;
+        const validationErrors = [
+            ...(reviewRun.validationErrors ?? []),
+            ...(scoped?.issues ?? []),
+        ];
         const blankReview = reviewResult != null && isBlankReviewBody(reviewResult.summary);
         const outcome = !reviewResult
             ? "TIMED_OUT_NO_CONTENT"
@@ -73473,7 +73532,8 @@ async function runReviewPr(overrides = {}) {
             analyzerFindings,
             rawJulesResponses: rawResponses || [],
             validatedReview: blankReview ? null : reviewResult,
-            validationErrors: validationErrors || [],
+            validationErrors,
+            droppedComments: scoped?.droppedComments ?? [],
             sessionId,
         });
         // The verdict is already decided -- it is in `reviewResult` above. What
@@ -73573,7 +73633,15 @@ async function runReviewPr(overrides = {}) {
         // Never post comments on excluded generated files, even if the model or
         // an analyzer produced one.
         (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs)));
-        const { state, description } = statusFromVerdict(verdict, failOn);
+        const { state, description } = scoped &&
+            scoped.droppedComments.length > 0 &&
+            (scoped.review.newComments?.length ?? 0) === 0 &&
+            failOn === "any"
+            ? {
+                state: "success",
+                description: "No in-diff findings; out-of-diff findings excluded",
+            }
+            : statusFromVerdict(verdict, failOn);
         await deps.setStatus(octokit, owner, repo, headSha, statusContext, state, description);
         try {
             await deps.writeJobSummary(summary.length);
@@ -73661,10 +73729,39 @@ async function uploadReviewArtifact(name, content, uploader) {
         await (0,promises_.rm)(root, { recursive: true, force: true });
     }
 }
+function diffHeaderPath(line) {
+    const plain = line.match(/^diff --git a\/.*? b\/(.+)$/);
+    if (plain)
+        return plain[1];
+    const quoted = line.match(/^diff --git "a\/((?:[^"\\]|\\.)*)" "b\/((?:[^"\\]|\\.)*)"$/);
+    if (!quoted)
+        return undefined;
+    // Git quotes non-ASCII bytes as octal escapes (core.quotePath=true).
+    const bytes = [];
+    for (let i = 0; i < quoted[2].length; i++) {
+        const char = quoted[2][i];
+        if (char !== "\\") {
+            bytes.push(...Buffer.from(char));
+            continue;
+        }
+        const escaped = quoted[2][++i];
+        if (/[0-7]/.test(escaped) &&
+            /^[0-7]{2}$/.test(quoted[2].slice(i + 1, i + 3))) {
+            bytes.push(parseInt(quoted[2].slice(i, i + 3), 8));
+            i += 2;
+        }
+        else {
+            bytes.push(...Buffer.from(escaped === "t" ? "\t" : escaped === "n" ? "\n" : escaped));
+        }
+    }
+    return Buffer.from(bytes).toString("utf8");
+}
 function extractChangedFiles(diff) {
     const paths = new Set();
-    for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
-        paths.add(match[1]);
+    for (const line of diff.split("\n")) {
+        const path = diffHeaderPath(line);
+        if (path)
+            paths.add(path);
     }
     return [...paths];
 }

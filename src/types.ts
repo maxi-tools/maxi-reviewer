@@ -310,6 +310,7 @@ export interface ReviewArtifact {
   rawJulesResponses: string[];
   validatedReview: JulesReview | ReviewResult | null;
   validationErrors: string[];
+  droppedComments?: ReviewComment[];
   sessionId?: string;
 }
 

@@ -178,6 +178,26 @@ describe("scopeReviewToDiff", () => {
     expect(result.review.newComments).toEqual([finding("src/a.ts", 1)]);
   });
 
+  it("downgrades a block supported only by an excluded High finding", () => {
+    const warning = { ...finding("src/a.ts"), severity: "Warning" as const };
+    const result = scopeReviewToDiff(
+      reviewWith([warning, finding("outside.ts")]),
+      ["src/a.ts"]
+    );
+    expect(result.review.verdict).toBe("comment");
+    expect(result.review.newComments).toEqual([warning]);
+    expect(result.review.summary).not.toContain("Blocking issues");
+  });
+
+  it("replaces a summary that mentions an excluded file", () => {
+    const result = scopeReviewToDiff(
+      { ...reviewWith([finding("outside.ts")]), summary: "Fix outside.ts" },
+      ["src/a.ts"]
+    );
+    expect(result.review.summary).not.toContain("outside.ts");
+    expect(result.droppedComments[0].message).toBe("Finding.");
+  });
+
   it("leaves a summary-only block untouched", () => {
     const review: DiffScopeReview = {
       verdict: "block",

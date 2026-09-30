@@ -127,14 +127,13 @@ export interface DiffScopeResult {
  * no edit to this branch that resolves it, and GitHub rejects an inline
  * comment on a file outside the diff, so the whole review falls back to a
  * plain PR comment. Such findings are dropped before publishing and recorded
- * in `issues` for the harvestable artifact.
+ * in `issues` and `droppedComments` for the harvestable artifact.
  *
  * The verdict is scoped with them. When `block` was chosen and every finding
  * behind it was dropped as out-of-diff, nothing in the diff supports a block,
  * so the verdict is downgraded to `comment`: findings outside the diff must
- * never block. A `block` that still has an in-diff finding is left alone, and
- * a summary-only block (no findings either way) is not touched either — there
- * is nothing here that identifies it as out-of-diff based.
+ * never block. Only a retained High finding can support a block. A summary-only
+ * block (no findings either way) is not touched — nothing identifies its basis.
  */
 export function scopeReviewToDiff(
   review: DiffScopeReview,
@@ -156,18 +155,20 @@ export function scopeReviewToDiff(
   );
 
   let verdict = review.verdict;
-  if (verdict === "block" && kept.length === 0) {
+  if (verdict === "block" && !kept.some((c) => c.severity === "High")) {
     verdict = "comment";
-    const locations = droppedComments
-      .map((comment) => `${comment.file}:${comment.line}`)
-      .join(", ");
     issues.unshift(
-      `verdict downgraded from block to comment: every finding behind it (${locations}) is outside the PR diff.`
+      "verdict downgraded from block to comment: no in-diff High finding supports a block."
     );
   }
 
+  // The original narrative may still describe excluded files or demand fixes
+  // outside this PR. Do not publish it after filtering its supporting findings.
+  const summary = kept.length
+    ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
+    : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
   return {
-    review: { ...review, verdict, newComments: kept },
+    review: { ...review, verdict, summary, newComments: kept },
     droppedComments,
     issues,
   };

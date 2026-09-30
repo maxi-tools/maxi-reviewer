@@ -742,7 +742,8 @@ export async function runReviewPr(
       analyzerFindings,
       rawJulesResponses: rawResponses || [],
       validatedReview: blankReview ? null : reviewResult,
-      validationErrors: validationErrors || [],
+      validationErrors,
+      droppedComments: scoped?.droppedComments ?? [],
       sessionId,
     });
     // The verdict is already decided -- it is in `reviewResult` above. What
@@ -897,7 +898,16 @@ export async function runReviewPr(
       (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs))
     );
 
-    const { state, description } = statusFromVerdict(verdict, failOn);
+    const { state, description } =
+      scoped &&
+      scoped.droppedComments.length > 0 &&
+      (scoped.review.newComments?.length ?? 0) === 0 &&
+      failOn === "any"
+        ? {
+            state: "success" as const,
+            description: "No in-diff findings; out-of-diff findings excluded",
+          }
+        : statusFromVerdict(verdict, failOn);
     await deps.setStatus(
       octokit,
       owner,
@@ -1073,10 +1083,44 @@ export async function uploadReviewArtifact(
   }
 }
 
+function diffHeaderPath(line: string): string | undefined {
+  const plain = line.match(/^diff --git a\/.*? b\/(.+)$/);
+  if (plain) return plain[1];
+  const quoted = line.match(
+    /^diff --git "a\/((?:[^"\\]|\\.)*)" "b\/((?:[^"\\]|\\.)*)"$/
+  );
+  if (!quoted) return undefined;
+  // Git quotes non-ASCII bytes as octal escapes (core.quotePath=true).
+  const bytes: number[] = [];
+  for (let i = 0; i < quoted[2].length; i++) {
+    const char = quoted[2][i];
+    if (char !== "\\") {
+      bytes.push(...Buffer.from(char));
+      continue;
+    }
+    const escaped = quoted[2][++i];
+    if (
+      /[0-7]/.test(escaped) &&
+      /^[0-7]{2}$/.test(quoted[2].slice(i + 1, i + 3))
+    ) {
+      bytes.push(parseInt(quoted[2].slice(i, i + 3), 8));
+      i += 2;
+    } else {
+      bytes.push(
+        ...Buffer.from(
+          escaped === "t" ? "\t" : escaped === "n" ? "\n" : escaped
+        )
+      );
+    }
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
 export function extractChangedFiles(diff: string): string[] {
   const paths = new Set<string>();
-  for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
-    paths.add(match[1]);
+  for (const line of diff.split("\n")) {
+    const path = diffHeaderPath(line);
+    if (path) paths.add(path);
   }
   return [...paths];
 }

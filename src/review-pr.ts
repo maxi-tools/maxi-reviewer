@@ -1083,37 +1083,24 @@ export async function uploadReviewArtifact(
   }
 }
 
+function unquoteGitPath(path: string): string {
+  // Git quotes non-ASCII UTF-8 as octal bytes (core.quotePath=true).
+  const bytes: number[] = [];
+  for (const match of path.matchAll(/\\([0-7]{3}|.)|[^\\]+/g)) {
+    if (!match[1]) bytes.push(...Buffer.from(match[0]));
+    else if (/^[0-7]{3}$/.test(match[1])) bytes.push(parseInt(match[1], 8));
+    else bytes.push(...Buffer.from({ t: "\t", n: "\n" }[match[1]] ?? match[1]));
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
 function diffHeaderPath(line: string): string | undefined {
   const plain = line.match(/^diff --git a\/.*? b\/(.+)$/);
   if (plain) return plain[1];
   const quoted = line.match(
     /^diff --git "a\/((?:[^"\\]|\\.)*)" "b\/((?:[^"\\]|\\.)*)"$/
   );
-  if (!quoted) return undefined;
-  // Git quotes non-ASCII bytes as octal escapes (core.quotePath=true).
-  const bytes: number[] = [];
-  for (let i = 0; i < quoted[2].length; i++) {
-    const char = quoted[2][i];
-    if (char !== "\\") {
-      bytes.push(...Buffer.from(char));
-      continue;
-    }
-    const escaped = quoted[2][++i];
-    if (
-      /[0-7]/.test(escaped) &&
-      /^[0-7]{2}$/.test(quoted[2].slice(i + 1, i + 3))
-    ) {
-      bytes.push(parseInt(quoted[2].slice(i, i + 3), 8));
-      i += 2;
-    } else {
-      bytes.push(
-        ...Buffer.from(
-          escaped === "t" ? "\t" : escaped === "n" ? "\n" : escaped
-        )
-      );
-    }
-  }
-  return Buffer.from(bytes).toString("utf8");
+  return quoted ? unquoteGitPath(quoted[2]) : undefined;
 }
 
 export function extractChangedFiles(diff: string): string[] {

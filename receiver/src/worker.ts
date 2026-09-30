@@ -234,6 +234,8 @@ async function evaluateAndPublish(
   };
 }
 
+// The handler's early returns give each invalid delivery a distinct HTTP
+// response. A failed gate verdict is not a transport error (it returns 200).
 async function handleWebhook(req: Request, env: Env): Promise<Response> {
   const sig = req.headers.get("X-Hub-Signature-256");
   const eventName = req.headers.get("X-GitHub-Event") ?? "";

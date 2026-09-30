@@ -42,6 +42,11 @@ export interface Evaluation {
 
 export const CHECK_NAME = "maxi-reviewer/review-gate";
 
+/**
+ * Explicit action filters match the fanned-out review-gate workflow. Each
+ * early return rejects a different unsupported event shape rather than
+ * accidentally carrying stale verdicts across PR actions.
+ */
 export function triage(
   eventName: string,
   body: WebhookEvent

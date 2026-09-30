@@ -341,6 +341,10 @@ export function evaluate(doc: unknown, only: Only = ONLY_ALL): EvaluateResult {
     );
   }
 
+  // Keep the conditions explicit: this is a parity port of the Python gate,
+  // where roster, Dependabot and infrastructure-waiver outcomes are distinct.
+  // Folding these branches to reduce cyclomatic complexity risks a green
+  // verdict for a missing required review.
   if (
     (only === ONLY_ALL || only === ONLY_REVIEWER) &&
     covered.length === 0 &&

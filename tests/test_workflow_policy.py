@@ -141,14 +141,36 @@ def step_using(steps: list, action: str) -> list:
     return matches[0]
 
 
+def workflow_files(root: Path) -> list[Path]:
+    """Every workflow file under `root/.github/workflows`, both extensions.
+
+    GitHub runs `.yml` and `.yaml` alike. A scan that globs only one
+    extension lets a workflow with the other slip past every install
+    assertion in this file.
+    """
+    workflow_dir = root / ".github" / "workflows"
+    return sorted([*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")])
+
+
 def install_commands(step: list[str]) -> list[tuple[str, str]]:
-    """Return each shell install invocation and its own arguments, not its step's."""
+    """Return each shell install invocation and its own arguments, not its step's.
+
+    Options before the subcommand (`npm --package-lock=false install`) are
+    part of the invocation: a validator that only sees `npm install` would
+    miss a config flag that disables the lockfile. Both sides are joined
+    into the returned args so the caller validates the whole command.
+    """
     commands = []
     for line in step:
         for segment in re.split(r"\s*(?:&&|\|\||;)\s*", line):
-            match = re.search(r"\b(npm|pnpm|yarn)\s+(install|i|ci)\b", segment)
+            match = re.search(
+                r"\b(npm|pnpm|yarn)((?:\s+--?\S+)*)\s+(install|i|ci)\b", segment
+            )
             if match:
-                commands.append((match.group(1), segment[match.end():].strip()))
+                pre = match.group(2).strip()
+                post = segment[match.end():].strip()
+                args = (pre + " " + post).strip()
+                commands.append((match.group(1), args))
     return commands
 
 
@@ -305,8 +327,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         # Scan every workflow, not just the main CI lane. maxi-fix is synced
         # from maxi-config and installs an exact, untracked SDK transiently;
         # preserve that separate behavior, but reject any other local npm install.
-        workflows = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
-        for workflow in workflows:
+        for workflow in workflow_files(ROOT):
             for step in steps_of(workflow.read_text(encoding="utf-8")):
                 for manager, args in install_commands(step):
                     self.assert_valid_install(workflow.name, step[0], manager, args)
@@ -353,19 +374,56 @@ class WorkflowPolicyTests(unittest.TestCase):
             self.fail(f"{workflow}: {step!r} uses yarn install")
 
     def test_install_command_parser_rejects_bypasses(self) -> None:
-        cases = [
+        # Each bypass is invisible to the old parser (returns []) and must
+        # now be visible AND rejected by the validator.
+        bypasses = [
             ("pnpm install && pnpm install --frozen-lockfile", [("pnpm", ""), ("pnpm", "--frozen-lockfile")]),
             ("npm install --global-style", [("npm", "--global-style")]),
             ("npm install --global=false", [("npm", "--global=false")]),
             ("pnpm ci", [("pnpm", "")]),
+            ("npm --package-lock=false install", [("npm", "--package-lock=false")]),
         ]
-        for command, expected in cases:
+        for command, expected in bypasses:
             with self.subTest(command=command):
                 self.assertEqual(expected, install_commands([command]))
-                self.assert_valid_install("ci.yml", "name: Install dependencies", "npm", "-g pnpm@10.0.0")
-                for manager, args in expected[:1]:
-                    with self.assertRaises(AssertionError):
-                        self.assert_valid_install("ci.yml", "name: Install dependencies", manager, args)
+                # The first parsed command is the bypass; the validator rejects it.
+                manager, args = expected[0]
+                with self.assertRaises(AssertionError):
+                    self.assert_valid_install("ci.yml", "name: Install dependencies", manager, args)
+
+        # Valid forms: options before the subcommand are preserved, and the
+        # validator accepts them when they carry the required flag.
+        valid = [
+            ("pnpm --frozen-lockfile install", [("pnpm", "--frozen-lockfile")]),
+            ("npm -g install pnpm@10.0.0", [("npm", "-g pnpm@10.0.0")]),
+            ("npm install -g pnpm@10.0.0", [("npm", "-g pnpm@10.0.0")]),
+        ]
+        for command, expected in valid:
+            with self.subTest(command=command):
+                self.assertEqual(expected, install_commands([command]))
+                manager, args = expected[0]
+                self.assert_valid_install("ci.yml", "name: Install dependencies", manager, args)
+
+    def test_workflow_scan_discovers_yaml_extension(self) -> None:
+        # GitHub runs both `.yml` and `.yaml`. A scan that globs only one
+        # lets a workflow with the other contain `npm install` and pass.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workflow_dir = root / ".github" / "workflows"
+            workflow_dir.mkdir(parents=True)
+            (workflow_dir / "bypass.yaml").write_text(
+                "jobs:\n  ci:\n    steps:\n      - name: Install dependencies\n        run: npm --package-lock=false install\n",
+                encoding="utf-8",
+            )
+            found = workflow_files(root)
+            self.assertEqual([workflow_dir / "bypass.yaml"], found)
+            # And the install inside it is visible to the validator.
+            for workflow in found:
+                for step in steps_of(workflow.read_text(encoding="utf-8")):
+                    for manager, args in install_commands(step):
+                        with self.assertRaises(AssertionError):
+                            self.assert_valid_install(workflow.name, step[0], manager, args)
 
 
 if __name__ == "__main__":

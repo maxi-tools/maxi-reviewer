@@ -1,6 +1,15 @@
 name: Issue 17 verification
 
+# A push trigger on `main` is added alongside `pull_request`, by #90. Coverage
+# and the checked-in `dist/` are properties of the committed tree, so the gate
+# that enforces them has to fire on the commit that could have broken them --
+# otherwise the failure surfaces on the next unrelated pull request instead of
+# the change that caused it. Branch protection blocks non-owner pushes to
+# `main`, so this trigger fires for owner and integration merges only.
 on:
+  push:
+    branches:
+      - main
   pull_request:
 
 permissions:
@@ -12,6 +21,14 @@ jobs:
     # out the pull request head, installs dependencies and runs the test
     # suite, i.e. it executes the PR's own code. Same-repo pull requests go to the fleet;
     # fork pull requests stay on a hosted VM, where untrusted code belongs.
+    #
+    # Pushes to `main` (added by #90) get the same X64 fleet lane as
+    # same-repo pull requests: `github.event_name != 'pull_request'`
+    # short-circuits the same-repo fork guard, because there is no
+    # `github.event.pull_request` on a push event for that comparison to
+    # read from. Branch protection makes that safe -- a non-owner cannot
+    # push `main` here, so the only push event that reaches this job is one
+    # whose contents the owner has already accepted.
     #
     # A `runs-on` expression rather than an `if`-gated pair of jobs: the
     # scheduler has to evaluate it to pick a runner, so unlike the guard in
@@ -32,7 +49,9 @@ jobs:
     # version bump whose package lifecycle scripts this job then runs. That is
     # code from outside the owner's control on a persistent box, which is the
     # one thing this migration must not do. self-test.yml already screens the
-    # same actor for the same reason.
+    # same actor for the same reason. Dependabot does not push to `main` --
+    # its pull requests, like all of its writes, go through the merge queue --
+    # so the dependabot ban still gates only pull_request events.
     #
     # This job is safe to route on a repository comparison alone, unlike
     # self-test.yml next door, because it holds NO credential: its permissions
@@ -41,7 +60,8 @@ jobs:
     # guard is enough for a job that builds pull-request code with nothing in
     # scope to steal.
     runs-on: ${{ github.actor != 'dependabot[bot]'
-      && github.event.pull_request.head.repo.full_name == github.repository
+      && (github.event_name != 'pull_request'
+        || github.event.pull_request.head.repo.full_name == github.repository)
       && fromJSON('["self-hosted", "Linux", "X64"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:

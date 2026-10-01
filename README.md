@@ -14,7 +14,7 @@ This repository is a hard fork of the earlier Jules PR reviewer workflow, but th
 name: Maxi Review
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   issue_comment:
     types: [created]
   workflow_dispatch:

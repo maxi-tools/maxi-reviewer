@@ -1,0 +1,18 @@
+.github/workflows/ci.yml
+  h_cebe5b6d461c32 40-47,112-119
+package.json
+  h_cebe5b6d461c32 6
+tests/test_workflow_policy.py
+  h_cebe5b6d461c32 2,274-327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3597f8729c0975dd3c31868d21920c7cbea125bd",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

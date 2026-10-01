@@ -152,6 +152,35 @@ def workflow_files(root: Path) -> list[Path]:
     return sorted([*workflow_dir.glob("*.yml"), *workflow_dir.glob("*.yaml")])
 
 
+def _next_invocation(
+    tokens: list[str], start: int, subcommands: set[str]
+) -> tuple[int, str, str] | None:
+    """Find the next `manager install...` invocation starting at `start`.
+
+    Returns ``(next_index, manager, args)`` for the first manager token at
+    or after ``start`` whose segment between it and the next ``install``,
+    ``i``, or ``ci`` token is non-empty; ``next_index`` is the position
+    after the consumed tokens so a caller can keep going. Returns ``None``
+    when no invocation starts at or after ``start``.
+    """
+    managers = {"npm", "pnpm", "yarn"}
+    index = start
+    while index < len(tokens):
+        if tokens[index] in managers:
+            break
+        index += 1
+    if index >= len(tokens):
+        return None
+    end = index + 1
+    while end < len(tokens) and tokens[end] not in subcommands:
+        end += 1
+    if end >= len(tokens):
+        return None
+    pre = " ".join(tokens[index + 1 : end])
+    post = " ".join(tokens[end + 1 :])
+    return end + 1, tokens[index], (pre + " " + post).strip()
+
+
 def install_commands(step: list[str]) -> list[tuple[str, str]]:
     """Return each shell install invocation and its own arguments, not its step's.
 
@@ -171,32 +200,17 @@ def install_commands(step: list[str]) -> list[tuple[str, str]]:
     previous regex missed entirely.
     """
     subcommands = {"install", "i", "ci"}
-    managers = {"npm", "pnpm", "yarn"}
     commands = []
     for line in step:
         for segment in re.split(r"\s*(?:&&|\|\||;)\s*", line):
             tokens = segment.split()
             index = 0
             while index < len(tokens):
-                if tokens[index] not in managers:
-                    index += 1
-                    continue
-                # Manager at `index`; subcommand must follow at some `end`.
-                # Walk forward, skipping everything that is not a subcommand.
-                end = index + 1
-                while end < len(tokens) and tokens[end] not in subcommands:
-                    end += 1
-                if end >= len(tokens):
-                    # No install/i/ci token after the manager; the manager
-                    # here is not invoking an install. Keep looking from the
-                    # next token.
-                    index += 1
-                    continue
-                pre = " ".join(tokens[index + 1 : end])
-                post = " ".join(tokens[end + 1 :])
-                args = (pre + " " + post).strip()
-                commands.append((tokens[index], args))
-                index = end + 1
+                found = _next_invocation(tokens, index, subcommands)
+                if found is None:
+                    break
+                index, manager, args = found
+                commands.append((manager, args))
     return commands
 
 

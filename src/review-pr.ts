@@ -163,6 +163,8 @@ export function emptyReviewExplanation(collectedCharacters: number): string {
 export interface PullRequestContext {
   diff: string;
   changedFiles: string[];
+  /** Full PR file set (base...head), used for scoping. Defaults to changedFiles when absent. */
+  prChangedFiles?: string[];
   files?: Map<string, string>;
   changedLines?: Map<string, Set<number>>;
   rulesFromFile?: string;
@@ -680,7 +682,10 @@ export async function runReviewPr(
     // the artifact, and a `block` resting only on such findings is downgraded
     // to `comment` — out-of-diff findings must never block.
     const scoped = reviewRun.reviewResult
-      ? scopeReviewToDiff(reviewRun.reviewResult, context.changedFiles)
+      ? scopeReviewToDiff(
+          reviewRun.reviewResult,
+          context.prChangedFiles ?? context.changedFiles
+        )
       : null;
     if (scoped && scoped.droppedComments.length > 0) {
       const dropped = scoped.droppedComments
@@ -981,6 +986,23 @@ export async function fetchPullRequestContext(input: {
     input.pr.number
   );
   const changedFiles = extractChangedFiles(diff);
+  // On an incremental (synchronize) review the diff only covers the latest
+  // push. Scoping must see every file the PR touches, or a finding on a file
+  // changed by an earlier push is dropped and a block resting on it is
+  // downgraded. Fetch the full PR diff only when the incremental base differs.
+  const prChangedFiles =
+    input.baseShaForDiff === input.baseSha
+      ? changedFiles
+      : extractChangedFiles(
+          await fetchDiff(
+            input.octokit,
+            input.owner,
+            input.repo,
+            input.pr,
+            input.baseSha,
+            input.headSha
+          )
+        );
 
   const linkedIssueRefs = input.groundInLinkedIssues
     ? parseClosingIssueRefs(input.pr.body, {
@@ -996,6 +1018,7 @@ export async function fetchPullRequestContext(input: {
   return {
     diff,
     changedFiles,
+    prChangedFiles,
     linkedIssues,
     files: await loadHeadFiles(
       input.octokit,

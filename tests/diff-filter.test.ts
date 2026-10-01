@@ -229,4 +229,14 @@ describe("scopeReviewToDiff", () => {
     expect(result.review).toBe(review);
     expect(result.issues).toEqual([]);
   });
+
+  it("preserves a blank summary so EMPTY_REVIEW_BODY can still fire", () => {
+    const review: DiffScopeReview = {
+      verdict: "comment",
+      summary: "   ",
+      newComments: [finding("unrelated.ts")],
+    };
+    const result = scopeReviewToDiff(review, ["src/a.ts"]);
+    expect(result.review.summary).toBe("   ");
+  });
 });

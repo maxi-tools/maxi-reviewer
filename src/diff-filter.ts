@@ -164,9 +164,14 @@ export function scopeReviewToDiff(
 
   // The original narrative may still describe excluded files or demand fixes
   // outside this PR. Do not publish it after filtering its supporting findings.
-  const summary = kept.length
-    ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
-    : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
+  // A blank original summary stays blank so the EMPTY_REVIEW_BODY check can
+  // still fire — replacing it with generated text would mask a missing review.
+  const summary =
+    review.summary.trim().length === 0
+      ? review.summary
+      : kept.length
+        ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
+        : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
   return {
     review: { ...review, verdict, summary, newComments: kept },
     droppedComments,

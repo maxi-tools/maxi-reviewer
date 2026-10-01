@@ -72766,9 +72766,13 @@ function scopeReviewToDiff(review, changedFiles) {
     }
     // The original narrative may still describe excluded files or demand fixes
     // outside this PR. Do not publish it after filtering its supporting findings.
-    const summary = kept.length
-        ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
-        : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
+    // A blank original summary stays blank so the EMPTY_REVIEW_BODY check can
+    // still fire — replacing it with generated text would mask a missing review.
+    const summary = review.summary.trim().length === 0
+        ? review.summary
+        : kept.length
+            ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
+            : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
     return {
         review: { ...review, verdict, summary, newComments: kept },
         droppedComments,
@@ -73480,7 +73484,7 @@ async function runReviewPr(overrides = {}) {
         // the artifact, and a `block` resting only on such findings is downgraded
         // to `comment` — out-of-diff findings must never block.
         const scoped = reviewRun.reviewResult
-            ? scopeReviewToDiff(reviewRun.reviewResult, context.changedFiles)
+            ? scopeReviewToDiff(reviewRun.reviewResult, context.prChangedFiles ?? context.changedFiles)
             : null;
         if (scoped && scoped.droppedComments.length > 0) {
             const dropped = scoped.droppedComments
@@ -73668,6 +73672,13 @@ async function fetchPullRequestContext(input) {
     }
     const openThreads = await fetchOpenThreads(input.octokit, input.owner, input.repo, input.pr.number);
     const changedFiles = extractChangedFiles(diff);
+    // On an incremental (synchronize) review the diff only covers the latest
+    // push. Scoping must see every file the PR touches, or a finding on a file
+    // changed by an earlier push is dropped and a block resting on it is
+    // downgraded. Fetch the full PR diff only when the incremental base differs.
+    const prChangedFiles = input.baseShaForDiff === input.baseSha
+        ? changedFiles
+        : extractChangedFiles(await fetchDiff(input.octokit, input.owner, input.repo, input.pr, input.baseSha, input.headSha));
     const linkedIssueRefs = input.groundInLinkedIssues
         ? parseClosingIssueRefs(input.pr.body, {
             owner: input.owner,
@@ -73680,6 +73691,7 @@ async function fetchPullRequestContext(input) {
     return {
         diff,
         changedFiles,
+        prChangedFiles,
         linkedIssues,
         files: await loadHeadFiles(input.octokit, input.owner, input.repo, input.headSha, changedFiles),
         changedLines: extractChangedLines(diff),

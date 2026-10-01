@@ -526,6 +526,16 @@ jobs:
   # intersects against. `github.token` would post as `github-actions[bot]`,
   # which the gate does not count when a roster is present.
   #
+  # Skips drafts, same as `review` below and for the same reason: a draft is
+  # not a merge candidate, and `pr_review_gate.py`'s own draft short-circuit
+  # (`isDraft is True` -> pass) means posting a review here while a PR is
+  # still draft buys nothing the gate needs -- it only spends a review this
+  # job then has to explain skipping once the PR goes ready and is genuinely
+  # asked for one. `success()` alone does not imply non-draft: lint-gate has
+  # no draft exclusion of its own (it is a cheap deterministic merge gate that
+  # should keep scanning every push, draft or not), so this job restates the
+  # check rather than inheriting it.
+  #
   # The decision logic is inlined rather than checked out. The fan-out copies
   # workflow files only, so a script fetched from maxi-config would not exist
   # on a consumer until the fan-out after the one that shipped this job, and
@@ -545,6 +555,7 @@ jobs:
     # push reruns lint-gate, and this job posts then.
     if: >
       success() &&
+      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
@@ -976,9 +987,22 @@ jobs:
     # work started and thrown away. lint-gate deliberately KEEPS running on
     # every push: it is a merge gate, and a gate that stops looking after the
     # first commit is not one.
+    #
+    # `github.event.pull_request.draft == false` is the other half of "spend
+    # the AI budget when the PR is ready, not before". A draft is not a merge
+    # candidate, so a review started while one is still draft is spent before
+    # anyone can act on it -- and `synchronize` on a draft used to start one
+    # anyway, since neither `success()` nor the fan-out/dependabot exclusions
+    # say anything about draft state. `ready_for_review` is already a trigger
+    # type and is NOT excluded by the `synchronize` check above, so marking a
+    # PR ready starts exactly the one review this condition exists to grant --
+    # no label, no re-push required. A later push after ready is still
+    # `synchronize` and still skipped by the check above; see
+    # docs/review-roster.md's "requesting a re-review" note for that path.
     if: >
       success() &&
       github.event.action != 'synchronize' &&
+      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (

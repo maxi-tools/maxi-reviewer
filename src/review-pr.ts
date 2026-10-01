@@ -60,6 +60,7 @@ import {
   filterDiffByPaths,
   matchesAnyGlob,
   parseIgnoreGlobs,
+  scopeReviewToDiff,
 } from "./diff-filter.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
@@ -162,6 +163,8 @@ export function emptyReviewExplanation(collectedCharacters: number): string {
 export interface PullRequestContext {
   diff: string;
   changedFiles: string[];
+  /** Full PR file set (base...head), used for scoping. Defaults to changedFiles when absent. */
+  prChangedFiles?: string[];
   files?: Map<string, string>;
   changedLines?: Map<string, Set<number>>;
   rulesFromFile?: string;
@@ -701,8 +704,29 @@ export async function runReviewPr(
       timeoutMinutes,
       julesOptions,
     });
-    const { reviewResult, sessionId, rawResponses, validationErrors } =
-      reviewRun;
+    const { sessionId, rawResponses } = reviewRun;
+    // Scope the review to the PR's changed files before anything downstream
+    // reads it (issue #91). A finding in a file the diff does not touch cannot
+    // be actioned in this PR, so it is dropped before publishing, recorded on
+    // the artifact, and a `block` resting only on such findings is downgraded
+    // to `comment` — out-of-diff findings must never block.
+    const scoped = reviewRun.reviewResult
+      ? scopeReviewToDiff(
+          reviewRun.reviewResult,
+          context.prChangedFiles ?? context.changedFiles
+        )
+      : null;
+    if (scoped && scoped.droppedComments.length > 0) {
+      const dropped = scoped.droppedComments
+        .map((comment) => `${comment.file}:${comment.line}`)
+        .join(", ");
+      core.warning(`Dropped out-of-diff finding(s): ${dropped}`);
+    }
+    const reviewResult = scoped ? scoped.review : null;
+    const validationErrors = [
+      ...(reviewRun.validationErrors ?? []),
+      ...(scoped?.issues ?? []),
+    ];
     const blankReview =
       reviewResult != null && isBlankReviewBody(reviewResult.summary);
     const outcome: ReviewOutcome = !reviewResult
@@ -752,7 +776,8 @@ export async function runReviewPr(
       analyzerFindings,
       rawJulesResponses: rawResponses || [],
       validatedReview: blankReview ? null : reviewResult,
-      validationErrors: validationErrors || [],
+      validationErrors,
+      droppedComments: scoped?.droppedComments ?? [],
       sessionId,
     });
     // The verdict is already decided -- it is in `reviewResult` above. What
@@ -907,7 +932,16 @@ export async function runReviewPr(
       (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs))
     );
 
-    const { state, description } = statusFromVerdict(verdict, failOn);
+    const { state, description } =
+      scoped &&
+      scoped.droppedComments.length > 0 &&
+      (scoped.review.newComments?.length ?? 0) === 0 &&
+      failOn === "any"
+        ? {
+            state: "success" as const,
+            description: "No in-diff findings; out-of-diff findings excluded",
+          }
+        : statusFromVerdict(verdict, failOn);
     await deps.setStatus(
       octokit,
       owner,
@@ -981,6 +1015,23 @@ export async function fetchPullRequestContext(input: {
     input.pr.number
   );
   const changedFiles = extractChangedFiles(diff);
+  // On an incremental (synchronize) review the diff only covers the latest
+  // push. Scoping must see every file the PR touches, or a finding on a file
+  // changed by an earlier push is dropped and a block resting on it is
+  // downgraded. Fetch the full PR diff only when the incremental base differs.
+  const prChangedFiles =
+    input.baseShaForDiff === input.baseSha
+      ? changedFiles
+      : extractChangedFiles(
+          await fetchDiff(
+            input.octokit,
+            input.owner,
+            input.repo,
+            input.pr,
+            input.baseSha,
+            input.headSha
+          )
+        );
 
   const linkedIssueRefs = input.groundInLinkedIssues
     ? parseClosingIssueRefs(input.pr.body, {
@@ -996,6 +1047,7 @@ export async function fetchPullRequestContext(input: {
   return {
     diff,
     changedFiles,
+    prChangedFiles,
     linkedIssues,
     files: await loadHeadFiles(
       input.octokit,
@@ -1083,10 +1135,31 @@ export async function uploadReviewArtifact(
   }
 }
 
+function unquoteGitPath(path: string): string {
+  // Git quotes non-ASCII UTF-8 as octal bytes (core.quotePath=true).
+  const bytes: number[] = [];
+  for (const match of path.matchAll(/\\([0-7]{3}|.)|[^\\]+/g)) {
+    if (!match[1]) bytes.push(...Buffer.from(match[0]));
+    else if (/^[0-7]{3}$/.test(match[1])) bytes.push(parseInt(match[1], 8));
+    else bytes.push(...Buffer.from({ t: "\t", n: "\n" }[match[1]] ?? match[1]));
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+function diffHeaderPath(line: string): string | undefined {
+  const plain = line.match(/^diff --git a\/.*? b\/(.+)$/);
+  if (plain) return plain[1];
+  const quoted = line.match(
+    /^diff --git "a\/((?:[^"\\]|\\.)*)" "b\/((?:[^"\\]|\\.)*)"$/
+  );
+  return quoted ? unquoteGitPath(quoted[2]) : undefined;
+}
+
 export function extractChangedFiles(diff: string): string[] {
   const paths = new Set<string>();
-  for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
-    paths.add(match[1]);
+  for (const line of diff.split("\n")) {
+    const path = diffHeaderPath(line);
+    if (path) paths.add(path);
   }
   return [...paths];
 }
@@ -1097,9 +1170,9 @@ export function extractChangedLines(diff: string): Map<string, Set<number>> {
   let newLine = 0;
 
   for (const line of diff.split("\n")) {
-    const fileMatch = line.match(/^diff --git a\/.* b\/(.+)$/);
-    if (fileMatch) {
-      currentPath = fileMatch[1];
+    const headerPath = diffHeaderPath(line);
+    if (headerPath !== undefined) {
+      currentPath = headerPath;
       if (!changedLines.has(currentPath)) {
         changedLines.set(currentPath, new Set());
       }

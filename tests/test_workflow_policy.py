@@ -159,18 +159,44 @@ def install_commands(step: list[str]) -> list[tuple[str, str]]:
     part of the invocation: a validator that only sees `npm install` would
     miss a config flag that disables the lockfile. Both sides are joined
     into the returned args so the caller validates the whole command.
+
+    Tokenized rather than regex-based: an alternation
+    ``((?:\\s+--?\\S+)*)\\s+(install|i|ci)`` is the exact shape GitHub
+    CodeQL flags for exponential backtracking on inputs of ``-! -! ...``
+    (the inner loop and the tail match can both consume a ``-x`` token, and
+    the engine has to explore both parses). Walking the tokens left to
+    right is O(n) and removes the ambiguity. As a side effect the parser
+    also accepts spaced flags before the subcommand
+    (``npm --prefix src install`` -> args ``--prefix src``), which the
+    previous regex missed entirely.
     """
+    subcommands = {"install", "i", "ci"}
+    managers = {"npm", "pnpm", "yarn"}
     commands = []
     for line in step:
         for segment in re.split(r"\s*(?:&&|\|\||;)\s*", line):
-            match = re.search(
-                r"\b(npm|pnpm|yarn)((?:\s+--?\S+)*)\s+(install|i|ci)\b", segment
-            )
-            if match:
-                pre = match.group(2).strip()
-                post = segment[match.end():].strip()
+            tokens = segment.split()
+            index = 0
+            while index < len(tokens):
+                if tokens[index] not in managers:
+                    index += 1
+                    continue
+                # Manager at `index`; subcommand must follow at some `end`.
+                # Walk forward, skipping everything that is not a subcommand.
+                end = index + 1
+                while end < len(tokens) and tokens[end] not in subcommands:
+                    end += 1
+                if end >= len(tokens):
+                    # No install/i/ci token after the manager; the manager
+                    # here is not invoking an install. Keep looking from the
+                    # next token.
+                    index += 1
+                    continue
+                pre = " ".join(tokens[index + 1 : end])
+                post = " ".join(tokens[end + 1 :])
                 args = (pre + " " + post).strip()
-                commands.append((match.group(1), args))
+                commands.append((tokens[index], args))
+                index = end + 1
     return commands
 
 
@@ -403,6 +429,20 @@ class WorkflowPolicyTests(unittest.TestCase):
                 self.assertEqual(expected, install_commands([command]))
                 manager, args = expected[0]
                 self.assert_valid_install("ci.yml", "name: Install dependencies", manager, args)
+
+        # Spaced flags before the subcommand (the maxi-reviewer finding):
+        # `npm --prefix src install` parses as `npm --prefix src`, which the
+        # validator rejects as a project install. The previous regex would
+        # return [] and silently let the command pass.
+        with self.subTest(command="npm --prefix src install"):
+            self.assertEqual(
+                [("npm", "--prefix src")],
+                install_commands(["npm --prefix src install"]),
+            )
+            with self.assertRaises(AssertionError):
+                self.assert_valid_install(
+                    "ci.yml", "name: Install dependencies", "npm", "--prefix src",
+                )
 
     def test_workflow_scan_discovers_yaml_extension(self) -> None:
         # GitHub runs both `.yml` and `.yaml`. A scan that globs only one

@@ -1,0 +1,68 @@
+.coderabbit.yaml
+  h_cebe5b6d461c32 212-223
+.github/workflows/issue-17-regression.yml
+  h_cebe5b6d461c32 3-8,10-12,25-32,52-54,63-64
+.github/workflows/maxi-review.yml
+  h_cebe5b6d461c32 528-537,557,989-1000,1004
+.github/workflows/review-gate.yml
+  h_cebe5b6d461c32 119
+README.md
+  h_cebe5b6d461c32 101
+dist/index.js
+  h_cebe5b6d461c32 45737-45780,46479-46498,46538-46539,46639-46647,46674-46680,46693,46743-46762,46765-46768,46777-46779
+dist/index.js.map
+  h_cebe5b6d461c32 1
+eslint.config.js
+  h_cebe5b6d461c32 32-41
+receiver/README.md
+  h_cebe5b6d461c32 1-105
+receiver/package-lock.json
+  h_cebe5b6d461c32 1-1485
+receiver/package.json
+  h_cebe5b6d461c32 1-22
+receiver/src/auth.ts
+  h_cebe5b6d461c32 1-215
+receiver/src/collect.ts
+  h_cebe5b6d461c32 1-286
+receiver/src/evaluate.ts
+  h_cebe5b6d461c32 1-460
+receiver/src/github.ts
+  h_cebe5b6d461c32 1-228
+receiver/src/triage.ts
+  h_cebe5b6d461c32 1-142
+receiver/src/worker.ts
+  h_cebe5b6d461c32 1-396
+receiver/test/auth-and-triage.test.ts
+  h_cebe5b6d461c32 1-244
+receiver/test/evaluate.test.ts
+  h_cebe5b6d461c32 1-906
+receiver/tsconfig.json
+  h_cebe5b6d461c32 1-16
+receiver/vitest.config.ts
+  h_cebe5b6d461c32 1-11
+receiver/wrangler.toml
+  h_cebe5b6d461c32 1-21
+src/diff-filter.ts
+  h_cebe5b6d461c32 1-2,108-180
+src/late-feedback-harvest.ts
+  h_cebe5b6d461c32 1,29
+src/review-pr.ts
+  h_cebe5b6d461c32 63,166-167,678-700,750-751,906-915,989-1005,1021,1109-1128,1131-1133,1144-1146
+src/types.ts
+  h_cebe5b6d461c32 313
+tests/diff-filter.test.ts
+  h_cebe5b6d461c32 2,5,10,121-242
+tests/review-pr.test.ts
+  h_cebe5b6d461c32 12-13,867-969
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4a6e4db4cfe579cc44f8e1cc0f7ccfb801bfe95",
+  "prompts": {},
+  "humans": {
+    "h_cebe5b6d461c32": {
+      "author": "Maxi Boch <874012+maxiboch@users.noreply.github.com>"
+    }
+  }
+}

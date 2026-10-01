@@ -209,6 +209,18 @@ reviews:
     # Drafts are not merge candidates, and reviewing them consumes the rate
     # limit that then denies review to PRs which are ready.
     drafts: false
+    # Default is true, which re-reviews the PR after every push -- CodeRabbit's
+    # own docs describe that as the point of the flag. With `drafts: false`
+    # already keeping CodeRabbit off a PR until it is marked ready, incremental
+    # review then re-reviews EVERY push after that, which is the same
+    # per-push cost maxi-review.yml's `review` job was changed to stop paying
+    # (docs/contracts/ai-review-runs-once-per-pr.md). false reviews once, at
+    # the push that made the PR eligible (typically ready_for_review, since
+    # drafts are already excluded), and leaves a later push to fixups
+    # unreviewed until asked again explicitly -- `@coderabbitai review` in a
+    # PR comment (chat.auto_reply below), which is CodeRabbit's own documented
+    # re-request path and needs no label or branch juggling.
+    auto_incremental_review: false
     # Regex, and it must cover every default branch in the fleet -- this one
     # file is installed in all of them. Five repos (android-backend, nami,
     # waterkit, waterkit-1, waterui) default to `dev`, per the rollout ledger,

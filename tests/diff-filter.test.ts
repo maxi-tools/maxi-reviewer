@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
+import { ReviewComment } from "../src/types.js";
 import {
   DEFAULT_GENERATED_GLOBS,
+  DiffScopeReview,
   globToRegExp,
   matchesAnyGlob,
   parseIgnoreGlobs,
   filterDiffByPaths,
+  scopeReviewToDiff,
 } from "../src/diff-filter.js";
 
 const fileSection = (path: string) =>
@@ -113,5 +116,127 @@ describe("matchesAnyGlob", () => {
 
   it("is false for an empty glob list", () => {
     expect(matchesAnyGlob("dist/index.js", [])).toBe(false);
+  });
+});
+
+describe("scopeReviewToDiff", () => {
+  const finding = (file: string, line = 1): ReviewComment => ({
+    file,
+    line,
+    severity: "High",
+    confidence: "High",
+    message: "Finding.",
+    promptForAgents: "",
+  });
+
+  const reviewWith = (comments: ReviewComment[]): DiffScopeReview => ({
+    verdict: "block",
+    summary: "Blocking issues.",
+    resolvedCommentIds: [],
+    newComments: comments,
+  });
+
+  it("drops findings whose file is outside the changed set", () => {
+    const result = scopeReviewToDiff(
+      reviewWith([
+        finding("src/a.ts", 1),
+        finding(".github/workflows/ci.yml", 118),
+      ]),
+      ["src/a.ts"]
+    );
+    expect(result.review.newComments).toEqual([finding("src/a.ts", 1)]);
+    expect(result.droppedComments).toEqual([
+      finding(".github/workflows/ci.yml", 118),
+    ]);
+    expect(result.issues).toContainEqual(
+      expect.stringContaining(
+        "out-of-diff finding dropped: .github/workflows/ci.yml:118"
+      )
+    );
+  });
+
+  it("downgrades block to comment when every finding is out-of-diff", () => {
+    const result = scopeReviewToDiff(
+      reviewWith([finding(".github/workflows/ci.yml", 801)]),
+      ["src/a.ts"]
+    );
+    expect(result.review.verdict).toBe("comment");
+    expect(result.issues[0]).toContain("downgraded from block to comment");
+    expect(result.review.newComments).toEqual([]);
+  });
+
+  it("keeps block when an in-diff finding remains", () => {
+    const result = scopeReviewToDiff(
+      reviewWith([
+        finding("src/a.ts", 1),
+        finding(".github/workflows/ci.yml", 821),
+      ]),
+      ["src/a.ts"]
+    );
+    expect(result.review.verdict).toBe("block");
+    expect(result.droppedComments).toHaveLength(1);
+    expect(result.review.newComments).toEqual([finding("src/a.ts", 1)]);
+  });
+
+  it("downgrades a block supported only by an excluded High finding", () => {
+    const warning = { ...finding("src/a.ts"), severity: "Warning" as const };
+    const result = scopeReviewToDiff(
+      reviewWith([warning, finding("outside.ts")]),
+      ["src/a.ts"]
+    );
+    expect(result.review.verdict).toBe("comment");
+    expect(result.review.newComments).toEqual([warning]);
+    expect(result.review.summary).not.toContain("Blocking issues");
+  });
+
+  it("replaces a summary that mentions an excluded file", () => {
+    const result = scopeReviewToDiff(
+      { ...reviewWith([finding("outside.ts")]), summary: "Fix outside.ts" },
+      ["src/a.ts"]
+    );
+    expect(result.review.summary).not.toContain("outside.ts");
+    expect(result.droppedComments[0].message).toBe("Finding.");
+  });
+
+  it("leaves a summary-only block untouched", () => {
+    const review: DiffScopeReview = {
+      verdict: "block",
+      summary: "Blocking issues.",
+      newComments: [],
+    };
+    const result = scopeReviewToDiff(review, ["src/a.ts"]);
+    expect(result.review).toBe(review);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("leaves a review without findings untouched", () => {
+    const review: DiffScopeReview = {
+      verdict: "approve",
+      summary: "Looks good.",
+    };
+    const result = scopeReviewToDiff(review, ["src/a.ts"]);
+    expect(result.review).toBe(review);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("returns the review unchanged when all findings are in-diff", () => {
+    const review: DiffScopeReview = {
+      verdict: "block",
+      summary: "Blocking issues.",
+      newComments: [finding("src/a.ts")],
+    };
+    const result = scopeReviewToDiff(review, ["src/a.ts"]);
+    expect(result.review).toBe(review);
+    expect(result.issues).toEqual([]);
+  });
+
+  it("preserves a blank summary so EMPTY_REVIEW_BODY can still fire", () => {
+    const review: DiffScopeReview = {
+      verdict: "comment",
+      summary: "   ",
+      newComments: [finding("unrelated.ts")],
+    };
+    const result = scopeReviewToDiff(review, ["src/a.ts"]);
+    expect(result.review.summary).toBe("   ");
   });
 });

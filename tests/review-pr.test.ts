@@ -9,6 +9,8 @@ import {
   buildArtifactCommentContent,
   emptyReviewExplanation,
   emptyReviewStatus,
+  extractChangedFiles,
+  extractChangedLines,
   fetchPullRequestContext,
   isBlankReviewBody,
   latestReviewArtifactSessionId,
@@ -880,6 +882,109 @@ describe("runReviewPr orchestration", () => {
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
     expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
     expect(artifact.sessionId).toBe("jules-session");
+  });
+
+  it("does not block on a finding outside the PR diff", async () => {
+    // #91: a 2-line PR got a blocking failure from findings in a file the PR
+    // never touched. fail_on=blocking is the default, so this is the path the
+    // issue hit.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "blocking";
+      if (name === "timeout_minutes") return "30";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "block",
+          summary: "Blocking issues found in ci.yml.",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: ".github/workflows/ci.yml",
+              line: 118,
+              severity: "High",
+              confidence: "High",
+              message: "Workflow condition is wrong.",
+              promptForAgents: "Fix it",
+            },
+          ],
+        },
+        sessionId: "session-1",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    // The out-of-diff finding is never posted...
+    expect(deps.submitReview.mock.calls[0][6]).toEqual([]);
+    expect(deps.submitReview.mock.calls[0][5]).not.toContain("ci.yml");
+    // ...and with it scoped out, the check passes instead of reporting
+    // "Blocking issues found"...
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review complete (verdict: comment)"
+    );
+    expect(deps.setStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      "Blocking issues found"
+    );
+    // ...while the dropped finding stays visible on the harvestable artifact.
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.validatedReview.verdict).toBe("comment");
+    expect(artifact.droppedComments).toEqual([
+      expect.objectContaining({
+        file: ".github/workflows/ci.yml",
+        message: "Workflow condition is wrong.",
+        severity: "High",
+      }),
+    ]);
+    expect(artifact.validationErrors).toContainEqual(
+      expect.stringContaining(
+        "out-of-diff finding dropped: .github/workflows/ci.yml:118"
+      )
+    );
+
+    // The same pipeline must pass fail_on=any when no in-diff finding remains.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "any";
+      if (name === "timeout_minutes") return "30";
+      return "";
+    });
+    await runReviewPr(deps);
+    expect(deps.setStatus.mock.lastCall?.[5]).toBe("success");
+    expect(deps.setStatus.mock.lastCall?.[6]).toContain("No in-diff findings");
+  });
+});
+
+describe("quoted diff paths", () => {
+  it("decodes Git octal-quoted UTF-8 filenames", () => {
+    const diff =
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n@@ -0,0 +1 @@\n+new\n';
+    expect(extractChangedFiles(diff)).toEqual(["café.ts"]);
+  });
+
+  it("records added line numbers for octal-quoted UTF-8 filenames", () => {
+    const diff =
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n@@ -0,0 +1,2 @@\n+first\n+second\n';
+    const lines = extractChangedLines(diff);
+    expect(lines.has("café.ts")).toBe(true);
+    expect([...lines.get("café.ts")!].sort((a, b) => a - b)).toEqual([1, 2]);
   });
 });
 

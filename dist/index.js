@@ -73763,9 +73763,9 @@ function extractChangedLines(diff) {
     let currentPath;
     let newLine = 0;
     for (const line of diff.split("\n")) {
-        const fileMatch = line.match(/^diff --git a\/.* b\/(.+)$/);
-        if (fileMatch) {
-            currentPath = fileMatch[1];
+        const headerPath = diffHeaderPath(line);
+        if (headerPath !== undefined) {
+            currentPath = headerPath;
             if (!changedLines.has(currentPath)) {
                 changedLines.set(currentPath, new Set());
             }

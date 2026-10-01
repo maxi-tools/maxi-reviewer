@@ -10,6 +10,7 @@ import {
   emptyReviewExplanation,
   emptyReviewStatus,
   extractChangedFiles,
+  extractChangedLines,
   fetchPullRequestContext,
   isBlankReviewBody,
   latestReviewArtifactSessionId,
@@ -957,6 +958,14 @@ describe("quoted diff paths", () => {
     const diff =
       'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n@@ -0,0 +1 @@\n+new\n';
     expect(extractChangedFiles(diff)).toEqual(["café.ts"]);
+  });
+
+  it("records added line numbers for octal-quoted UTF-8 filenames", () => {
+    const diff =
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n@@ -0,0 +1,2 @@\n+first\n+second\n';
+    const lines = extractChangedLines(diff);
+    expect(lines.has("café.ts")).toBe(true);
+    expect([...lines.get("café.ts")!].sort((a, b) => a - b)).toEqual([1, 2]);
   });
 });
 

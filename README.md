@@ -370,12 +370,13 @@ for inspection) without touching the release tag.
 ## Development
 
 ```bash
-npm install
-npm run format:check
-npm run lint
-npm run typecheck
-npm run test
-npm run build
+npm install -g pnpm@10.0.0
+pnpm install --frozen-lockfile
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 The built action in `dist/` is committed for GitHub Action execution.

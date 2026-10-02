@@ -932,23 +932,10 @@ jobs:
 
   review:
     needs: lint-gate
-    # Its own group, and deliberately NOT cancel-in-progress.
-    #
-    # Cancellation is declared on lint-gate instead of at workflow level
-    # precisely so it cannot reach this job. A `synchronize` run must not kill
-    # a review that is mid-flight, because the same push is filtered out by the
-    # `if:` below and nothing would replace it: the PR would end with no
-    # completed AI review, which on the PR face is indistinguishable from a
-    # review that ran and found nothing.
-    #
-    # That failure did not exist before the once-per-PR filter, because the
-    # filter was a tautology and every push started a fresh review behind the
-    # cancellation. Fixing the tautology is what exposed it (cubic, P1 on this
-    # PR). The two halves have to move together.
-    #
-    # Keyed on the PR so two reviews of the SAME pull request still serialise
-    # -- someone re-labelling twice in quick succession queues rather than
-    # racing -- while a push no longer interrupts one.
+    # Serialize reviews of the same PR without cancelling one in flight.
+    # Every new head needs its own completed review: a skipped synchronize
+    # leaves the required `review` check SKIPPED on the head (maxi-config#997).
+    # The lint-gate still runs first and blocks review on deterministic failure.
     concurrency:
       group: maxi-review-ai-${{ github.event.pull_request.number }}
       cancel-in-progress: false
@@ -968,25 +955,10 @@ jobs:
     # reviewed", and it should hold on its own terms if lint-gate's exclusion
     # ever changes.
     #
-    # `github.event.action != 'synchronize'` is what stops the re-review per
-    # push. It must be `event.action`, NOT `event_name`: this workflow triggers
-    # on `pull_request`, so `event_name` is the literal string "pull_request"
-    # for every type in that list and `event_name != 'synchronize'` is a
-    # tautology that filters nothing. The activity type lives in `event.action`.
-    #
-    # Recovering from a first push that fails lint-gate: `success()` skips the
-    # review, and later pushes are `synchronize` and skip too, so the PR does
-    # not review itself once the lint is fixed. That is deliberate, and the
-    # recovery is the `labeled` trigger plus `run-maxi-review` already in this
-    # condition -- adding the label re-runs the review on demand. The
-    # alternative, reviewing on every `synchronize` until one succeeds, is the
-    # 3.3x re-review this change exists to stop.
-    # MEASURED before this change: 100 Maxi Review runs covered 30 branches in
-    # maxi-dist (3.3 per branch, worst 13) and 37 in maxi-config (2.7, worst
-    # 13), with 18% and 29% cancelled mid-flight by the concurrency group --
-    # work started and thrown away. lint-gate deliberately KEEPS running on
-    # every push: it is a merge gate, and a gate that stops looking after the
-    # first commit is not one.
+    # Do not exclude `synchronize`: review is a required check on each head.
+    # A prior review cannot certify code added in a later push. The label
+    # remains an opt-in for non-strict repositories, not a substitute for
+    # reviewing the current head.
     #
     # `github.event.pull_request.draft == false` is the other half of "spend
     # the AI budget when the PR is ready, not before". A draft is not a merge
@@ -994,14 +966,10 @@ jobs:
     # anyone can act on it -- and `synchronize` on a draft used to start one
     # anyway, since neither `success()` nor the fan-out/dependabot exclusions
     # say anything about draft state. `ready_for_review` is already a trigger
-    # type and is NOT excluded by the `synchronize` check above, so marking a
-    # PR ready starts exactly the one review this condition exists to grant --
-    # no label, no re-push required. A later push after ready is still
-    # `synchronize` and still skipped by the check above; see
-    # docs/review-roster.md's "requesting a re-review" note for that path.
+    # type; marking a PR ready starts a review without a label. Later pushes
+    # re-review the changed head because this job is a required check.
     if: >
       success() &&
-      github.event.action != 'synchronize' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&

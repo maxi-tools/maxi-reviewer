@@ -319,6 +319,38 @@ describe("runOpenAiReview", () => {
     expect(result.validationErrors?.[0]).toMatch(/parse/i);
   });
 
+  it("keeps the original parser error in the JSON repair prompt", async () => {
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce('{"ok":true}')
+      .mockResolvedValueOnce(JSON.stringify(REVIEW));
+    await runOpenAiReview("prompt", config, { complete });
+    const repair = complete.mock.calls[1][0] as {
+      messages: { content: string }[];
+    };
+    expect(repair.messages[2]?.content).toContain(
+      "review JSON is missing summary, verdict, or comments"
+    );
+    expect(repair.messages[2]?.content).not.toContain(
+      "Failed to parse OpenAI-compatible review:"
+    );
+  });
+
+  it("does not run later repair stages after an unparseable JSON repair", async () => {
+    const complete = vi.fn().mockResolvedValue("not json");
+    const result = await runOpenAiReview("prompt", config, {
+      complete,
+      verificationContext: {
+        files: new Map(),
+        changedLines: new Map(),
+      },
+    });
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(result.rawResponses).toEqual(["not json", "not json"]);
+    expect(result.validationErrors).toHaveLength(2);
+    expect(result.reviewResult?.newComments).toEqual([]);
+  });
+
   it("returns no review when the endpoint never replies", async () => {
     vi.stubGlobal(
       "fetch",

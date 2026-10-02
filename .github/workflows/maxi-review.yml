@@ -525,6 +525,16 @@ jobs:
   # intersects against. `github.token` would post as `github-actions[bot]`,
   # which the gate does not count when a roster is present.
   #
+  # Skips drafts, same as `review` below and for the same reason: a draft is
+  # not a merge candidate, and `pr_review_gate.py`'s own draft short-circuit
+  # (`isDraft is True` -> pass) means posting a review here while a PR is
+  # still draft buys nothing the gate needs -- it only spends a review this
+  # job then has to explain skipping once the PR goes ready and is genuinely
+  # asked for one. `success()` alone does not imply non-draft: lint-gate has
+  # no draft exclusion of its own (it is a cheap deterministic merge gate that
+  # should keep scanning every push, draft or not), so this job restates the
+  # check rather than inheriting it.
+  #
   # The decision logic is inlined rather than checked out. The fan-out copies
   # workflow files only, so a script fetched from maxi-config would not exist
   # on a consumer until the fan-out after the one that shipped this job, and
@@ -544,6 +554,7 @@ jobs:
     # push reruns lint-gate, and this job posts then.
     if: >
       success() &&
+      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
@@ -920,23 +931,10 @@ jobs:
 
   review:
     needs: lint-gate
-    # Its own group, and deliberately NOT cancel-in-progress.
-    #
-    # Cancellation is declared on lint-gate instead of at workflow level
-    # precisely so it cannot reach this job. A `synchronize` run must not kill
-    # a review that is mid-flight, because the same push is filtered out by the
-    # `if:` below and nothing would replace it: the PR would end with no
-    # completed AI review, which on the PR face is indistinguishable from a
-    # review that ran and found nothing.
-    #
-    # That failure did not exist before the once-per-PR filter, because the
-    # filter was a tautology and every push started a fresh review behind the
-    # cancellation. Fixing the tautology is what exposed it (cubic, P1 on this
-    # PR). The two halves have to move together.
-    #
-    # Keyed on the PR so two reviews of the SAME pull request still serialise
-    # -- someone re-labelling twice in quick succession queues rather than
-    # racing -- while a push no longer interrupts one.
+    # Serialize reviews of the same PR without cancelling one in flight.
+    # Every new head needs its own completed review: a skipped synchronize
+    # leaves the required `review` check SKIPPED on the head (maxi-config#997).
+    # The lint-gate still runs first and blocks review on deterministic failure.
     concurrency:
       group: maxi-review-ai-${{ github.event.pull_request.number }}
       cancel-in-progress: false
@@ -956,28 +954,22 @@ jobs:
     # reviewed", and it should hold on its own terms if lint-gate's exclusion
     # ever changes.
     #
-    # `github.event.action != 'synchronize'` is what stops the re-review per
-    # push. It must be `event.action`, NOT `event_name`: this workflow triggers
-    # on `pull_request`, so `event_name` is the literal string "pull_request"
-    # for every type in that list and `event_name != 'synchronize'` is a
-    # tautology that filters nothing. The activity type lives in `event.action`.
+    # Do not exclude `synchronize`: review is a required check on each head.
+    # A prior review cannot certify code added in a later push. The label
+    # remains an opt-in for non-strict repositories, not a substitute for
+    # reviewing the current head.
     #
-    # Recovering from a first push that fails lint-gate: `success()` skips the
-    # review, and later pushes are `synchronize` and skip too, so the PR does
-    # not review itself once the lint is fixed. That is deliberate, and the
-    # recovery is the `labeled` trigger plus `run-maxi-review` already in this
-    # condition -- adding the label re-runs the review on demand. The
-    # alternative, reviewing on every `synchronize` until one succeeds, is the
-    # 3.3x re-review this change exists to stop.
-    # MEASURED before this change: 100 Maxi Review runs covered 30 branches in
-    # maxi-dist (3.3 per branch, worst 13) and 37 in maxi-config (2.7, worst
-    # 13), with 18% and 29% cancelled mid-flight by the concurrency group --
-    # work started and thrown away. lint-gate deliberately KEEPS running on
-    # every push: it is a merge gate, and a gate that stops looking after the
-    # first commit is not one.
+    # `github.event.pull_request.draft == false` is the other half of "spend
+    # the AI budget when the PR is ready, not before". A draft is not a merge
+    # candidate, so a review started while one is still draft is spent before
+    # anyone can act on it -- and `synchronize` on a draft used to start one
+    # anyway, since neither `success()` nor the fan-out/dependabot exclusions
+    # say anything about draft state. `ready_for_review` is already a trigger
+    # type; marking a PR ready starts a review without a label. Later pushes
+    # re-review the changed head because this job is a required check.
     if: >
       success() &&
-      github.event.action != 'synchronize' &&
+      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
@@ -1474,7 +1466,7 @@ jobs:
           # runs the action that consumes them. Split them and the reviewer
           # grades with one revision's code against another revision's rules —
           # a mismatch nothing else in this workflow would surface.
-          ref: c6dcc726ae8aeffc316ba1951b670db4c69ec0d5
+          ref: 1c5e1d8dece75f724cc95a35c0908579ca6d8d80
           path: .maxi-reviewer-rules
           sparse-checkout: rules
           persist-credentials: false
@@ -1491,33 +1483,10 @@ jobs:
             exit 1
           fi
 
-      # Pinned to a verified ancestor of maxi-reviewer's main, not to its head —
-      # the fleet should be graded by a build with dogfood evidence behind it.
-      # Evaluating a newer head is a deliberate follow-up, not a drive-by bump
-      # inside the PR whose job is to stop unreviewed drift.
-      #
-      # f772893 is maxi-reviewer#92's merge commit, and it is main's head as
-      # this moves -- a deliberate exception to "ancestor, not head", argued
-      # rather than assumed. Six commits touch src/ or action.yml since the
-      # previous pin ae2700a (2026-08-19): the in-process hard deadline
-      # (862f1aa), the empty-review failure and explicit review outcomes
-      # (ebdb6b4), the pending-status heartbeat and its two follow-ups
-      # (04aa040, a2729c5, b4f67fe), and the timeout message this pin exists to
-      # ship (a80aec7). The other 92 are workflow syncs and dependabot bumps
-      # that never reach the action.
-      #
-      # The dogfood evidence the old wording asked for did not exist before
-      # now. maxi-reviewer's "Verify checked-in dist" gate had been red on
-      # every PR since at least 2026-08-26: it installed with npm against a
-      # pnpm lockfile, so ncc rebuilt ~27k lines of different module
-      # bookkeeping and the diff never had anything to do with the change under
-      # review. 9b7b57f, inside this range, fixes it. f772893 is the first
-      # commit whose dist has actually been verified against its own source.
-      #
-      # Advancing this also activates `hard_timeout_minutes`, a new input
-      # defaulting to timeout_minutes + 20 = 35. Nothing in this file moves for
-      # it: the step bound below is already 40, picked so this pin could
-      # advance without dragging the timeout arithmetic behind it.
+      # Pinned to maxi-reviewer v1.2.0's release-please merge commit: the
+      # released action includes #159's OpenAI-compatible Jules-timeout
+      # fallback. The built-in rules checkout above uses the same commit.
+      # Keep the two pins together when upgrading.
       # Which Jules account reviews this PR.
       #
       # maxi-reviewer takes ONE jules_api_key, so alternating has to happen
@@ -1610,7 +1579,7 @@ jobs:
         # number moving with it. Whenever `timeout_minutes` moves, this does:
         # timeout_minutes + 25.
         timeout-minutes: 40
-        uses: maxi-tools/maxi-reviewer@d967a344a624e6e738e97494ef2e7f20eecca567
+        uses: maxi-tools/maxi-reviewer@1c5e1d8dece75f724cc95a35c0908579ca6d8d80
         with:
           # Which account, chosen by the step above. The KEY itself is read
           # straight from `secrets` here rather than passed through a step
@@ -1639,6 +1608,14 @@ jobs:
           # Read straight from `secrets` for the same reason as the primary:
           # the value never becomes a step output that could be printed.
           jules_api_key_fallback: ${{ steps.jules_account.outputs.use == 'secondary' && secrets.JULES_API_KEY || secrets.JULES_API_KEY_2 }}
+          # Jules stays primary. A no-review timeout hands the same prompt to
+          # the private DGX vLLM endpoint. Keep any bearer token in Actions
+          # secrets; this HTTP-only vLLM deployment uses no API key, so leave
+          # the Actions secret unset until HTTPS is available. Never send a
+          # bearer key over this plaintext endpoint.
+          openai_base_url: http://pearl:8000/v1
+          openai_model: Qwen3-Coder-Next
+          openai_api_key: ${{ secrets.MAXI_REVIEW_OPENAI_API_KEY }}
           github_token: ${{ steps.app-token.outputs.token }}
           rules_file: ""
           extra_instructions: |

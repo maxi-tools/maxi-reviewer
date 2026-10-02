@@ -290,6 +290,66 @@ describe("maxi.review.v1 schemas", () => {
     expect(result.errors.join("\n")).toContain("retention");
   });
 
+  it("accepts an empty-body artifact without treating it as a validated review", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: ["raw response"],
+      validatedReview: null,
+      validationErrors: [],
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome: "EMPTY_REVIEW_BODY",
+      outcomeReason: "No review body was produced",
+      reviewOutputChars: 12,
+      runIdentity: { workflowRunId: 101, workflowRunAttempt: 1, job: "review" },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a populated review under EMPTY_REVIEW_BODY", () => {
+    const result = validateReviewArtifact({
+      schema: "maxi.review.v1.review-artifact",
+      createdAt: "2026-06-26T03:05:23.000Z",
+      retention: {
+        harvestableAfterMerge: true,
+        channels: ["github-actions-artifact", "github-pr-comment"],
+        commentMarker: "<!-- maxi-review artifact -->",
+      },
+      repoFullName: "maxi/example",
+      prNumber: 7,
+      headSha: "head-sha",
+      baseSha: "base-sha",
+      analyzerFindings: [],
+      rawJulesResponses: [],
+      validatedReview: {
+        summary: " ",
+        verdict: "approve",
+        resolvedCommentIds: [],
+        newComments: [],
+      },
+      validationErrors: [],
+      outcomeSchema: "maxi.review.v1.review-outcome",
+      outcome: "EMPTY_REVIEW_BODY",
+      outcomeReason: "No review body was produced",
+      reviewOutputChars: 0,
+      runIdentity: { workflowRunId: 101, workflowRunAttempt: 1, job: "review" },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join("\n")).toContain(
+      "EMPTY_REVIEW_BODY requires validatedReview to be null"
+    );
+  });
+
   it("rejects mismatched review outcome metadata", () => {
     const result = validateReviewArtifact({
       schema: "maxi.review.v1.review-artifact",

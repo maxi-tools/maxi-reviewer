@@ -98,6 +98,7 @@ as the GitHub App's bot user instead of `github-actions[bot]`.
 - Validates schema, locations, suggested-change fences, changed-line targets, and structured suggestions.
 - Requests same-session repair when Jules returns malformed JSON or invalid review data.
 - Posts actionable GitHub review comments and uses suggested-change format when a fix is mechanically applicable.
+- Scopes findings to the PR's changed files: out-of-diff findings are removed from the published review and preserved in the artifact's `droppedComments`; the summary is replaced so it cannot repeat excluded feedback. A `block` with no retained High finding becomes `comment`; with no retained findings, even `fail_on=any` succeeds without asserting approval. Summary-only blocks remain unchanged.
 - Builds `maxi.review.v1.review-artifact` JSON so review feedback remains harvestable even if PR review submission is unavailable or late.
 - Records review artifacts as hidden PR comments for later harvesting.
 - Publishes each artifact over both channels — the Actions artifact store and the hidden PR comment — and tolerates the loss of either. The verdict is decided before publication, so an artifact-storage outage (the org-wide quota is shared) is warned about, not reported as a failed review. Losing **both** channels still fails the step: nothing was recorded and there is nothing left to harvest.
@@ -369,12 +370,13 @@ for inspection) without touching the release tag.
 ## Development
 
 ```bash
-npm install
-npm run format:check
-npm run lint
-npm run typecheck
-npm run test
-npm run build
+npm install -g pnpm@10.0.0
+pnpm install --frozen-lockfile
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
 The built action in `dist/` is committed for GitHub Action execution.

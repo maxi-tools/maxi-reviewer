@@ -11,13 +11,17 @@ const TIMEOUT_MINUTES = 30;
 // Reproduce the persisted PR-comment shape extractReviewArtifactFromComment
 // parses: a base64-encoded artifact (rawJulesResponses are stripped by
 // buildArtifactCommentContent, so validatedReview is the liveness signal).
-function comment(sessionId: string, validatedReview: unknown): string {
+function comment(
+  sessionId: string,
+  validatedReview: unknown,
+  baseSha = "b"
+): string {
   const json = buildArtifactCommentContent(
     buildReviewArtifact({
       repoFullName: "o/r",
       prNumber: 1,
       headSha: "h",
-      baseSha: "b",
+      baseSha,
       outcomeSchema: "maxi.review.v1.review-outcome",
       outcome:
         validatedReview === null
@@ -67,22 +71,41 @@ const alive = (id: string) => comment(id, review);
 
 describe("latestReviewArtifactSessionId", () => {
   it("does not resume a session that never produced a review (timed out)", () => {
-    expect(latestReviewArtifactSessionId([dead("s-dead")])).toBeUndefined();
+    expect(
+      latestReviewArtifactSessionId([dead("s-dead")], "b")
+    ).toBeUndefined();
   });
 
   it("resumes a session that produced a validated review", () => {
-    expect(latestReviewArtifactSessionId([alive("s-live")])).toBe("s-live");
+    expect(latestReviewArtifactSessionId([alive("s-live")], "b")).toBe(
+      "s-live"
+    );
   });
 
   it("skips a newer dead session and resumes an older live one", () => {
-    expect(latestReviewArtifactSessionId([alive("s-old"), dead("s-new")])).toBe(
-      "s-old"
-    );
+    expect(
+      latestReviewArtifactSessionId([alive("s-old"), dead("s-new")], "b")
+    ).toBe("s-old");
   });
 
   it("returns undefined when every recorded session is dead", () => {
     expect(
-      latestReviewArtifactSessionId([dead("a"), dead("b"), dead("c")])
+      latestReviewArtifactSessionId([dead("a"), dead("b"), dead("c")], "b")
     ).toBeUndefined();
+  });
+
+  it("does not resume when the recorded base SHA no longer matches", () => {
+    expect(
+      latestReviewArtifactSessionId([alive("s-stale")], "new-base")
+    ).toBeUndefined();
+  });
+
+  it("resumes a current-base session after skipping a moved-base one", () => {
+    expect(
+      latestReviewArtifactSessionId(
+        [alive("s-current"), comment("s-stale", review, "old-base")],
+        "b"
+      )
+    ).toBe("s-current");
   });
 });

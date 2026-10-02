@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.3.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.2.0...v1.3.0) (2026-10-02)
+
+
+### Features
+
+* **receiver:** add Cloudflare Worker that re-triggers the review gate ([4158104](https://github.com/maxi-tools/maxi-reviewer/commit/41581044a99e661b72fc6fe4d1d1cde0c47c6560))
+* **receiver:** Cloudflare Worker that re-triggers the review gate ([200f094](https://github.com/maxi-tools/maxi-reviewer/commit/200f094e2500bcb6cade4f96c1662321ca687b71))
+
+
+### Bug Fixes
+
+* **ci:** freeze pnpm installs across CI and self-test ([9a84c1a](https://github.com/maxi-tools/maxi-reviewer/commit/9a84c1a26e16a742981e7019cfb89536b475ec20))
+* decode quoted diff paths in extractChangedLines ([ee0be1e](https://github.com/maxi-tools/maxi-reviewer/commit/ee0be1e17dbc568a0fa322a046d97d4b18724dd0))
+* fail the check when the review body is empty or whitespace ([0eb90cf](https://github.com/maxi-tools/maxi-reviewer/commit/0eb90cf9d667372a38222b6c6dff4d174b49ea30))
+* fail the check when the review body is empty or whitespace ([a21f6b1](https://github.com/maxi-tools/maxi-reviewer/commit/a21f6b1d3f3e90372ae905cda562e1048a409404))
+* preserve blank summaries and scope against the full PR file set ([054d614](https://github.com/maxi-tools/maxi-reviewer/commit/054d614c0b8a5043c7ef334e24d0db88683e2f41))
+* preserve scoped review evidence and nonblocking status ([99334ad](https://github.com/maxi-tools/maxi-reviewer/commit/99334ad819e2be2067dbfbc5eedcb4d4def3cdf8))
+* **receiver:** honor GitHub webhook formats and verdict triggers ([e350e4f](https://github.com/maxi-tools/maxi-reviewer/commit/e350e4f819c00813fd99a5a9b8a7ac9634cc9893))
+* **receiver:** tidy lint findings and exclude receiver from project root lint ([28f9af1](https://github.com/maxi-tools/maxi-reviewer/commit/28f9af1c64f33e99d52a08b868694998b6c7a80a))
+* reject invalid empty-review artifacts and sessions ([10afa14](https://github.com/maxi-tools/maxi-reviewer/commit/10afa147c3f6b4484c16f3e5edaf8513f11c5274))
+* scope findings and the blocking verdict to the PR's changed files ([2946442](https://github.com/maxi-tools/maxi-reviewer/commit/2946442baa4c55e736cdd54923894c745e274736))
+* scope findings and the blocking verdict to the PR's changed files ([fbdb924](https://github.com/maxi-tools/maxi-reviewer/commit/fbdb924be112a132313ca2816e43b9e19fe75bdb))
+* **test:** catch install-option and yaml-workflow bypasses ([d0837c8](https://github.com/maxi-tools/maxi-reviewer/commit/d0837c88a53bbf5bfc197168247495b6e74d4f21))
+* **test:** extract _next_invocation to keep cognitive complexity &lt;= 15 ([f892a5c](https://github.com/maxi-tools/maxi-reviewer/commit/f892a5c4dea9c4e390192ef0c5473bf3cd672abe))
+* **test:** tokenize install commands to drop ReDoS and accept spaced flags ([6b124fe](https://github.com/maxi-tools/maxi-reviewer/commit/6b124fe31c553968bdc02a9773823d3acdde2f62))
+* validate empty review artifacts and preserve failure status ([06c99e3](https://github.com/maxi-tools/maxi-reviewer/commit/06c99e3b617fa0116558ae6e39765adb60e5a304))
+
 ## [1.2.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.1.0...v1.2.0) (2026-09-26)
 
 

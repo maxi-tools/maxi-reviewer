@@ -37,7 +37,14 @@ jobs:
           node-version: "24"
 
       - name: Install dependencies
-        run: npm install
+        # pnpm matches the lockfile's content-addressed layout; npm's flat
+        # tree would force @actions/github to resolve differently and break
+        # the bundle at the next ncc rebuild. Frozen, so any drift between
+        # package.json and pnpm-lock.yaml fails here rather than silently
+        # rewriting the lockfile mid-CI.
+        run: |
+          npm install -g pnpm@10.0.0
+          pnpm install --frozen-lockfile
 
       - name: Prettier Check
         run: npm run format:check
@@ -102,7 +109,14 @@ jobs:
           node-version: "24"
 
       - name: Install dependencies
-        run: npm install
+        # pnpm matches the lockfile's content-addressed layout; npm's flat
+        # tree would force @actions/github to resolve differently and break
+        # the bundle at the next ncc rebuild. Frozen, so any drift between
+        # package.json and pnpm-lock.yaml fails here rather than silently
+        # rewriting the lockfile mid-CI.
+        run: |
+          npm install -g pnpm@10.0.0
+          pnpm install --frozen-lockfile
 
       - name: Prettier Check
         run: npm run format:check

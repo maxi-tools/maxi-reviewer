@@ -7,7 +7,13 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import {
   buildArtifactCommentContent,
+  emptyReviewExplanation,
+  emptyReviewStatus,
+  extractChangedFiles,
+  extractChangedLines,
   fetchPullRequestContext,
+  isBlankReviewBody,
+  latestReviewArtifactSessionId,
   reviewTimeoutExplanation,
   reviewTimeoutStatus,
   runAnalyzers,
@@ -22,6 +28,7 @@ vi.mock("@actions/github");
 function artifactComment(input: {
   headSha: string;
   sessionId?: string;
+  outcome?: "EMPTY_REVIEW_BODY";
 }): string {
   const encoded = Buffer.from(
     JSON.stringify({
@@ -37,15 +44,30 @@ function artifactComment(input: {
       headSha: input.headSha,
       baseSha: "base-sha",
       analyzerFindings: [],
-      rawJulesResponses: [],
-      validatedReview: {
-        schema: "maxi.review.v1.jules-review",
-        summary: "Review summary.",
-        verdict: "approve",
-        resolvedCommentIds: [],
-        comments: [],
-      },
+      rawJulesResponses: input.outcome ? ["partial response"] : [],
+      validatedReview: input.outcome
+        ? null
+        : {
+            schema: "maxi.review.v1.jules-review",
+            summary: "Review summary.",
+            verdict: "approve",
+            resolvedCommentIds: [],
+            comments: [],
+          },
       validationErrors: [],
+      ...(input.outcome
+        ? {
+            outcomeSchema: "maxi.review.v1.review-outcome",
+            outcome: input.outcome,
+            outcomeReason: "No review body was produced",
+            reviewOutputChars: 16,
+            runIdentity: {
+              workflowRunId: 101,
+              workflowRunAttempt: 1,
+              job: "review",
+            },
+          }
+        : {}),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     }),
     "utf8"
@@ -110,8 +132,10 @@ describe("runReviewPr orchestration", () => {
     vi.spyOn(core, "error").mockImplementation(() => undefined);
     vi.spyOn(core, "setFailed").mockImplementation(() => undefined);
 
-    (github as any).getOctokit = vi.fn().mockReturnValue({ rest: {} });
-    (github as any).context = {
+    vi.mocked(github.getOctokit).mockReturnValue({ rest: {} } as ReturnType<
+      typeof github.getOctokit
+    >);
+    (github as typeof github & { context: typeof github.context }).context = {
       runId: 101,
       runAttempt: 1,
       job: "review",
@@ -678,6 +702,271 @@ describe("runReviewPr orchestration", () => {
     );
     expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(30));
   });
+
+  it("falls back to the OpenAI-compatible reviewer when Jules returns no review", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://jasper:8000/v1";
+      if (name === "openai_model") return "Qwen/Qwen3-Coder-30B-A3B-Instruct";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      buildReviewPrompt: vi.fn().mockReturnValue("review this diff"),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+        rawResponses: [],
+      }),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "comment",
+          summary: "Qwen found a panic.",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: "src/a.ts",
+              line: 1,
+              severity: "Warning",
+              confidence: "High",
+              message: "unwrap panics.",
+              promptForAgents: "Return a Result.",
+            },
+          ],
+        },
+        sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        rawResponses: ['{"verdict":"comment"}'],
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(1);
+    expect(deps.runOpenAiReview).toHaveBeenCalledWith(
+      "review this diff",
+      expect.objectContaining({
+        baseUrl: "http://jasper:8000/v1",
+        model: "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        timeoutMinutes: 8,
+      }),
+      expect.any(Object)
+    );
+    expect(deps.submitReview).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      7,
+      "head-sha",
+      expect.stringContaining("Qwen found a panic."),
+      [
+        expect.objectContaining({
+          file: "src/a.ts",
+          line: 1,
+          message: "unwrap panics.",
+        }),
+      ]
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("REVIEWED_WITH_FINDINGS");
+    expect(artifact.sessionId).toMatch(/^openai:/);
+    expect(artifact.validationErrors[0]).toContain(
+      "OpenAI-compatible fallback"
+    );
+  });
+
+  it("does not call the fallback when Jules produced a review", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "30";
+      if (name === "openai_base_url") return "http://jasper:8000/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runOpenAiReview: vi.fn(),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(1);
+    expect(deps.runOpenAiReview).not.toHaveBeenCalled();
+  });
+
+  it("uses the OpenAI backend instead of Jules when it is the selected roster reviewer", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "30";
+      if (name === "reviewer_backend") return "qwen";
+      if (name === "openai_base_url") return "http://pearl:8000/v1/";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn(),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "approve",
+          summary: "Roster review.",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        rawResponses: ["{}"],
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runJulesReview).not.toHaveBeenCalled();
+    expect(deps.runOpenAiReview).toHaveBeenCalledWith(
+      "prompt",
+      expect.objectContaining({ baseUrl: "http://pearl:8000/v1" }),
+      expect.any(Object)
+    );
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(deps.setStatus.mock.calls[0][6]).toContain("Qwen is reviewing");
+  });
+
+  it("keeps the Jules timeout when the fallback also returns nothing", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://jasper:8000/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "openai:timeout:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(1);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(15));
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
+    expect(artifact.sessionId).toBe("jules-session");
+  });
+
+  it("does not block on a finding outside the PR diff", async () => {
+    // #91: a 2-line PR got a blocking failure from findings in a file the PR
+    // never touched. fail_on=blocking is the default, so this is the path the
+    // issue hit.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "blocking";
+      if (name === "timeout_minutes") return "30";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "block",
+          summary: "Blocking issues found in ci.yml.",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: ".github/workflows/ci.yml",
+              line: 118,
+              severity: "High",
+              confidence: "High",
+              message: "Workflow condition is wrong.",
+              promptForAgents: "Fix it",
+            },
+          ],
+        },
+        sessionId: "session-1",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    // The out-of-diff finding is never posted...
+    expect(deps.submitReview.mock.calls[0][6]).toEqual([]);
+    expect(deps.submitReview.mock.calls[0][5]).not.toContain("ci.yml");
+    // ...and with it scoped out, the check passes instead of reporting
+    // "Blocking issues found"...
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "success",
+      "Review complete (verdict: comment)"
+    );
+    expect(deps.setStatus).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      "Blocking issues found"
+    );
+    // ...while the dropped finding stays visible on the harvestable artifact.
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.validatedReview.verdict).toBe("comment");
+    expect(artifact.droppedComments).toEqual([
+      expect.objectContaining({
+        file: ".github/workflows/ci.yml",
+        message: "Workflow condition is wrong.",
+        severity: "High",
+      }),
+    ]);
+    expect(artifact.validationErrors).toContainEqual(
+      expect.stringContaining(
+        "out-of-diff finding dropped: .github/workflows/ci.yml:118"
+      )
+    );
+
+    // The same pipeline must pass fail_on=any when no in-diff finding remains.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "any";
+      if (name === "timeout_minutes") return "30";
+      return "";
+    });
+    await runReviewPr(deps);
+    expect(deps.setStatus.mock.lastCall?.[5]).toBe("success");
+    expect(deps.setStatus.mock.lastCall?.[6]).toContain("No in-diff findings");
+  });
+});
+
+describe("quoted diff paths", () => {
+  it("decodes Git octal-quoted UTF-8 filenames", () => {
+    const diff =
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n@@ -0,0 +1 @@\n+new\n';
+    expect(extractChangedFiles(diff)).toEqual(["café.ts"]);
+  });
+
+  it("records added line numbers for octal-quoted UTF-8 filenames", () => {
+    const diff =
+      'diff --git "a/caf\\303\\251.ts" "b/caf\\303\\251.ts"\n@@ -0,0 +1,2 @@\n+first\n+second\n';
+    const lines = extractChangedLines(diff);
+    expect(lines.has("café.ts")).toBe(true);
+    expect([...lines.get("café.ts")!].sort((a, b) => a - b)).toEqual([1, 2]);
+  });
 });
 
 describe("review timeout wording", () => {
@@ -720,6 +1009,242 @@ describe("review timeout wording", () => {
     for (const minutes of [1, 15, 1440, 35791]) {
       expect(reviewTimeoutStatus(minutes).length).toBeLessThanOrEqual(140);
     }
+  });
+});
+
+describe("empty review body is never a passing check", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      // fail_on=never is the path that used to paint an empty body SUCCESS.
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "30";
+      return "";
+    });
+    vi.spyOn(core, "getBooleanInput").mockReturnValue(false);
+    vi.spyOn(core, "setSecret").mockImplementation(() => undefined);
+    vi.spyOn(core, "info").mockImplementation(() => undefined);
+    vi.spyOn(core, "warning").mockImplementation(() => undefined);
+    vi.spyOn(core, "error").mockImplementation(() => undefined);
+    vi.spyOn(core, "setFailed").mockImplementation(() => undefined);
+
+    vi.mocked(github.getOctokit).mockReturnValue({ rest: {} } as ReturnType<
+      typeof github.getOctokit
+    >);
+    (github as typeof github & { context: typeof github.context }).context = {
+      runId: 101,
+      runAttempt: 1,
+      job: "review",
+      eventName: "pull_request",
+      repo: { owner: "maxi", repo: "example" },
+      payload: {
+        action: "opened",
+        pull_request: {
+          number: 7,
+          head: { sha: "head-sha", repo: { full_name: "maxi/example" } },
+          base: { sha: "base-sha", ref: "main" },
+          title: "PR title",
+          body: "PR body",
+          labels: [],
+          draft: false,
+        },
+      },
+    };
+  });
+
+  it.each([
+    { name: "empty", summary: "" },
+    { name: "whitespace-only", summary: "  \n\t  " },
+  ])("fails the job when the review body is $name", async ({ summary }) => {
+    const writeJobSummary = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      ...completedReviewDeps(),
+      writeJobSummary,
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "approve",
+          summary,
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "session-empty",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("EMPTY_REVIEW_BODY");
+    expect(artifact.outcomeReason).toBe(emptyReviewExplanation(summary.length));
+    expect(artifact.validatedReview).toBeNull();
+    expect(writeJobSummary).toHaveBeenCalledWith(summary.length);
+    expect(core.setFailed).toHaveBeenCalledWith(
+      emptyReviewExplanation(summary.length)
+    );
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      emptyReviewStatus(summary.length)
+    );
+    const states = deps.setStatus.mock.calls.map((call) => call[5]);
+    expect(states).not.toContain("success");
+  });
+
+  it("publishes findings and resolves threads despite a blank summary", async () => {
+    const finding = {
+      file: "src/a.ts",
+      line: 1,
+      severity: "Warning" as const,
+      confidence: "High" as const,
+      message: "Fix this",
+      promptForAgents: "Fix this",
+    };
+    const deps = {
+      ...completedReviewDeps(),
+      writeJobSummary: vi.fn().mockResolvedValue(undefined),
+      fetchPullRequestContext: vi.fn().mockResolvedValue({
+        diff: "",
+        changedFiles: ["src/a.ts"],
+        files: new Map(),
+        changedLines: new Map(),
+        openThreads: [{ index: 1, threadId: "thread-1" }],
+        linkedIssues: [],
+      }),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "comment",
+          summary: " ",
+          resolvedCommentIds: [1],
+          newComments: [finding],
+        },
+        sessionId: "session-empty",
+      }),
+    };
+    await runReviewPr(deps);
+    expect(deps.resolveThreads).toHaveBeenCalledWith(expect.anything(), [
+      "thread-1",
+    ]);
+    expect(deps.submitReview).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      7,
+      "head-sha",
+      expect.stringContaining("review body was empty"),
+      [finding]
+    );
+    expect(JSON.parse(deps.uploadArtifact.mock.calls[0][1])).toMatchObject({
+      outcome: "EMPTY_REVIEW_BODY",
+      validatedReview: null,
+    });
+    expect(core.setFailed).toHaveBeenCalled();
+  });
+
+  it("preserves the blank-review failure when finding delivery fails", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      writeJobSummary: vi.fn().mockResolvedValue(undefined),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "comment",
+          summary: " ",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: "src/a.ts",
+              line: 1,
+              severity: "Warning",
+              confidence: "High",
+              message: "Fix",
+              promptForAgents: "Fix",
+            },
+          ],
+        },
+        sessionId: "session-empty",
+      }),
+      submitReview: vi.fn().mockRejectedValue(new Error("delivery failed")),
+    };
+    await runReviewPr(deps);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("delivery failed")
+    );
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      emptyReviewStatus(1)
+    );
+    expect(deps.writeJobSummary).toHaveBeenCalledWith(1);
+    expect(core.setFailed).toHaveBeenCalledWith(emptyReviewExplanation(1));
+  });
+
+  it("does not overturn a successful review if the job summary cannot be written", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      writeJobSummary: vi
+        .fn()
+        .mockRejectedValue(new Error("summary unavailable")),
+    };
+    await runReviewPr(deps);
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining("summary unavailable")
+    );
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(deps.setStatus.mock.calls.map((call) => call[5])).toContain(
+      "success"
+    );
+  });
+
+  it("keeps a normal review body as a passing check when fail_on is never", async () => {
+    const writeJobSummary = vi.fn().mockResolvedValue(undefined);
+    const deps = {
+      ...completedReviewDeps(),
+      writeJobSummary,
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(writeJobSummary).toHaveBeenCalledWith("Looks okay.".length);
+    const states = deps.setStatus.mock.calls.map((call) => call[5]);
+    expect(states).toContain("success");
+    expect(states).not.toContain("failure");
+  });
+});
+
+describe("empty review artifact session resumption", () => {
+  it("skips a blank-body session with raw responses and reuses the last valid session", () => {
+    expect(
+      latestReviewArtifactSessionId([
+        artifactComment({ headSha: "older", sessionId: "valid-session" }),
+        artifactComment({
+          headSha: "newer",
+          sessionId: "empty-session",
+          outcome: "EMPTY_REVIEW_BODY",
+        }),
+      ])
+    ).toBe("valid-session");
+  });
+});
+
+describe("isBlankReviewBody", () => {
+  it.each([
+    { name: "empty", body: "", blank: true },
+    { name: "whitespace-only", body: " \n\t", blank: true },
+    { name: "normal", body: "Looks okay.", blank: false },
+  ])("$name", ({ body, blank }) => {
+    expect(isBlankReviewBody(body)).toBe(blank);
   });
 });
 

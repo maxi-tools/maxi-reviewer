@@ -39,6 +39,14 @@ import {
   planAttempts,
   runReviewWithSetupEscalation,
 } from "./jules-escalation.js";
+import {
+  openAiFallbackConfigured,
+  parseReviewerBackend,
+  resolveOpenAiReviewConfig,
+  runOpenAiReview,
+  type OpenAiReviewConfig,
+  type ReviewerBackend,
+} from "./openai-review.js";
 import { buildReviewPrompt } from "./prompt.js";
 import { fetchCiSignal } from "./ci-signal.js";
 import { enrichCommentsWithAnchors } from "./anchor.js";
@@ -52,6 +60,7 @@ import {
   filterDiffByPaths,
   matchesAnyGlob,
   parseIgnoreGlobs,
+  scopeReviewToDiff,
 } from "./diff-filter.js";
 import { loadSelectedRules, selectRuleFiles } from "./rules/select.js";
 import { buildReviewArtifact } from "./late-feedback-harvest.js";
@@ -127,9 +136,35 @@ export function reviewTimeoutExplanation(timeoutMinutes: number): string {
   ].join(" ");
 }
 
+/** True when a review body is missing any non-whitespace content. */
+export function isBlankReviewBody(body: string): boolean {
+  return body.trim().length === 0;
+}
+
+/**
+ * Status line for a parsed review whose body is empty or whitespace-only.
+ * Distinct from a timeout: something came back, but it was not a review.
+ */
+export function emptyReviewStatus(collectedCharacters: number): string {
+  return truncate(
+    `Empty review body (${collectedCharacters} chars) — no review was produced.`,
+    STATUS_DESCRIPTION_MAX
+  );
+}
+
+/** Long-form of {@link emptyReviewStatus} for the log and the job failure. */
+export function emptyReviewExplanation(collectedCharacters: number): string {
+  return [
+    `Collected an empty or whitespace-only review body (${collectedCharacters} chars), so no review was produced.`,
+    "This is not a verdict on the code.",
+  ].join(" ");
+}
+
 export interface PullRequestContext {
   diff: string;
   changedFiles: string[];
+  /** Full PR file set (base...head), used for scoping. Defaults to changedFiles when absent. */
+  prChangedFiles?: string[];
   files?: Map<string, string>;
   changedLines?: Map<string, Set<number>>;
   rulesFromFile?: string;
@@ -202,6 +237,11 @@ export interface ReviewPrDeps {
     timeoutMinutes: number,
     options?: RunJulesReviewOptions
   ) => Promise<JulesReviewRunResult>;
+  /**
+   * OpenAI-compatible reviewer. Injected so tests can prove fallback selection
+   * without standing up a server. Defaults to {@link runOpenAiReview}.
+   */
+  runOpenAiReview: typeof runOpenAiReview;
   submitReview: typeof submitReview;
   resolveThreads: typeof resolveThreads;
   setStatus: typeof setStatus;
@@ -210,6 +250,112 @@ export interface ReviewPrDeps {
   listReviewArtifactComments: typeof listReviewArtifactComments;
   wrapPermissionError: typeof wrapPermissionError;
   writeJobSummary: (collectedCharacters: number) => Promise<void>;
+}
+
+/**
+ * Pick the reviewer and, when Jules is primary, fall through if it never replies.
+ *
+ * Two ways the OpenAI-compatible endpoint is used, matching the two ways an
+ * operator asks for it:
+ *
+ * - `reviewer_backend=openai` (or `qwen`) runs it instead of Jules. That is the
+ *   explicit roster entry: a second workflow job can post its own review.
+ * - `reviewer_backend=jules` (the default) still runs Jules, including the
+ *   stuck-setup escalation. Only a review that came back empty — Jules timed
+ *   out, which is what happened twice on 2026-09-26 — falls through, and only
+ *   when `openai_base_url` is set. A Jules error that is not "no review" is
+ *   still a Jules error; the fallback is not a retry of a bad answer.
+ *
+ * A fallback that itself times out returns the original empty Jules result, so
+ * the harvested artifact still says the review never arrived rather than
+ * inventing a second failure mode.
+ */
+export async function runSelectedReview(input: {
+  deps: ReviewPrDeps;
+  backend: ReviewerBackend;
+  apiKey: string;
+  fallbackApiKey: string;
+  prompt: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  source: any;
+  timeoutMinutes: number;
+  julesOptions: RunJulesReviewOptions;
+}): Promise<JulesReviewRunResult> {
+  if (input.backend === "openai") {
+    return runOpenAiBackend(input.deps, input.prompt, input.timeoutMinutes, {
+      verificationContext: input.julesOptions.verificationContext,
+      retrieval: input.julesOptions.retrieval,
+      onProgress: input.julesOptions.onProgress,
+    });
+  }
+
+  const julesResult = await runReviewWithSetupEscalation({
+    run: input.deps.runJulesReview,
+    attempts: planAttempts(input.apiKey, input.fallbackApiKey),
+    prompt: input.prompt,
+    source: input.source,
+    timeoutMinutes: input.timeoutMinutes,
+    options: input.julesOptions,
+  });
+  if (julesResult.reviewResult || !openAiFallbackConfigured(core.getInput)) {
+    return julesResult;
+  }
+
+  core.warning(
+    `Jules returned no review within ${input.timeoutMinutes} minutes; ` +
+      "falling back to the configured OpenAI-compatible reviewer."
+  );
+  const fallback = await runOpenAiBackend(
+    input.deps,
+    input.prompt,
+    input.timeoutMinutes,
+    {
+      verificationContext: input.julesOptions.verificationContext,
+      retrieval: input.julesOptions.retrieval,
+      onProgress: input.julesOptions.onProgress,
+    }
+  );
+  if (!fallback.reviewResult) {
+    core.warning(
+      "OpenAI-compatible fallback also returned no review; recording the Jules timeout."
+    );
+    return julesResult;
+  }
+  return {
+    ...fallback,
+    // Keep Jules's silence in the harvest. The fallback is why a review exists;
+    // it is not a reason to pretend the first reviewer replied.
+    rawResponses: [
+      ...(julesResult.rawResponses ?? []),
+      ...(fallback.rawResponses ?? []),
+    ],
+    validationErrors: [
+      `Jules timed out after ${input.timeoutMinutes} minutes; review produced by OpenAI-compatible fallback (${fallback.sessionId}).`,
+      ...(julesResult.validationErrors ?? []),
+      ...(fallback.validationErrors ?? []),
+    ],
+  };
+}
+
+async function runOpenAiBackend(
+  deps: ReviewPrDeps,
+  prompt: string,
+  timeoutMinutes: number,
+  options: RunJulesReviewOptions
+): Promise<JulesReviewRunResult> {
+  const config: OpenAiReviewConfig = resolveOpenAiReviewConfig(
+    core.getInput,
+    timeoutMinutes
+  );
+  if (config.apiKey) core.setSecret(config.apiKey);
+  core.info(
+    `OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m`
+  );
+  return deps.runOpenAiReview(prompt, config, {
+    verificationContext: options.verificationContext,
+    retrieval: options.retrieval,
+    onProgress: options.onProgress,
+  });
 }
 
 const defaultDeps: ReviewPrDeps = {
@@ -221,6 +367,7 @@ const defaultDeps: ReviewPrDeps = {
   fetchExistingFindings,
   buildReviewPrompt,
   runJulesReview,
+  runOpenAiReview,
   submitReview,
   resolveThreads,
   setStatus,
@@ -239,8 +386,16 @@ export async function runReviewPr(
   overrides: Partial<ReviewPrDeps> = {}
 ): Promise<void> {
   const deps = { ...defaultDeps, ...overrides };
-  const apiKey = core.getInput("jules_api_key", { required: true });
-  core.setSecret(apiKey);
+  const reviewerBackend = parseReviewerBackend(
+    core.getInput("reviewer_backend")
+  );
+  // Jules is required only when it is the backend that will run. An explicit
+  // openai roster entry must be able to review with Jules unconfigured — that
+  // is the point of a second reviewer, not a second key for the first one.
+  const apiKey = core.getInput("jules_api_key", {
+    required: reviewerBackend === "jules",
+  });
+  if (apiKey) core.setSecret(apiKey);
   // Optional second Jules account. A session that never finishes cloning is
   // recreated here rather than waited out; see jules-escalation.ts.
   const fallbackApiKey = core.getInput("jules_api_key_fallback");
@@ -335,7 +490,9 @@ export async function runReviewPr(
         headSha,
         statusContext,
         "pending",
-        "Jules is reviewing this PR…"
+        reviewerBackend === "openai"
+          ? "Qwen is reviewing this PR…"
+          : "Jules is reviewing this PR…"
       );
     } catch (err) {
       throw deps.wrapPermissionError(
@@ -487,7 +644,7 @@ export async function runReviewPr(
       julesOptions.previousSessionId = previousSessionId;
     }
 
-    // Keep the pending status current while Jules works. Without this the
+    // Keep the pending status current while the reviewer works. Without this the
     // status is written once and never touched again, so a review that started
     // seconds ago and one that has hung for half an hour look identical from
     // the PR page — a misread that has cost several early merges.
@@ -508,20 +665,48 @@ export async function runReviewPr(
         ),
     });
 
-    const { reviewResult, sessionId, rawResponses, validationErrors } =
-      await runReviewWithSetupEscalation({
-        run: deps.runJulesReview,
-        attempts: planAttempts(apiKey, fallbackApiKey),
-        prompt,
-        source: { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
-        timeoutMinutes,
-        options: julesOptions,
-      });
+    const reviewRun = await runSelectedReview({
+      deps,
+      backend: reviewerBackend,
+      apiKey,
+      fallbackApiKey,
+      prompt,
+      source: { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
+      timeoutMinutes,
+      julesOptions,
+    });
+    const { sessionId, rawResponses } = reviewRun;
+    // Scope the review to the PR's changed files before anything downstream
+    // reads it (issue #91). A finding in a file the diff does not touch cannot
+    // be actioned in this PR, so it is dropped before publishing, recorded on
+    // the artifact, and a `block` resting only on such findings is downgraded
+    // to `comment` — out-of-diff findings must never block.
+    const scoped = reviewRun.reviewResult
+      ? scopeReviewToDiff(
+          reviewRun.reviewResult,
+          context.prChangedFiles ?? context.changedFiles
+        )
+      : null;
+    if (scoped && scoped.droppedComments.length > 0) {
+      const dropped = scoped.droppedComments
+        .map((comment) => `${comment.file}:${comment.line}`)
+        .join(", ");
+      core.warning(`Dropped out-of-diff finding(s): ${dropped}`);
+    }
+    const reviewResult = scoped ? scoped.review : null;
+    const validationErrors = [
+      ...(reviewRun.validationErrors ?? []),
+      ...(scoped?.issues ?? []),
+    ];
+    const blankReview =
+      reviewResult != null && isBlankReviewBody(reviewResult.summary);
     const outcome: ReviewOutcome = !reviewResult
       ? "TIMED_OUT_NO_CONTENT"
-      : (reviewResult.newComments?.length ?? 0) > 0
-        ? "REVIEWED_WITH_FINDINGS"
-        : "REVIEWED_NO_FINDINGS";
+      : blankReview
+        ? "EMPTY_REVIEW_BODY"
+        : (reviewResult.newComments?.length ?? 0) > 0
+          ? "REVIEWED_WITH_FINDINGS"
+          : "REVIEWED_NO_FINDINGS";
     const reviewOutputChars = (rawResponses ?? []).reduce(
       (total, response) => total + response.length,
       0
@@ -554,13 +739,16 @@ export async function runReviewPr(
       outcomeReason:
         outcome === "TIMED_OUT_NO_CONTENT"
           ? reviewTimeoutExplanation(timeoutMinutes)
-          : undefined,
+          : blankReview
+            ? emptyReviewExplanation(reviewResult.summary.length)
+            : undefined,
       reviewOutputChars,
       runIdentity,
       analyzerFindings,
       rawJulesResponses: rawResponses || [],
-      validatedReview: reviewResult,
-      validationErrors: validationErrors || [],
+      validatedReview: blankReview ? null : reviewResult,
+      validationErrors,
+      droppedComments: scoped?.droppedComments ?? [],
       sessionId,
     });
     // The verdict is already decided -- it is in `reviewResult` above. What
@@ -631,6 +819,64 @@ export async function runReviewPr(
 
     const { verdict, summary, resolvedCommentIds, newComments } = reviewResult;
 
+    // A parsed result with no body is the quiet sibling of a timeout: the
+    // job used to return normally, so the Actions check stayed SUCCESS even
+    // though nothing was reviewed. fail_on=never must not paint that green.
+    if (isBlankReviewBody(summary)) {
+      // A missing narrative must fail the check, but do not hide independently
+      // actionable findings or thread resolutions returned by the reviewer.
+      if (resolvedCommentIds?.length) {
+        const threadIds = context.openThreads
+          .filter((t) => resolvedCommentIds.includes(t.index))
+          .map((t) => t.threadId);
+        if (threadIds.length) {
+          try {
+            await deps.resolveThreads(octokit, threadIds);
+          } catch (err) {
+            core.warning(
+              `Could not resolve empty-review threads: ${String(err)}`
+            );
+          }
+        }
+      }
+      const publishableComments = (newComments || []).filter(
+        (c) => !matchesAnyGlob(c.file, ignoreGlobs)
+      );
+      if (publishableComments.length) {
+        try {
+          await deps.submitReview(
+            octokit,
+            owner,
+            repo,
+            prNumber,
+            headSha,
+            `${COMMENT_MARKER}\n## Maxi Review\n\nThe review body was empty; the check failed, but these findings were returned.\n\n---\n_Session: \`${sessionId}\`_`,
+            publishableComments
+          );
+        } catch (err) {
+          core.warning(
+            `Could not publish empty-review findings: ${String(err)}`
+          );
+        }
+      }
+      await deps.setStatus(
+        octokit,
+        owner,
+        repo,
+        headSha,
+        statusContext,
+        "failure",
+        emptyReviewStatus(summary.length)
+      );
+      try {
+        await deps.writeJobSummary(summary.length);
+      } catch (err) {
+        core.warning(`Could not write job summary: ${String(err)}`);
+      }
+      core.setFailed(emptyReviewExplanation(summary.length));
+      return;
+    }
+
     // Resolve threads that the LLM identified as fixed
     if (resolvedCommentIds && resolvedCommentIds.length > 0) {
       const threadIdsToResolve = context.openThreads
@@ -657,7 +903,16 @@ export async function runReviewPr(
       (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs))
     );
 
-    const { state, description } = statusFromVerdict(verdict, failOn);
+    const { state, description } =
+      scoped &&
+      scoped.droppedComments.length > 0 &&
+      (scoped.review.newComments?.length ?? 0) === 0 &&
+      failOn === "any"
+        ? {
+            state: "success" as const,
+            description: "No in-diff findings; out-of-diff findings excluded",
+          }
+        : statusFromVerdict(verdict, failOn);
     await deps.setStatus(
       octokit,
       owner,
@@ -667,6 +922,11 @@ export async function runReviewPr(
       state,
       description
     );
+    try {
+      await deps.writeJobSummary(summary.length);
+    } catch (err) {
+      core.warning(`Could not write job summary: ${String(err)}`);
+    }
 
     core.info(`Verdict: ${verdict}. Status check: ${state}.`);
   } catch (err) {
@@ -726,6 +986,23 @@ export async function fetchPullRequestContext(input: {
     input.pr.number
   );
   const changedFiles = extractChangedFiles(diff);
+  // On an incremental (synchronize) review the diff only covers the latest
+  // push. Scoping must see every file the PR touches, or a finding on a file
+  // changed by an earlier push is dropped and a block resting on it is
+  // downgraded. Fetch the full PR diff only when the incremental base differs.
+  const prChangedFiles =
+    input.baseShaForDiff === input.baseSha
+      ? changedFiles
+      : extractChangedFiles(
+          await fetchDiff(
+            input.octokit,
+            input.owner,
+            input.repo,
+            input.pr,
+            input.baseSha,
+            input.headSha
+          )
+        );
 
   const linkedIssueRefs = input.groundInLinkedIssues
     ? parseClosingIssueRefs(input.pr.body, {
@@ -741,6 +1018,7 @@ export async function fetchPullRequestContext(input: {
   return {
     diff,
     changedFiles,
+    prChangedFiles,
     linkedIssues,
     files: await loadHeadFiles(
       input.octokit,
@@ -828,10 +1106,31 @@ export async function uploadReviewArtifact(
   }
 }
 
+function unquoteGitPath(path: string): string {
+  // Git quotes non-ASCII UTF-8 as octal bytes (core.quotePath=true).
+  const bytes: number[] = [];
+  for (const match of path.matchAll(/\\([0-7]{3}|.)|[^\\]+/g)) {
+    if (!match[1]) bytes.push(...Buffer.from(match[0]));
+    else if (/^[0-7]{3}$/.test(match[1])) bytes.push(parseInt(match[1], 8));
+    else bytes.push(...Buffer.from({ t: "\t", n: "\n" }[match[1]] ?? match[1]));
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+function diffHeaderPath(line: string): string | undefined {
+  const plain = line.match(/^diff --git a\/.*? b\/(.+)$/);
+  if (plain) return plain[1];
+  const quoted = line.match(
+    /^diff --git "a\/((?:[^"\\]|\\.)*)" "b\/((?:[^"\\]|\\.)*)"$/
+  );
+  return quoted ? unquoteGitPath(quoted[2]) : undefined;
+}
+
 export function extractChangedFiles(diff: string): string[] {
   const paths = new Set<string>();
-  for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
-    paths.add(match[1]);
+  for (const line of diff.split("\n")) {
+    const path = diffHeaderPath(line);
+    if (path) paths.add(path);
   }
   return [...paths];
 }
@@ -842,9 +1141,9 @@ export function extractChangedLines(diff: string): Map<string, Set<number>> {
   let newLine = 0;
 
   for (const line of diff.split("\n")) {
-    const fileMatch = line.match(/^diff --git a\/.* b\/(.+)$/);
-    if (fileMatch) {
-      currentPath = fileMatch[1];
+    const headerPath = diffHeaderPath(line);
+    if (headerPath !== undefined) {
+      currentPath = headerPath;
       if (!changedLines.has(currentPath)) {
         changedLines.set(currentPath, new Set());
       }
@@ -946,6 +1245,7 @@ export function latestReviewArtifactSessionId(
   for (const body of [...comments].reverse()) {
     const artifact = extractReviewArtifactFromComment(body);
     if (!artifact?.sessionId) continue;
+    if (artifact.outcome === "EMPTY_REVIEW_BODY") continue;
     // Never resume a session that produced no review. A hung/stuck Jules session
     // (no responses, no validated review) would otherwise be resumed on every
     // retry via startReviewSession(previousSessionId) and time out identically,

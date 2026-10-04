@@ -1,0 +1,22 @@
+{
+  "name": "maxi-reviewer-receiver",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare Worker that re-triggers the maxi-reviewer review gate when review threads are resolved.",
+  "type": "module",
+  "main": "src/worker.ts",
+  "scripts": {
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240924.0",
+    "@vitest/coverage-v8": "^4.1.8",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}

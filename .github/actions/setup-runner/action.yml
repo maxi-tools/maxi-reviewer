@@ -309,18 +309,39 @@ runs:
           # common cause -- and that node still has an AMD GPU worth reporting
           # and installing for. Under the old `elif` those nodes read "CPU only"
           # because the lspci fallback was unreachable whenever rocminfo existed.
-          # `{ lspci || true; }`, not a bare `lspci`. `grep -q` exits at its
-          # FIRST match, so the producer's next write gets EPIPE and dies of
-          # SIGPIPE -- status 141 -- and `pipefail` hands that status to the
-          # `if`. A guard whose pattern MATCHED then reads as "no AMD GPU".
-          # Measured 2026-09-21: a two-line faked lspci was enough to lose that
-          # race on maxibaobab-5, and the step printed "CPU only". Real lspci
-          # prints forty lines with the AMD entry rarely last, so the node this
-          # probe exists for is the likeliest one to hit it.
-          if [ "$HAS_ROCM" != true ] && { lspci 2>/dev/null || true; } | grep -qiE "$amd_pci_re"; then
+          # ONE lspci READ, CAPTURED. Not `if lspci | grep -q ...`, and that
+          # is a correctness fix rather than a tidy-up.
+          #
+          # `grep -q` exits the instant it matches. That closes the pipe under
+          # lspci, which dies of SIGPIPE (141) on its next write -- and a
+          # composite action's `shell: bash` is
+          # `bash --noprofile --norc -eo pipefail`, where a pipeline takes the
+          # LAST non-zero status, i.e. lspci's 141. So `if lspci | grep -q ...`
+          # evaluates FALSE precisely when the pattern matches EARLY in a long
+          # listing, which on a real machine is every match.
+          #
+          # Measured under that exact shell, not reasoned about. Against a
+          # 41-line fake lspci whose match is the first line, the guard was
+          # false in 198 of 200 runs. Against the two-line fixture in
+          # scripts/test_setup_runner_action.py it is false in about 4 of 60 --
+          # which is why this reached CI as an INTERMITTENT failure
+          # (script-tests on maxicoconut-1, 2026-09-09: `summary=CPU only` and
+          # every flag false, on a gfx1151 node) rather than a standing one.
+          #
+          # `[ -n "$capture" ]` cannot race: grep reads its input to the end,
+          # and the only SIGPIPE left is `head -1`'s, which lands on grep after
+          # head has already printed the line, and whose status the `|| true`
+          # absorbs.
+          #
+          # It also closes the drift this block was rewritten for one level
+          # harder than sharing a regex: the guard and the extraction are now
+          # the SAME READ, so they cannot disagree even if somebody edits one.
+          amd_pci_hit="$(lspci 2>/dev/null | grep -iE "$amd_pci_re" | head -1 || true)"
+          if [ "$HAS_ROCM" != true ] && [ -n "$amd_pci_hit" ]; then
+
             # GPU present but ROCm not usable — we'll install it
             HAS_AMD_GPU=true
-            AMD_GPU="$(lspci 2>/dev/null | grep -iE "$amd_pci_re" | head -1 | sed 's/.*: //' || true)"
+            AMD_GPU="$(printf '%s' "$amd_pci_hit" | sed 's/.*: //' || true)"
             SUMMARY="${SUMMARY}AMD GPU (needs ROCm): ${AMD_GPU:-unknown AMD device}; "
           fi
         fi
@@ -342,7 +363,12 @@ runs:
           # does not publish exits non-zero, and an unguarded assignment would
           # take that status straight into `set -e`.
           CHIP="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
-          if echo "$CHIP" | grep -qi "Apple"; then
+          # Captured, like the lspci probe above and for the same reason. A
+          # one-line `echo` normally fits the pipe buffer and wins the race
+          # against `grep -q`, which makes this the version of the bug that
+          # sits here for years and then fires once, on a loaded box.
+          APPLE_CHIP="$(printf '%s' "$CHIP" | grep -i "Apple" || true)"
+          if [ -n "$APPLE_CHIP" ]; then
             HAS_ANE=true
             SUMMARY="${SUMMARY}ANE: ${CHIP}; "
           fi
@@ -357,19 +383,20 @@ runs:
         if [ "$OS" = "linux" ]; then
           # Intel Meteor Lake / Arrow Lake NPU (VPU)
           intel_npu_re='Intel.*VPU|Intel.*NPU|Intel.*AI Boost'
-          # Producer guarded for the same reason as the AMD probe above: under
-          # `pipefail`, SIGPIPE from an early `grep -q` exit would answer this
-          # question with a race instead of with the PCI table.
-          if { lspci 2>/dev/null || true; } | grep -qiE "$intel_npu_re"; then
+          intel_npu_hit="$(lspci 2>/dev/null | grep -iE "$intel_npu_re" | head -1 || true)"
+          if [ -n "$intel_npu_hit" ]; then
+
             HAS_NPU_INTEL=true
-            NPU_NAME="$(lspci 2>/dev/null | grep -iE "$intel_npu_re" | head -1 | sed 's/.*: *//' || true)"
+            NPU_NAME="$(printf '%s' "$intel_npu_hit" | sed 's/.*: *//' || true)"
             SUMMARY="${SUMMARY}Intel NPU: ${NPU_NAME:-unknown Intel NPU}; "
           fi
           # AMD XDNA NPU (Ryzen AI)
           amd_npu_re='AMD.*IPU|AMD.*XDNA|AMD.*AIE'
-          if { lspci 2>/dev/null || true; } | grep -qiE "$amd_npu_re"; then
+          amd_npu_hit="$(lspci 2>/dev/null | grep -iE "$amd_npu_re" | head -1 || true)"
+          if [ -n "$amd_npu_hit" ]; then
+
             HAS_NPU_AMD=true
-            NPU_NAME="$(lspci 2>/dev/null | grep -iE "$amd_npu_re" | head -1 | sed 's/.*: *//' || true)"
+            NPU_NAME="$(printf '%s' "$amd_npu_hit" | sed 's/.*: *//' || true)"
             SUMMARY="${SUMMARY}AMD NPU: ${NPU_NAME:-unknown AMD NPU}; "
           fi
         fi
@@ -377,7 +404,8 @@ runs:
         if command -v powershell.exe &>/dev/null 2>/dev/null; then
           NPU_WIN="$(powershell.exe -NoProfile -Command "Get-PnpDevice -Class 'System' -Status OK 2>\$null | Where-Object { \$_.FriendlyName -match 'NPU|Neural|XDNA|IPU|VPU|AI' } | Select-Object -First 1 -ExpandProperty FriendlyName" 2>/dev/null | tr -d '\r' || true)"
           if [ -n "$NPU_WIN" ]; then
-            if echo "$NPU_WIN" | grep -qi "AMD\|XDNA"; then
+            NPU_WIN_AMD="$(printf '%s' "$NPU_WIN" | grep -i "AMD\|XDNA" || true)"
+            if [ -n "$NPU_WIN_AMD" ]; then
               HAS_NPU_AMD=true
             else
               HAS_NPU_INTEL=true
@@ -1083,7 +1111,12 @@ runs:
         (inputs.accelerators == 'auto' || inputs.accelerators == 'all' || contains(inputs.accelerators, 'openvino'))
       shell: bash
       run: |
-        if dpkg-query -W -f='${Package}\n' 'openvino*' 2>/dev/null | grep -q '^openvino'; then
+        # Captured, not `| grep -q`: the same SIGPIPE-into-pipefail race the
+        # accelerator step's comment measures. Here the wrong answer is not a
+        # missing GPU but a redundant install run on a box that already has
+        # OpenVINO -- quieter, and just as untrue.
+        openvino_installed="$(dpkg-query -W -f='${Package}\n' 'openvino*' 2>/dev/null | grep '^openvino' | head -1 || true)"
+        if [ -n "$openvino_installed" ]; then
           echo "OpenVINO already installed"
           exit 0
         fi

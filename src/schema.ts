@@ -207,7 +207,12 @@ function validateReviewOutcomeMetadata(
   requireEnum(
     record,
     "outcome",
-    ["TIMED_OUT_NO_CONTENT", "REVIEWED_NO_FINDINGS", "REVIEWED_WITH_FINDINGS"],
+    [
+      "TIMED_OUT_NO_CONTENT",
+      "EMPTY_REVIEW_BODY",
+      "REVIEWED_NO_FINDINGS",
+      "REVIEWED_WITH_FINDINGS",
+    ],
     errors
   );
   if (
@@ -225,10 +230,13 @@ function validateReviewOutcomeMetadata(
   }
 
   if (
-    record.outcome === "TIMED_OUT_NO_CONTENT" &&
+    (record.outcome === "TIMED_OUT_NO_CONTENT" ||
+      record.outcome === "EMPTY_REVIEW_BODY") &&
     record.validatedReview !== null
   ) {
-    errors.push("TIMED_OUT_NO_CONTENT requires validatedReview to be null");
+    errors.push(
+      `${String(record.outcome)} requires validatedReview to be null`
+    );
   }
   if (
     (record.outcome === "REVIEWED_NO_FINDINGS" ||

@@ -16,7 +16,9 @@ describe("action metadata", () => {
     expect(pkg.name).toBe("maxi-review");
     expect(action).toContain('name: "Maxi Review"');
     expect(action).toContain('using: "node24"');
-    expect(action).toContain("analyzer_mode:");
+    expect(action).toContain("reviewer_backend:");
+    expect(action).toContain("openai_base_url:");
+    expect(action).toContain("Qwen/Qwen3-Coder-30B-A3B-Instruct");
     expect(action).toContain("hard_timeout_minutes:");
     expect(action).toContain("command:");
     expect(action).toContain("pr_number:");

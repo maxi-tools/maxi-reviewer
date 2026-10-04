@@ -25,15 +25,10 @@
 # repo that runs it. That is what lets the analyze job key on the matrix
 # without a separate empty-matrix guard.
 #
-# ONE LANGUAGE PER PULL REQUEST, ALL OF THEM NIGHTLY. Four `Analyze` jobs per
-# PR, on every PR in the org, were the largest single item in the Linux queue
-# (2026-09-18: ~22 of 71 queued jobs on a 14-slot pool). A PR is analysed in
-# the ONE language most of its changed files belong to -- a workflow-only PR
-# in a Rust repo gets `actions`, not a 10-minute Rust extraction it did not
-# touch -- and the nightly schedule (and workflow_dispatch) still analyses
-# every detected language, so nothing stops being scanned; it stops being
-# scanned four times per push. Push to main follows the PR rule: the nightly
-# is the baseline, and a merge re-checks the language the merge changed.
+# ALL DETECTED LANGUAGES PER PULL REQUEST AND NIGHTLY. Each PR, including
+# Dependabot PRs, gets the complete detected-language matrix so the CodeQL
+# aggregate has every configuration. Only pushes to main narrow to the
+# dominant changed language; nightly and workflow_dispatch scans remain full.
 #
 # LINUX, X64 ONLY. `runs-on` is `[self-hosted, Linux, X64]`: the X64 pool is
 # the NixOS fleet (maxibaobab-1..6, maxicoconut-1..4, ml-node-1..4; maxi-nix
@@ -94,12 +89,9 @@ on:
   push:
     branches: [main]
   schedule:
-    # Nightly 03:17 UTC, not weekly. A pull request analyses ONE language now
-    # (see `detect`), so this is where the other languages get their turn --
-    # every night, so an alert in a language a PR did not touch surfaces the
-    # next morning rather than the next Sunday. Off the Monday-morning window
-    # the maxi-config distributors use, and outside working hours in every
-    # fleet timezone.
+    # Nightly 03:17 UTC, not weekly: a complete baseline between the narrowed
+    # push scans. Pull requests and dispatches also scan every language.
+    # Off the Monday-morning window used by the maxi-config distributors.
     - cron: "17 3 * * *"
   workflow_dispatch:
 
@@ -193,16 +185,36 @@ jobs:
               '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
             && langs+=(actions)
 
-          # ONE language on a pull request or a push; every language on the
-          # nightly schedule and on a dispatch (which is how an operator asks
-          # for the full scan on demand). The one language is the one with the
-          # most changed files in this commit's diff against its first parent;
-          # ties and a diff that touches none of them (docs, TOML, a lockfile)
-          # fall back to the detection order above, so a Rust repo's
-          # docs-only PR still scans rust rather than nothing -- the matrix
-          # must never be empty (see the `actions` note in the header).
+          # ONE language on a push; every language on a pull request, on the
+          # nightly schedule, and on a dispatch (the latter two are how an
+          # operator asks for the full scan on demand). The one language is
+          # the one with the most changed files in this commit's diff against
+          # its first parent; ties and a diff that touches none of them
+          # (docs, TOML, a lockfile) fall back to the detection order above,
+          # so a Rust repo's docs-only push still scans rust rather than
+          # nothing -- the matrix must never be empty (see the `actions` note
+          # in the header).
+          #
+          # PULL REQUEST SCANS EVERY DETECTED LANGUAGE. The one-language rule
+          # used to cover `pull_request` as well. That was a hosted-runner
+          # economy: four `Analyze` jobs per PR were the largest item in the
+          # Linux queue, and the audit showed the four languages produced
+          # zero additional alerts over the dominant language most of the
+          # time. On the self-hosted X64 fleet the cost calculus flips: every
+          # repo on the schedule lands four jobs on the pool at the same
+          # hour regardless, the pool has spare capacity for the same load
+          # without hosted billing, and the CodeQL aggregate check on the PR
+          # goes NEUTRAL with three
+          # `actions / javascript-typescript / python: configuration not
+          # found` messages when only the dominant language is analysed.
+          # That aggregate state is treated as a failed coverage gate by the
+          # PR acceptance reviewer on maxi-ml (PR2375 verifier t_69c9514d
+          # comment234, criterion 5). PR commits therefore analyse every
+          # detected language; the one-language rule keeps `push` to main
+          # (where the nightly schedule already covers the other languages),
+          # so a merge does not quadruple the queue either.
           narrow=false
-          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ]; then
             # A diff that cannot be taken (no HEAD^1: a root commit, or a
             # checkout shallower than the fetch-depth above) is NOT an empty
             # diff. Empty would pick the default language and look like a
@@ -293,7 +305,12 @@ jobs:
         id: private-deps-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
+          # Dependabot receives its own secret store: the org supplies APP_ID
+          # there, while Actions also has APP_CLIENT_ID. The pinned action
+          # prefers client-id and supports app-id as its legacy fallback.
+          # Reuse inherited credentials; do not copy or widen secret access.
           client-id: ${{ secrets.APP_CLIENT_ID }}
+          app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: maxi-tools
           # This token exists for one step: the `insteadOf` rewrite that lets

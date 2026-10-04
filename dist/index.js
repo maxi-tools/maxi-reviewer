@@ -69685,7 +69685,12 @@ function validateReviewOutcomeMetadata(record, errors) {
         errors.push("review outcome metadata must be present as a complete set");
     }
     requireString(record, "outcomeSchema", "maxi.review.v1.review-outcome", errors);
-    requireEnum(record, "outcome", ["TIMED_OUT_NO_CONTENT", "REVIEWED_NO_FINDINGS", "REVIEWED_WITH_FINDINGS"], errors);
+    requireEnum(record, "outcome", [
+        "TIMED_OUT_NO_CONTENT",
+        "EMPTY_REVIEW_BODY",
+        "REVIEWED_NO_FINDINGS",
+        "REVIEWED_WITH_FINDINGS",
+    ], errors);
     if (!Number.isInteger(record.reviewOutputChars) ||
         record.reviewOutputChars < 0) {
         errors.push("reviewOutputChars must be a non-negative integer");
@@ -69696,9 +69701,10 @@ function validateReviewOutcomeMetadata(record, errors) {
         requirePositiveInt(identity, "workflowRunAttempt", errors, "runIdentity.");
         requireString(identity, "job", undefined, errors, "runIdentity.");
     }
-    if (record.outcome === "TIMED_OUT_NO_CONTENT" &&
+    if ((record.outcome === "TIMED_OUT_NO_CONTENT" ||
+        record.outcome === "EMPTY_REVIEW_BODY") &&
         record.validatedReview !== null) {
-        errors.push("TIMED_OUT_NO_CONTENT requires validatedReview to be null");
+        errors.push(`${String(record.outcome)} requires validatedReview to be null`);
     }
     if ((record.outcome === "REVIEWED_NO_FINDINGS" ||
         record.outcome === "REVIEWED_WITH_FINDINGS") &&
@@ -71210,6 +71216,540 @@ async function runReviewWithSetupEscalation(args) {
     throw lastStuck ?? new Error("No review attempts were configured.");
 }
 
+;// CONCATENATED MODULE: ./src/openai/client.ts
+const DEFAULT_OPENAI_MODEL = "Qwen/Qwen3-Coder-30B-A3B-Instruct";
+/**
+ * Fallback budget when the caller did not set one. A local vLLM reply is
+ * seconds, not the 15-25 minutes Jules takes, so a Jules-sized wait here
+ * would hide a dead endpoint behind a long silence.
+ */
+const DEFAULT_OPENAI_TIMEOUT_MINUTES = 8;
+/**
+ * A turn that produced no body because the budget ran out.
+ *
+ * Distinct from an HTTP error: the caller of the review run turns this into
+ * "no review" so a dead Spark does not fail the whole job before the Jules
+ * path, or a configured fallback, has been considered.
+ */
+class OpenAiTimeoutError extends Error {
+    constructor(timeoutMinutes) {
+        super(`OpenAI-compatible review produced no reply within ${timeoutMinutes} minutes.`);
+        this.name = "OpenAiTimeoutError";
+    }
+}
+function parseReviewerBackend(raw) {
+    const value = (raw ?? "").trim().toLowerCase();
+    if (value === "" || value === "jules")
+        return "jules";
+    // `qwen` is the roster name operators will actually type. The wire protocol
+    // is OpenAI-compatible either way.
+    if (value === "openai" || value === "openai-compatible" || value === "qwen") {
+        return "openai";
+    }
+    throw new Error(`Invalid reviewer_backend: "${raw}". Must be one of: jules, openai.`);
+}
+/**
+ * True when a fallback endpoint is configured, even if the primary backend
+ * is still Jules. An empty base URL means "no fallback", not "call localhost".
+ */
+function openAiFallbackConfigured(getInput) {
+    return getInput("openai_base_url").trim() !== "";
+}
+function resolveOpenAiReviewConfig(getInput, julesTimeoutMinutes) {
+    const baseUrl = normalizeBaseUrl(getInput("openai_base_url"));
+    if (!baseUrl) {
+        throw new Error("openai_base_url is required when reviewer_backend is openai " +
+            "(or when it is the configured Jules-timeout fallback). " +
+            "Point it at the vLLM OpenAI server, e.g. http://jasper:8000/v1.");
+    }
+    const model = getInput("openai_model").trim() || DEFAULT_OPENAI_MODEL;
+    const key = getInput("openai_api_key").trim();
+    const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
+    // Never wait longer than the review the caller already budgeted. A fallback
+    // that outlives the Jules budget it is replacing holds the runner for a
+    // second full review after the first one already failed to arrive.
+    const timeoutMinutes = Math.min(requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES, Math.max(1, julesTimeoutMinutes));
+    return {
+        baseUrl,
+        ...(key ? { apiKey: key } : {}),
+        model,
+        timeoutMinutes,
+    };
+}
+function normalizeBaseUrl(raw) {
+    return raw.trim().replace(/\/+$/, "");
+}
+function parsePositiveInt(raw) {
+    const trimmed = raw.trim();
+    if (!trimmed)
+        return undefined;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed) || parsed < 1)
+        return undefined;
+    return parsed;
+}
+/**
+ * One chat-completions turn.
+ *
+ * Uses `fetch` rather than an SDK: the Spark serves the OpenAI wire shape
+ * through vLLM, and an SDK would pin us to one vendor's client while the
+ * point of this backend is that any compatible server will do.
+ */
+async function completeOpenAiChat(request) {
+    const timeoutMs = request.timeoutMinutes * 60 * 1000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const headers = {
+            "content-type": "application/json",
+        };
+        if (request.apiKey)
+            headers.Authorization = `Bearer ${request.apiKey}`;
+        let response;
+        try {
+            response = await fetch(`${request.baseUrl}/chat/completions`, {
+                method: "POST",
+                headers,
+                signal: controller.signal,
+                body: JSON.stringify({
+                    model: request.model,
+                    temperature: 0,
+                    messages: request.messages,
+                }),
+            });
+        }
+        catch (err) {
+            if (isAbortError(err))
+                throw new OpenAiTimeoutError(request.timeoutMinutes);
+            throw new Error(`OpenAI-compatible review request failed: ${client_errorMessage(err)}`, { cause: err });
+        }
+        if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            throw new Error(`OpenAI-compatible review endpoint returned ${response.status}` +
+                (body ? `: ${body.slice(0, 300)}` : "."));
+        }
+        const payload = (await response.json());
+        const content = payload.choices?.[0]?.message?.content;
+        if (typeof content !== "string" || content.trim() === "") {
+            throw new Error("OpenAI-compatible review endpoint returned no assistant message.");
+        }
+        return content;
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+function isAbortError(err) {
+    return ((err instanceof Error && err.name === "AbortError") ||
+        (typeof DOMException !== "undefined" &&
+            err instanceof DOMException &&
+            err.name === "AbortError"));
+}
+function client_errorMessage(err) {
+    return err instanceof Error ? err.message : String(err);
+}
+
+;// CONCATENATED MODULE: ./src/openai/conversation.ts
+
+
+/**
+ * One user-less turn: send the conversation, append the assistant reply.
+ */
+async function turn(conv) {
+    await notify(conv.onProgress, false);
+    const content = await conv.complete({
+        ...conv.config,
+        messages: conv.messages,
+    });
+    conv.messages.push({ role: "assistant", content });
+    await notify(conv.onProgress, true);
+    return content;
+}
+/**
+ * A turn initiated by a fresh user message (repair prompt, retrieval
+ * follow-up). A timeout is a soft failure — the caller keeps whatever reply
+ * it already had — so it resolves to `null` rather than throwing.
+ */
+async function repairTurn(conv, repairPrompt) {
+    conv.messages.push({ role: "user", content: repairPrompt });
+    try {
+        return await turn(conv);
+    }
+    catch (err) {
+        if (err instanceof OpenAiTimeoutError) {
+            core/* warning */.$e(`OpenAI-compatible repair timed out: ${err.message}`);
+            return null;
+        }
+        throw err;
+    }
+}
+async function notify(onProgress, sawAgentOutput) {
+    if (!onProgress)
+        return;
+    try {
+        await onProgress({ sawAgentOutput });
+    }
+    catch (err) {
+        core/* info */.pq(`Could not publish OpenAI review progress: ${client_errorMessage(err)}`);
+    }
+}
+
+;// CONCATENATED MODULE: ./src/openai/parse.ts
+
+/**
+ * Parse a model reply into the review the rest of the action already posts.
+ *
+ * Structured `maxi.review.v1.jules-review` is the contract. A bare object in
+ * the legacy `{summary, verdict, newComments}` shape is accepted too, because
+ * a local model that followed the example's field names but dropped `schema`
+ * still produced a review, and throwing it away is the failure this backend
+ * exists to avoid.
+ */
+function parseOpenAiReview(message) {
+    try {
+        return parse_convertStructuredReview(parseJulesReview(message));
+    }
+    catch {
+        // Fall through to the legacy shape.
+    }
+    const fenced = message.match(/```(?:json)?[ \t]*\n([\s\S]*?)\n[ \t]*```/i);
+    const candidates = [fenced?.[1], message];
+    let lastError;
+    for (const candidate of candidates) {
+        if (!candidate)
+            continue;
+        try {
+            const parsed = JSON.parse(candidate);
+            if (typeof parsed.summary !== "string" ||
+                !parsed.verdict ||
+                (!parsed.newComments && !parsed.comments)) {
+                throw new Error("review JSON is missing summary, verdict, or comments");
+            }
+            return {
+                summary: parsed.summary,
+                verdict: parsed.verdict,
+                resolvedCommentIds: parsed.resolvedCommentIds ?? [],
+                newComments: parsed.newComments ?? parsed.comments ?? [],
+            };
+        }
+        catch (err) {
+            lastError = err;
+            if (err instanceof Error && err.message.includes("missing summary")) {
+                throw err;
+            }
+        }
+    }
+    throw new Error("Failed to parse OpenAI-compatible review as JSON", {
+        cause: lastError,
+    });
+}
+function parse_convertStructuredReview(review) {
+    return {
+        summary: review.summary,
+        verdict: review.verdict,
+        resolvedCommentIds: review.resolvedCommentIds,
+        newComments: review.comments.map((comment) => ({
+            file: comment.path,
+            line: comment.line,
+            startLine: comment.startLine ?? comment.suggestion?.startLine,
+            endLine: comment.endLine ?? comment.suggestion?.endLine,
+            severity: comment.severity,
+            confidence: comment.confidence,
+            ...(comment.evidenceSource
+                ? { evidenceSource: comment.evidenceSource }
+                : {}),
+            message: comment.message,
+            promptForAgents: comment.promptForAgents ?? "",
+            suggestedReplacement: comment.suggestion?.replacement,
+            fix: comment.fix,
+        })),
+    };
+}
+
+;// CONCATENATED MODULE: ./src/openai/retrieval-loop.ts
+
+
+
+/**
+ * Let the model ask for repository context mid-review. Each assistant reply
+ * is checked for a retrieval request; fulfilled results (or the reason the
+ * request was rejected) go back as the next user message. Returns the last
+ * assistant reply — the one the caller should parse as the review.
+ */
+async function retrieval_loop_runRetrievalLoop(conv, firstReply, retrieval) {
+    let message = firstReply;
+    for (let step = 0; step < retrieval.maxSteps; step++) {
+        const parsed = parseRetrievalRequest(message);
+        if (parsed.kind === "none")
+            return message;
+        const roundsLeft = retrieval.maxSteps - step - 1;
+        const followUp = parsed.kind === "invalid"
+            ? formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft)
+            : await fulfilAndFormat(retrieval, parsed.request.requests, roundsLeft);
+        const next = await repairTurn(conv, followUp);
+        if (!next)
+            return message;
+        message = next;
+    }
+    return nudgeForVerdict(conv, message, retrieval);
+}
+/**
+ * The budget ran out while the model was still asking for context. Send one
+ * final empty result set so it has to answer with the review itself.
+ */
+async function nudgeForVerdict(conv, message, retrieval) {
+    if (parseRetrievalRequest(message).kind === "none")
+        return message;
+    const finalMessage = await repairTurn(conv, formatRetrievalResults(retrieval.nonce, [], 0));
+    return finalMessage ?? message;
+}
+async function fulfilAndFormat(retrieval, requests, roundsLeft) {
+    const results = [];
+    for (const request of requests) {
+        try {
+            results.push(await retrieval.provider.fulfill(request));
+        }
+        catch (err) {
+            results.push({
+                tool: request.tool,
+                ok: false,
+                error: client_errorMessage(err),
+            });
+        }
+    }
+    return formatRetrievalResults(retrieval.nonce, results, roundsLeft);
+}
+
+;// CONCATENATED MODULE: ./src/openai/run.ts
+
+
+
+
+
+
+
+
+/**
+ * Run one review against an OpenAI-compatible endpoint.
+ *
+ * The prompt, the schema, and the repair loop are the same ones Jules uses.
+ * What changes is the transport: each turn is one chat-completions call, and
+ * the conversation so far is resent because vLLM has no session to resume.
+ * A timeout returns `reviewResult: null` — the same shape Jules uses when it
+ * never replies — so the caller can fall through without a special case.
+ */
+async function runOpenAiReview(prompt, config, options = {}) {
+    const run = {
+        conv: {
+            complete: options.complete ?? completeOpenAiChat,
+            config,
+            messages: [{ role: "user", content: prompt }],
+            onProgress: options.onProgress,
+        },
+        sessionId: `openai:${config.model}`,
+        rawResponses: [],
+        validationErrors: [],
+    };
+    const first = await firstTurn(run);
+    if (!first)
+        return noReviewOnTimeout(config);
+    run.rawResponses.push(first);
+    const reply = options.retrieval
+        ? await retrievalStage(run, first, options.retrieval)
+        : first;
+    const parsed = await parseWithRepair(run, reply);
+    if (!parsed)
+        return finish(run, null);
+    if (parsed.unparseable)
+        return finish(run, parsed.reviewResult);
+    let { reviewResult } = parsed;
+    let current = parsed.reply;
+    reviewResult = await formatRepairStage(run, reviewResult, (revised) => {
+        current = revised;
+    });
+    if (options.verificationContext) {
+        reviewResult = await verificationStage(run, current, options.verificationContext, reviewResult);
+    }
+    const evidence = holdBlockToItsEvidence(reviewResult);
+    run.validationErrors.push(...evidence.issues);
+    return finish(run, evidence.review);
+}
+/**
+ * The opening turn is the only one whose timeout means "no review at all":
+ * later stages already hold a reply worth keeping.
+ */
+async function firstTurn(run) {
+    try {
+        return await turn(run.conv);
+    }
+    catch (err) {
+        if (err instanceof OpenAiTimeoutError) {
+            core/* warning */.$e(err.message);
+            return null;
+        }
+        throw err;
+    }
+}
+function noReviewOnTimeout(config) {
+    return {
+        reviewResult: null,
+        sessionId: `openai:timeout:${config.model}`,
+    };
+}
+async function retrievalStage(run, firstReply, retrieval) {
+    const reply = await retrieval_loop_runRetrievalLoop(run.conv, firstReply, retrieval);
+    if (reply !== run.rawResponses[run.rawResponses.length - 1]) {
+        run.rawResponses.push(reply);
+    }
+    return reply;
+}
+/**
+ * Parse the reply, asking the model to repair its own output once when it
+ * is not valid review JSON. Returns `null` only when the repair turn timed
+ * out; a repair that still does not parse yields the empty "could not be
+ * parsed" review so the run still has something to post.
+ */
+async function parseWithRepair(run, reply) {
+    let parseError;
+    try {
+        return { reviewResult: parseOpenAiReview(reply), reply };
+    }
+    catch (err) {
+        parseError = err;
+        run.validationErrors.push(`Failed to parse OpenAI-compatible review: ${client_errorMessage(err)}`);
+        core/* warning */.$e(`OpenAI-compatible review was not valid JSON; requesting a repair: ${err}`);
+    }
+    const repaired = await repairTurn(run.conv, buildJsonRepairPrompt(reply, parseError));
+    if (!repaired)
+        return null;
+    run.rawResponses.push(repaired);
+    try {
+        return { reviewResult: parseOpenAiReview(repaired), reply: repaired };
+    }
+    catch (repairErr) {
+        run.validationErrors.push(`Failed to parse repaired OpenAI-compatible review: ${client_errorMessage(repairErr)}`);
+        return {
+            reviewResult: unparseableReview(),
+            reply: repaired,
+            unparseable: true,
+        };
+    }
+}
+function unparseableReview() {
+    return {
+        summary: "The OpenAI-compatible reviewer returned a response that could not be parsed after one repair attempt. No valid code review comments are present.",
+        verdict: "comment",
+        resolvedCommentIds: [],
+        newComments: [],
+    };
+}
+/**
+ * Fix comment-shape problems (broken suggestion fences and the like) with
+ * one formatting repair turn. A revision that parses cleanly and passes the
+ * format checks replaces the review; anything else is recorded and the
+ * original review stands.
+ */
+async function formatRepairStage(run, reviewResult, onRevised) {
+    const formatIssues = findReviewFormatIssues(reviewResult);
+    if (formatIssues.length === 0)
+        return reviewResult;
+    run.validationErrors.push(...formatIssues);
+    const revised = await repairTurn(run.conv, buildFormatRepairPrompt(reviewResult, formatIssues));
+    if (!revised)
+        return reviewResult;
+    run.rawResponses.push(revised);
+    try {
+        const revisedResult = parseOpenAiReview(revised);
+        const remaining = findReviewFormatIssues(revisedResult);
+        if (remaining.length > 0) {
+            run.validationErrors.push(...remaining);
+            return reviewResult;
+        }
+        onRevised(revised);
+        return revisedResult;
+    }
+    catch (err) {
+        run.validationErrors.push(`Failed to parse formatting revision: ${client_errorMessage(err)}`);
+        return reviewResult;
+    }
+}
+/**
+ * Check the review against the diff (comment lines must be changed lines)
+ * and give the model one chance to correct misplaced comments.
+ */
+async function verificationStage(run, reply, verificationContext, reviewResult) {
+    const verified = await requestValidationRepair(run.conv, reply, verificationContext);
+    if (!verified)
+        return reviewResult;
+    run.rawResponses.push(verified.reply);
+    run.validationErrors.push(...verified.validationErrors);
+    return verified.reviewResult;
+}
+async function requestValidationRepair(conv, reply, verificationContext) {
+    let structured;
+    try {
+        structured = parseJulesReview(reply);
+    }
+    catch {
+        return null;
+    }
+    const issues = verifyJulesReview(structured, verificationContext);
+    if (issues.length === 0)
+        return null;
+    const revised = await repairTurn(conv, buildReviewRepairPrompt(reply, issues));
+    if (!revised)
+        return null;
+    const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
+    try {
+        const review = parseJulesReview(revised);
+        const remaining = verifyJulesReview(review, verificationContext);
+        if (remaining.length > 0) {
+            validationErrors.push(...remaining.map((issue) => `${issue.kind}: ${issue.message}`));
+        }
+        // A revision that parsed is the review we have, even if a location is
+        // still off: dropping it would publish the comment the repair was asked
+        // to fix. Remaining issues stay on the artifact.
+        return {
+            reviewResult: parseOpenAiReview(revised),
+            reply: revised,
+            validationErrors,
+        };
+    }
+    catch (err) {
+        validationErrors.push(`Failed to parse validation revision: ${client_errorMessage(err)}`);
+        return {
+            reviewResult: parse_convertStructuredReview(structured),
+            reply,
+            validationErrors,
+        };
+    }
+}
+function finish(run, reviewResult) {
+    return {
+        reviewResult,
+        sessionId: run.sessionId,
+        ...(run.rawResponses.length > 0 ? { rawResponses: run.rawResponses } : {}),
+        ...(run.validationErrors.length > 0
+            ? { validationErrors: run.validationErrors }
+            : {}),
+    };
+}
+
+;// CONCATENATED MODULE: ./src/openai-review.ts
+/**
+ * Public surface of the OpenAI-compatible reviewer backend.
+ *
+ * The implementation lives in cohesive modules under `./openai/`:
+ * `client.ts` (endpoint configuration and the chat-completions transport),
+ * `conversation.ts` (turn and repair-turn plumbing), `retrieval-loop.ts`
+ * (mid-review repository context requests), `parse.ts` (reply parsing), and
+ * `run.ts` (the review orchestration that ties them together). This barrel
+ * keeps the historical `./openai-review.js` import path stable.
+ */
+
+
+
+
 ;// CONCATENATED MODULE: ./src/prompt.ts
 
 /**
@@ -72195,6 +72735,50 @@ function filterDiffByPaths(diff, ignoreGlobs) {
         return { diff, excludedPaths: [] };
     return { diff: filtered, excludedPaths };
 }
+/**
+ * Scope a review's findings to the PR's changed files (issue #91).
+ *
+ * A finding in a file the PR does not touch cannot be actioned here: there is
+ * no edit to this branch that resolves it, and GitHub rejects an inline
+ * comment on a file outside the diff, so the whole review falls back to a
+ * plain PR comment. Such findings are dropped before publishing and recorded
+ * in `issues` and `droppedComments` for the harvestable artifact.
+ *
+ * The verdict is scoped with them. When `block` was chosen and every finding
+ * behind it was dropped as out-of-diff, nothing in the diff supports a block,
+ * so the verdict is downgraded to `comment`: findings outside the diff must
+ * never block. Only a retained High finding can support a block. A summary-only
+ * block (no findings either way) is not touched — nothing identifies its basis.
+ */
+function scopeReviewToDiff(review, changedFiles) {
+    const changed = new Set(changedFiles);
+    const comments = review.newComments ?? [];
+    const kept = comments.filter((comment) => changed.has(comment.file));
+    const droppedComments = comments.filter((comment) => !changed.has(comment.file));
+    if (droppedComments.length === 0) {
+        return { review, droppedComments: [], issues: [] };
+    }
+    const issues = droppedComments.map((comment) => `out-of-diff finding dropped: ${comment.file}:${comment.line} is not among the PR's changed files.`);
+    let verdict = review.verdict;
+    if (verdict === "block" && !kept.some((c) => c.severity === "High")) {
+        verdict = "comment";
+        issues.unshift("verdict downgraded from block to comment: no in-diff High finding supports a block.");
+    }
+    // The original narrative may still describe excluded files or demand fixes
+    // outside this PR. Do not publish it after filtering its supporting findings.
+    // A blank original summary stays blank so the EMPTY_REVIEW_BODY check can
+    // still fire — replacing it with generated text would mask a missing review.
+    const summary = review.summary.trim().length === 0
+        ? review.summary
+        : kept.length
+            ? `Review scoped to this PR: ${kept.length} in-diff finding(s) retained; ${droppedComments.length} out-of-diff finding(s) excluded. See inline findings.`
+            : `Review scoped to this PR: ${droppedComments.length} out-of-diff finding(s) excluded; no in-diff findings remain.`;
+    return {
+        review: { ...review, verdict, summary, newComments: kept },
+        droppedComments,
+        issues,
+    };
+}
 
 ;// CONCATENATED MODULE: ./src/rules/select.ts
 
@@ -72512,6 +73096,7 @@ function decodeXml(value) {
 
 
 
+
 const COMMENT_MARKER = "<!-- maxi-review -->";
 const VALID_FAIL_ON = ["never", "blocking", "any"];
 const ANALYZER_TIMEOUT_MS = 5 * 60 * 1000;
@@ -72562,6 +73147,98 @@ function reviewTimeoutExplanation(timeoutMinutes) {
         "Either way, re-running this job often succeeds.",
     ].join(" ");
 }
+/** True when a review body is missing any non-whitespace content. */
+function isBlankReviewBody(body) {
+    return body.trim().length === 0;
+}
+/**
+ * Status line for a parsed review whose body is empty or whitespace-only.
+ * Distinct from a timeout: something came back, but it was not a review.
+ */
+function emptyReviewStatus(collectedCharacters) {
+    return truncate(`Empty review body (${collectedCharacters} chars) — no review was produced.`, STATUS_DESCRIPTION_MAX);
+}
+/** Long-form of {@link emptyReviewStatus} for the log and the job failure. */
+function emptyReviewExplanation(collectedCharacters) {
+    return [
+        `Collected an empty or whitespace-only review body (${collectedCharacters} chars), so no review was produced.`,
+        "This is not a verdict on the code.",
+    ].join(" ");
+}
+/**
+ * Pick the reviewer and, when Jules is primary, fall through if it never replies.
+ *
+ * Two ways the OpenAI-compatible endpoint is used, matching the two ways an
+ * operator asks for it:
+ *
+ * - `reviewer_backend=openai` (or `qwen`) runs it instead of Jules. That is the
+ *   explicit roster entry: a second workflow job can post its own review.
+ * - `reviewer_backend=jules` (the default) still runs Jules, including the
+ *   stuck-setup escalation. Only a review that came back empty — Jules timed
+ *   out, which is what happened twice on 2026-09-26 — falls through, and only
+ *   when `openai_base_url` is set. A Jules error that is not "no review" is
+ *   still a Jules error; the fallback is not a retry of a bad answer.
+ *
+ * A fallback that itself times out returns the original empty Jules result, so
+ * the harvested artifact still says the review never arrived rather than
+ * inventing a second failure mode.
+ */
+async function runSelectedReview(input) {
+    if (input.backend === "openai") {
+        return runOpenAiBackend(input.deps, input.prompt, input.timeoutMinutes, {
+            verificationContext: input.julesOptions.verificationContext,
+            retrieval: input.julesOptions.retrieval,
+            onProgress: input.julesOptions.onProgress,
+        });
+    }
+    const julesResult = await runReviewWithSetupEscalation({
+        run: input.deps.runJulesReview,
+        attempts: planAttempts(input.apiKey, input.fallbackApiKey),
+        prompt: input.prompt,
+        source: input.source,
+        timeoutMinutes: input.timeoutMinutes,
+        options: input.julesOptions,
+    });
+    if (julesResult.reviewResult || !openAiFallbackConfigured(core/* getInput */.V4)) {
+        return julesResult;
+    }
+    core/* warning */.$e(`Jules returned no review within ${input.timeoutMinutes} minutes; ` +
+        "falling back to the configured OpenAI-compatible reviewer.");
+    const fallback = await runOpenAiBackend(input.deps, input.prompt, input.timeoutMinutes, {
+        verificationContext: input.julesOptions.verificationContext,
+        retrieval: input.julesOptions.retrieval,
+        onProgress: input.julesOptions.onProgress,
+    });
+    if (!fallback.reviewResult) {
+        core/* warning */.$e("OpenAI-compatible fallback also returned no review; recording the Jules timeout.");
+        return julesResult;
+    }
+    return {
+        ...fallback,
+        // Keep Jules's silence in the harvest. The fallback is why a review exists;
+        // it is not a reason to pretend the first reviewer replied.
+        rawResponses: [
+            ...(julesResult.rawResponses ?? []),
+            ...(fallback.rawResponses ?? []),
+        ],
+        validationErrors: [
+            `Jules timed out after ${input.timeoutMinutes} minutes; review produced by OpenAI-compatible fallback (${fallback.sessionId}).`,
+            ...(julesResult.validationErrors ?? []),
+            ...(fallback.validationErrors ?? []),
+        ],
+    };
+}
+async function runOpenAiBackend(deps, prompt, timeoutMinutes, options) {
+    const config = resolveOpenAiReviewConfig(core/* getInput */.V4, timeoutMinutes);
+    if (config.apiKey)
+        core/* setSecret */.Pq(config.apiKey);
+    core/* info */.pq(`OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m`);
+    return deps.runOpenAiReview(prompt, config, {
+        verificationContext: options.verificationContext,
+        retrieval: options.retrieval,
+        onProgress: options.onProgress,
+    });
+}
 const defaultDeps = {
     fetchPullRequestContext,
     selectRuleFiles: selectRuleFiles,
@@ -72571,6 +73248,7 @@ const defaultDeps = {
     fetchExistingFindings: fetchExistingFindings,
     buildReviewPrompt: buildReviewPrompt,
     runJulesReview: runJulesReview,
+    runOpenAiReview: runOpenAiReview,
     submitReview: submitReview,
     resolveThreads: resolveThreads,
     setStatus: setStatus,
@@ -72586,8 +73264,15 @@ const defaultDeps = {
 };
 async function runReviewPr(overrides = {}) {
     const deps = { ...defaultDeps, ...overrides };
-    const apiKey = core/* getInput */.V4("jules_api_key", { required: true });
-    core/* setSecret */.Pq(apiKey);
+    const reviewerBackend = parseReviewerBackend(core/* getInput */.V4("reviewer_backend"));
+    // Jules is required only when it is the backend that will run. An explicit
+    // openai roster entry must be able to review with Jules unconfigured — that
+    // is the point of a second reviewer, not a second key for the first one.
+    const apiKey = core/* getInput */.V4("jules_api_key", {
+        required: reviewerBackend === "jules",
+    });
+    if (apiKey)
+        core/* setSecret */.Pq(apiKey);
     // Optional second Jules account. A session that never finishes cloning is
     // recreated here rather than waited out; see jules-escalation.ts.
     const fallbackApiKey = core/* getInput */.V4("jules_api_key_fallback");
@@ -72657,7 +73342,9 @@ async function runReviewPr(overrides = {}) {
     }
     try {
         try {
-            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", "Jules is reviewing this PR…");
+            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", reviewerBackend === "openai"
+                ? "Qwen is reviewing this PR…"
+                : "Jules is reviewing this PR…");
         }
         catch (err) {
             throw deps.wrapPermissionError(err, "statuses:write", "createCommitStatus");
@@ -72772,7 +73459,7 @@ async function runReviewPr(overrides = {}) {
         if (previousSessionId) {
             julesOptions.previousSessionId = previousSessionId;
         }
-        // Keep the pending status current while Jules works. Without this the
+        // Keep the pending status current while the reviewer works. Without this the
         // status is written once and never touched again, so a review that started
         // seconds ago and one that has hung for half an hour look identical from
         // the PR page — a misread that has cost several early merges.
@@ -72780,19 +73467,44 @@ async function runReviewPr(overrides = {}) {
             publish: (description) => deps.setStatus(octokit, owner, repo, headSha, statusContext, "pending", description),
             onError: (err) => core/* info */.pq(`Could not refresh review status: ${err instanceof Error ? err.message : String(err)}`),
         });
-        const { reviewResult, sessionId, rawResponses, validationErrors } = await runReviewWithSetupEscalation({
-            run: deps.runJulesReview,
-            attempts: planAttempts(apiKey, fallbackApiKey),
+        const reviewRun = await runSelectedReview({
+            deps,
+            backend: reviewerBackend,
+            apiKey,
+            fallbackApiKey,
             prompt,
             source: { github: `${owner}/${repo}`, baseBranch: pr.base.ref },
             timeoutMinutes,
-            options: julesOptions,
+            julesOptions,
         });
+        const { sessionId, rawResponses } = reviewRun;
+        // Scope the review to the PR's changed files before anything downstream
+        // reads it (issue #91). A finding in a file the diff does not touch cannot
+        // be actioned in this PR, so it is dropped before publishing, recorded on
+        // the artifact, and a `block` resting only on such findings is downgraded
+        // to `comment` — out-of-diff findings must never block.
+        const scoped = reviewRun.reviewResult
+            ? scopeReviewToDiff(reviewRun.reviewResult, context.prChangedFiles ?? context.changedFiles)
+            : null;
+        if (scoped && scoped.droppedComments.length > 0) {
+            const dropped = scoped.droppedComments
+                .map((comment) => `${comment.file}:${comment.line}`)
+                .join(", ");
+            core/* warning */.$e(`Dropped out-of-diff finding(s): ${dropped}`);
+        }
+        const reviewResult = scoped ? scoped.review : null;
+        const validationErrors = [
+            ...(reviewRun.validationErrors ?? []),
+            ...(scoped?.issues ?? []),
+        ];
+        const blankReview = reviewResult != null && isBlankReviewBody(reviewResult.summary);
         const outcome = !reviewResult
             ? "TIMED_OUT_NO_CONTENT"
-            : (reviewResult.newComments?.length ?? 0) > 0
-                ? "REVIEWED_WITH_FINDINGS"
-                : "REVIEWED_NO_FINDINGS";
+            : blankReview
+                ? "EMPTY_REVIEW_BODY"
+                : (reviewResult.newComments?.length ?? 0) > 0
+                    ? "REVIEWED_WITH_FINDINGS"
+                    : "REVIEWED_NO_FINDINGS";
         const reviewOutputChars = (rawResponses ?? []).reduce((total, response) => total + response.length, 0);
         const runIdentity = {
             workflowRunId: ctx.runId,
@@ -72816,13 +73528,16 @@ async function runReviewPr(overrides = {}) {
             timeoutMinutes,
             outcomeReason: outcome === "TIMED_OUT_NO_CONTENT"
                 ? reviewTimeoutExplanation(timeoutMinutes)
-                : undefined,
+                : blankReview
+                    ? emptyReviewExplanation(reviewResult.summary.length)
+                    : undefined,
             reviewOutputChars,
             runIdentity,
             analyzerFindings,
             rawJulesResponses: rawResponses || [],
-            validatedReview: reviewResult,
-            validationErrors: validationErrors || [],
+            validatedReview: blankReview ? null : reviewResult,
+            validationErrors,
+            droppedComments: scoped?.droppedComments ?? [],
             sessionId,
         });
         // The verdict is already decided -- it is in `reviewResult` above. What
@@ -72869,6 +73584,44 @@ async function runReviewPr(overrides = {}) {
             return;
         }
         const { verdict, summary, resolvedCommentIds, newComments } = reviewResult;
+        // A parsed result with no body is the quiet sibling of a timeout: the
+        // job used to return normally, so the Actions check stayed SUCCESS even
+        // though nothing was reviewed. fail_on=never must not paint that green.
+        if (isBlankReviewBody(summary)) {
+            // A missing narrative must fail the check, but do not hide independently
+            // actionable findings or thread resolutions returned by the reviewer.
+            if (resolvedCommentIds?.length) {
+                const threadIds = context.openThreads
+                    .filter((t) => resolvedCommentIds.includes(t.index))
+                    .map((t) => t.threadId);
+                if (threadIds.length) {
+                    try {
+                        await deps.resolveThreads(octokit, threadIds);
+                    }
+                    catch (err) {
+                        core/* warning */.$e(`Could not resolve empty-review threads: ${String(err)}`);
+                    }
+                }
+            }
+            const publishableComments = (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs));
+            if (publishableComments.length) {
+                try {
+                    await deps.submitReview(octokit, owner, repo, prNumber, headSha, `${COMMENT_MARKER}\n## Maxi Review\n\nThe review body was empty; the check failed, but these findings were returned.\n\n---\n_Session: \`${sessionId}\`_`, publishableComments);
+                }
+                catch (err) {
+                    core/* warning */.$e(`Could not publish empty-review findings: ${String(err)}`);
+                }
+            }
+            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "failure", emptyReviewStatus(summary.length));
+            try {
+                await deps.writeJobSummary(summary.length);
+            }
+            catch (err) {
+                core/* warning */.$e(`Could not write job summary: ${String(err)}`);
+            }
+            core/* setFailed */.C1(emptyReviewExplanation(summary.length));
+            return;
+        }
         // Resolve threads that the LLM identified as fixed
         if (resolvedCommentIds && resolvedCommentIds.length > 0) {
             const threadIdsToResolve = context.openThreads
@@ -72884,8 +73637,22 @@ async function runReviewPr(overrides = {}) {
         // Never post comments on excluded generated files, even if the model or
         // an analyzer produced one.
         (newComments || []).filter((c) => !matchesAnyGlob(c.file, ignoreGlobs)));
-        const { state, description } = statusFromVerdict(verdict, failOn);
+        const { state, description } = scoped &&
+            scoped.droppedComments.length > 0 &&
+            (scoped.review.newComments?.length ?? 0) === 0 &&
+            failOn === "any"
+            ? {
+                state: "success",
+                description: "No in-diff findings; out-of-diff findings excluded",
+            }
+            : statusFromVerdict(verdict, failOn);
         await deps.setStatus(octokit, owner, repo, headSha, statusContext, state, description);
+        try {
+            await deps.writeJobSummary(summary.length);
+        }
+        catch (err) {
+            core/* warning */.$e(`Could not write job summary: ${String(err)}`);
+        }
         core/* info */.pq(`Verdict: ${verdict}. Status check: ${state}.`);
     }
     catch (err) {
@@ -72905,6 +73672,13 @@ async function fetchPullRequestContext(input) {
     }
     const openThreads = await fetchOpenThreads(input.octokit, input.owner, input.repo, input.pr.number);
     const changedFiles = extractChangedFiles(diff);
+    // On an incremental (synchronize) review the diff only covers the latest
+    // push. Scoping must see every file the PR touches, or a finding on a file
+    // changed by an earlier push is dropped and a block resting on it is
+    // downgraded. Fetch the full PR diff only when the incremental base differs.
+    const prChangedFiles = input.baseShaForDiff === input.baseSha
+        ? changedFiles
+        : extractChangedFiles(await fetchDiff(input.octokit, input.owner, input.repo, input.pr, input.baseSha, input.headSha));
     const linkedIssueRefs = input.groundInLinkedIssues
         ? parseClosingIssueRefs(input.pr.body, {
             owner: input.owner,
@@ -72917,6 +73691,7 @@ async function fetchPullRequestContext(input) {
     return {
         diff,
         changedFiles,
+        prChangedFiles,
         linkedIssues,
         files: await loadHeadFiles(input.octokit, input.owner, input.repo, input.headSha, changedFiles),
         changedLines: extractChangedLines(diff),
@@ -72966,10 +73741,32 @@ async function uploadReviewArtifact(name, content, uploader) {
         await (0,promises_.rm)(root, { recursive: true, force: true });
     }
 }
+function unquoteGitPath(path) {
+    // Git quotes non-ASCII UTF-8 as octal bytes (core.quotePath=true).
+    const bytes = [];
+    for (const match of path.matchAll(/\\([0-7]{3}|.)|[^\\]+/g)) {
+        if (!match[1])
+            bytes.push(...Buffer.from(match[0]));
+        else if (/^[0-7]{3}$/.test(match[1]))
+            bytes.push(parseInt(match[1], 8));
+        else
+            bytes.push(...Buffer.from({ t: "\t", n: "\n" }[match[1]] ?? match[1]));
+    }
+    return Buffer.from(bytes).toString("utf8");
+}
+function diffHeaderPath(line) {
+    const plain = line.match(/^diff --git a\/.*? b\/(.+)$/);
+    if (plain)
+        return plain[1];
+    const quoted = line.match(/^diff --git "a\/((?:[^"\\]|\\.)*)" "b\/((?:[^"\\]|\\.)*)"$/);
+    return quoted ? unquoteGitPath(quoted[2]) : undefined;
+}
 function extractChangedFiles(diff) {
     const paths = new Set();
-    for (const match of diff.matchAll(/^diff --git a\/.* b\/(.+)$/gm)) {
-        paths.add(match[1]);
+    for (const line of diff.split("\n")) {
+        const path = diffHeaderPath(line);
+        if (path)
+            paths.add(path);
     }
     return [...paths];
 }
@@ -72978,9 +73775,9 @@ function extractChangedLines(diff) {
     let currentPath;
     let newLine = 0;
     for (const line of diff.split("\n")) {
-        const fileMatch = line.match(/^diff --git a\/.* b\/(.+)$/);
-        if (fileMatch) {
-            currentPath = fileMatch[1];
+        const headerPath = diffHeaderPath(line);
+        if (headerPath !== undefined) {
+            currentPath = headerPath;
             if (!changedLines.has(currentPath)) {
                 changedLines.set(currentPath, new Set());
             }
@@ -73051,6 +73848,8 @@ function latestReviewArtifactSessionId(comments) {
     for (const body of [...comments].reverse()) {
         const artifact = extractReviewArtifactFromComment(body);
         if (!artifact?.sessionId)
+            continue;
+        if (artifact.outcome === "EMPTY_REVIEW_BODY")
             continue;
         // Never resume a session that produced no review. A hung/stuck Jules session
         // (no responses, no validated review) would otherwise be resumed on every

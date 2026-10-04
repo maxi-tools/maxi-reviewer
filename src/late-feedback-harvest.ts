@@ -1,4 +1,4 @@
-import { ReviewOutcome, ReviewRunIdentity } from "./types.js";
+import { ReviewComment, ReviewOutcome, ReviewRunIdentity } from "./types.js";
 
 export interface ReviewArtifactInput {
   repoFullName: string;
@@ -26,6 +26,7 @@ export interface ReviewArtifactInput {
   rawJulesResponses: string[];
   validatedReview: unknown;
   validationErrors: string[];
+  droppedComments?: ReviewComment[];
   sessionId?: string;
 }
 

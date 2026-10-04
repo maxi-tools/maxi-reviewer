@@ -122,7 +122,7 @@ reviews:
         out-of-lane. A missed P1 costs far more than a duplicate comment.
     # The dependency-pin rule is SPLIT across this entry and the Rust one above
     # rather than stated once, because the two blocks need different halves of
-    # it. Pins are DECLARED here, so this block carries the policy; Rust only
+    # it. Pins are DECLARED in Cargo.toml, so its block carries the policy; Rust only
     # ever sees a test ASSERTING a pin, so that block carries the assertion.
     # Stating it only under `**/*.rs` is what produced the finding this entry
     # exists to prevent: voicemaci#44 drew a Major "dependency-policy conflict"
@@ -135,8 +135,9 @@ reviews:
         Respect the repository's documented dependency policy and executable
         dependency gate. A required audited rev takes precedence over the
         default of tracking internal dependencies on main. Check policy
-        changes against the manifests and gate; do not weaken the gate
-        or replace a required rev with a branch to satisfy the default.
+        changes against the manifests and gate; do not weaken the gate.
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
 
     - path: "**/Cargo.toml"
       instructions: |
@@ -160,7 +161,7 @@ reviews:
         What is worth a comment here: a waterui dependency added at a rev the
         other waterui entries do not carry, or added as branch-tracked, in ANY
         table -- `[dependencies]`, `[dev-dependencies]`,
-        `[build-dependencies]`, `[patch.*]` or a `[target.*]` table. That is
+        `[build-dependencies]`, `[workspace.dependencies]`, `[patch.*]` or a `[target.*]` table. That is
         the drift the single-rev pin exists to prevent.
 
         ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
@@ -183,8 +184,8 @@ reviews:
         can never be true, a required check that path-filters out, or a
         `continue-on-error` masking the failure the job exists to catch.
         Fork-trust conditions must RESTRICT, not admit: use
-        `github.event_name != 'pull_request' || (head.repo.full_name ==
-        github.repository && ...)`. A `head.repo.full_name != github.repository`
+        `github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name ==
+        github.repository && ...)`. A `github.event.pull_request.head.repo.full_name != github.repository`
         term inside an OR admits fork PRs.
 
         This is YOUR LANE -- workflow and YAML correctness is yours to lead on,
@@ -208,6 +209,18 @@ reviews:
     # Drafts are not merge candidates, and reviewing them consumes the rate
     # limit that then denies review to PRs which are ready.
     drafts: false
+    # Default is true, which re-reviews the PR after every push -- CodeRabbit's
+    # own docs describe that as the point of the flag. With `drafts: false`
+    # already keeping CodeRabbit off a PR until it is marked ready, incremental
+    # review then re-reviews EVERY push after that, which is the same
+    # per-push cost maxi-review.yml's `review` job was changed to stop paying
+    # (docs/contracts/ai-review-runs-once-per-pr.md). false reviews once, at
+    # the push that made the PR eligible (typically ready_for_review, since
+    # drafts are already excluded), and leaves a later push to fixups
+    # unreviewed until asked again explicitly -- `@coderabbitai review` in a
+    # PR comment (chat.auto_reply below), which is CodeRabbit's own documented
+    # re-request path and needs no label or branch juggling.
+    auto_incremental_review: false
     # Regex, and it must cover every default branch in the fleet -- this one
     # file is installed in all of them. Five repos (android-backend, nami,
     # waterkit, waterkit-1, waterui) default to `dev`, per the rollout ledger,

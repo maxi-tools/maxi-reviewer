@@ -49,9 +49,11 @@ inputs:
   openai_timeout_minutes:
     description: >-
       How long to wait for one OpenAI-compatible turn on each fallback
-      endpoint in the chain. Default 8. Capped at timeout_minutes so a
-      fallback cannot hold the runner for a second full Jules budget after
-      the first one already expired.
+      endpoint in the chain. Default 8. Capped at
+      `timeout_minutes / N` (where N is the number of configured fallback
+      endpoints) so a chain of N attempts cannot outrun the hard deadline
+      (default `timeout_minutes + 20`). With one configured endpoint, the
+      per-attempt cap is the full Jules budget.
     required: false
     default: ""
   openai_fallback_base_url:

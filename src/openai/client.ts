@@ -117,7 +117,6 @@ export function resolveOpenAiFallbackConfigs(
   getInput: (name: string) => string,
   julesTimeoutMinutes: number = 0
 ): OpenAiReviewConfig[] {
-  const timeoutMinutes = resolveTimeoutMinutes(getInput, julesTimeoutMinutes);
   const slots: Array<{
     baseUrl: string;
     apiKey: string;
@@ -135,6 +134,16 @@ export function resolveOpenAiFallbackConfigs(
     },
   ];
   const configured = slots.filter((slot) => slot.baseUrl !== "");
+  // Cap each attempt at jules_budget / N so the full chain fits inside the
+  // hard wall-clock deadline (timeout_minutes + 20, the default headroom).
+  // With the per-endpoint cap at julesTimeoutMinutes alone, N endpoints could
+  // consume N * julesTimeoutMinutes and exceed the hard deadline mid-chain,
+  // stranding the PR. See PR #182 review thread PRRT_kwDOTFepzM6o8Onb.
+  const timeoutMinutes = resolveTimeoutMinutes(
+    getInput,
+    julesTimeoutMinutes,
+    configured.length
+  );
   return configured.map((slot) => {
     const config: OpenAiReviewConfig = {
       baseUrl: slot.baseUrl,
@@ -148,16 +157,21 @@ export function resolveOpenAiFallbackConfigs(
 
 function resolveTimeoutMinutes(
   getInput: (name: string) => string,
-  julesTimeoutMinutes: number
+  julesTimeoutMinutes: number,
+  configuredCount: number
 ): number {
   const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
-  // Never wait longer than the review the caller already budgeted. A fallback
-  // that outlives the Jules budget it is replacing holds the runner for a
-  // second full review after the first one already failed to arrive.
-  return Math.min(
-    requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES,
-    Math.max(1, julesTimeoutMinutes)
+  // Per-attempt cap is the Jules budget divided by the number of fallback
+  // endpoints so the chain as a whole never outruns the caller's wall-clock
+  // budget. A chain of N endpoints each capped at the full Jules budget
+  // could consume N * julesTimeoutMinutes, which can exceed the hard
+  // deadline (julesTimeoutMinutes + 20 by default).
+  const safeCount = Math.max(1, configuredCount);
+  const capPerAttempt = Math.max(
+    1,
+    Math.floor(julesTimeoutMinutes / safeCount)
   );
+  return Math.min(requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES, capPerAttempt);
 }
 
 /**

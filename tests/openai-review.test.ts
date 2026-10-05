@@ -180,7 +180,14 @@ describe("resolveOpenAiFallbackConfigs", () => {
     expect(configs[1].apiKey).toBeUndefined();
   });
 
-  it("caps the timeout at the Jules budget so a chain cannot outlast Jules", () => {
+  it("caps the per-endpoint timeout at jules_budget / N so the chain fits the hard deadline", () => {
+    // PR #182: with the legacy per-endpoint cap at the full Jules budget,
+    // N endpoints could consume N * julesTimeoutMinutes. The hard deadline
+    // is julesTimeoutMinutes + 20 (the default headroom), so a chain of two
+    // endpoints in a 15-minute Jules slot would terminate during the second
+    // attempt. The chain now divides the budget across the configured
+    // endpoints, so the full chain fits inside the hard deadline. Review
+    // thread: PRRT_kwDOTFepzM6o8Onb.
     const get = (name: string) => {
       if (name === "openai_base_url") return "http://pearl:8000/v1";
       if (name === "openai_fallback_base_url")
@@ -189,9 +196,22 @@ describe("resolveOpenAiFallbackConfigs", () => {
       return "";
     };
     const configs = resolveOpenAiFallbackConfigs(get, 15);
-    // 20 was capped to 15 (the Jules budget).
+    // 20 was capped to 7 (the Jules budget of 15, divided by 2 endpoints).
+    expect(configs[0].timeoutMinutes).toBe(7);
+    expect(configs[1].timeoutMinutes).toBe(7);
+  });
+
+  it("does not divide the budget when only one endpoint is configured", () => {
+    // With one endpoint, the chain IS the budget: a single attempt is
+    // entitled to the full Jules window, so julesTimeoutMinutes / 1 = T.
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_timeout_minutes") return "20";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 15);
+    expect(configs).toHaveLength(1);
     expect(configs[0].timeoutMinutes).toBe(15);
-    expect(configs[1].timeoutMinutes).toBe(15);
   });
 });
 

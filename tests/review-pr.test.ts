@@ -1235,6 +1235,72 @@ describe("runReviewPr orchestration", () => {
     expect(artifact.outcomeReason).toMatch(/reviewer-infrastructure failure/);
   });
 
+  it("does not duplicate julesResult.rawResponses or validationErrors on the chain-exhausted artifact", async () => {
+    // PR #182 review thread PRRT_kwDOTFepzM6o8P7R (and the matching
+    // PRRT_kwDOTFepzM6o8Sa_, PRRT_kwDOTFepzM6o8Oni): when the chain exhausts,
+    // runOpenAiFallbackChain already seeds the returned arrays with
+    // julesResult.rawResponses and julesResult.validationErrors. Re-merging
+    // them in runSelectedReview would double-count every Jules transcript
+    // and error in the final artifact, which is what the reviewer-unavailable
+    // path used to do. With the dedup, the artifact carries each
+    // Jules entry exactly once.
+    const julesRawResponses = ["jules-transcript-1", "jules-transcript-2"];
+    const julesValidationErrors = ["jules-error-A", "jules-error-B"];
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+        rawResponses: [...julesRawResponses],
+        validationErrors: [...julesValidationErrors],
+      }),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        rawResponses: ["pearl-transcript"],
+        validationErrors: ["pearl-error"],
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    const rawResponses: string[] = artifact.rawJulesResponses ?? [];
+    const validationErrors: string[] = artifact.validationErrors ?? [];
+    for (const value of julesRawResponses) {
+      const occurrences = rawResponses.filter((r) => r === value).length;
+      expect(
+        occurrences,
+        `jules rawResponse "${value}" should appear exactly once, got ${occurrences}`
+      ).toBe(1);
+    }
+    for (const value of julesValidationErrors) {
+      const occurrences = validationErrors.filter((e) => e === value).length;
+      expect(
+        occurrences,
+        `jules validationError "${value}" should appear exactly once, got ${occurrences}`
+      ).toBe(1);
+    }
+    // The chain transcript is still present (once).
+    expect(rawResponses.filter((r) => r === "pearl-transcript").length).toBe(1);
+    // The reviewer-unavailable line is the LAST validation error, and it is
+    // the only place the "no endpoint produced a review" verdict is stated.
+    expect(validationErrors[validationErrors.length - 1]).toMatch(
+      /^Reviewer unavailable: Jules returned no review/
+    );
+    expect(validationErrors[validationErrors.length - 1]).toMatch(
+      /not a verdict on the code/
+    );
+  });
+
   it("never logs or publishes the full endpoint URL with credentials, path, or query", async () => {
     // PR #182: a baseUrl of the form
     //   http://user:pass@host.example:8000/v1/private?token=secret

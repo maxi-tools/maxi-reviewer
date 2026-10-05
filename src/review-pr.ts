@@ -331,19 +331,17 @@ export async function runSelectedReview(input: {
   // The session id is the discriminator the artifact builder uses to pick
   // reviewer-unavailable text over Jules-timeout text; it MUST be the chain
   // id, not the underlying Jules session.
+  //
+  // `runOpenAiFallbackChain` already aggregates julesResult.rawResponses
+  // and julesResult.validationErrors into its returned arrays (lines
+  // 383/384-386), so the outer merge only needs the chain result.
   return {
     reviewResult: null,
     sessionId: fallback.sessionId,
-    ...(julesResult.rawResponses || fallback.rawResponses
-      ? {
-          rawResponses: [
-            ...(julesResult.rawResponses ?? []),
-            ...(fallback.rawResponses ?? []),
-          ],
-        }
+    ...(fallback.rawResponses
+      ? { rawResponses: [...(fallback.rawResponses ?? [])] }
       : {}),
     validationErrors: [
-      ...(julesResult.validationErrors ?? []),
       ...(fallback.validationErrors ?? []),
       reviewerUnavailableError(fallback.sessionId, fallback.attempts),
     ],

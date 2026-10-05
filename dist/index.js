@@ -71253,31 +71253,93 @@ function parseReviewerBackend(raw) {
  * is still Jules. An empty base URL means "no fallback", not "call localhost".
  */
 function openAiFallbackConfigured(getInput) {
-    return getInput("openai_base_url").trim() !== "";
+    return resolveOpenAiFallbackConfigs(getInput).length > 0;
 }
+/**
+ * The ordered list of fallback endpoints to try, in turn, when the primary
+ * reviewer (Jules) returns no review.
+ *
+ * The primary endpoint is the legacy `openai_base_url` slot, preserved verbatim
+ * so an existing workflow that sets just that input keeps working. A second
+ * `openai_fallback_*` triple slots in after it and is tried only when the
+ * first returns nothing. The org already pays for both, per
+ * maxi-config#1028; without the second slot, a single downed Spark strands
+ * every PR whose Jules session was silent for 15 minutes.
+ *
+ * An entry whose URL is empty is skipped, so a workflow that does not want
+ * the second endpoint just leaves the input blank; one whose URL parses but
+ * whose key/model inputs are empty uses the same defaults as the primary.
+ */
+function resolveOpenAiFallbackConfigs(getInput, julesTimeoutMinutes = 0) {
+    const slots = [
+        {
+            baseUrl: normalizeBaseUrl(getInput("openai_base_url")),
+            apiKey: getInput("openai_api_key").trim(),
+            model: getInput("openai_model").trim() || DEFAULT_OPENAI_MODEL,
+        },
+        {
+            baseUrl: normalizeBaseUrl(getInput("openai_fallback_base_url")),
+            apiKey: getInput("openai_fallback_api_key").trim(),
+            model: getInput("openai_fallback_model").trim() || DEFAULT_OPENAI_MODEL,
+        },
+    ];
+    const configured = slots.filter((slot) => slot.baseUrl !== "");
+    // Cap each attempt at jules_budget / N so the full chain fits inside the
+    // hard wall-clock deadline (timeout_minutes + 20, the default headroom).
+    // With the per-endpoint cap at julesTimeoutMinutes alone, N endpoints could
+    // consume N * julesTimeoutMinutes and exceed the hard deadline mid-chain,
+    // stranding the PR. See PR #182 review thread PRRT_kwDOTFepzM6o8Onb.
+    const timeoutMinutes = resolveTimeoutMinutes(getInput, julesTimeoutMinutes, configured.length);
+    return configured.map((slot) => {
+        const config = {
+            baseUrl: slot.baseUrl,
+            model: slot.model,
+            timeoutMinutes,
+        };
+        if (slot.apiKey)
+            config.apiKey = slot.apiKey;
+        return config;
+    });
+}
+function resolveTimeoutMinutes(getInput, julesTimeoutMinutes, configuredCount) {
+    const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
+    // Per-attempt cap is the Jules budget divided by the number of fallback
+    // endpoints so the chain as a whole never outruns the caller's wall-clock
+    // budget. A chain of N endpoints each capped at the full Jules budget
+    // could consume N * julesTimeoutMinutes, which can exceed the hard
+    // deadline (julesTimeoutMinutes + 20 by default).
+    const safeCount = Math.max(1, configuredCount);
+    const capPerAttempt = Math.max(1, Math.floor(julesTimeoutMinutes / safeCount));
+    return Math.min(requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES, capPerAttempt);
+}
+/**
+ * @deprecated Kept for callers that still expect a single OpenAI-compatible
+ * config. New code should iterate {@link resolveOpenAiFallbackConfigs} so the
+ * fallback chain is honoured. Returns the first configured entry, or throws
+ * when nothing is configured.
+ */
 function resolveOpenAiReviewConfig(getInput, julesTimeoutMinutes) {
-    const baseUrl = normalizeBaseUrl(getInput("openai_base_url"));
-    if (!baseUrl) {
+    const configs = resolveOpenAiFallbackConfigs(getInput, julesTimeoutMinutes);
+    const first = configs[0];
+    if (!first) {
         throw new Error("openai_base_url is required when reviewer_backend is openai " +
             "(or when it is the configured Jules-timeout fallback). " +
             "Point it at the vLLM OpenAI server, e.g. http://jasper:8000/v1.");
     }
-    const model = getInput("openai_model").trim() || DEFAULT_OPENAI_MODEL;
-    const key = getInput("openai_api_key").trim();
-    const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
-    // Never wait longer than the review the caller already budgeted. A fallback
-    // that outlives the Jules budget it is replacing holds the runner for a
-    // second full review after the first one already failed to arrive.
-    const timeoutMinutes = Math.min(requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES, Math.max(1, julesTimeoutMinutes));
-    return {
-        baseUrl,
-        ...(key ? { apiKey: key } : {}),
-        model,
-        timeoutMinutes,
-    };
+    return first;
 }
 function normalizeBaseUrl(raw) {
     return raw.trim().replace(/\/+$/, "");
+}
+/**
+ * Count of fallback endpoints currently configured. Used to render the
+ * reviewer-unavailable status description ("Reviewer unavailable: 2
+ * fallback endpoint(s) failed..."). Reads inputs through the standard
+ * `core.getInput` so it picks up the same overrides the rest of the chain
+ * resolver sees.
+ */
+function countOpenAiFallbackConfigs(getInput) {
+    return resolveOpenAiFallbackConfigs(getInput).length;
 }
 function parsePositiveInt(raw) {
     const trimmed = raw.trim();
@@ -71560,8 +71622,14 @@ async function runOpenAiReview(prompt, config, options = {}) {
     const parsed = await parseWithRepair(run, reply);
     if (!parsed)
         return finish(run, null);
+    // An unparseable reply is NOT a review. The chain (and the single-slot
+    // openai backend) treat a null result as a failed attempt and advance to
+    // the next endpoint; posting a synthetic "no valid comments" review
+    // would mark the run REVIEWED_NO_FINDINGS and lock the gate green for
+    // code that was never actually reviewed. The parse errors stay on
+    // `validationErrors` so the on-call can see what came back.
     if (parsed.unparseable)
-        return finish(run, parsed.reviewResult);
+        return finish(run, null);
     let { reviewResult } = parsed;
     let current = parsed.reply;
     reviewResult = await formatRepairStage(run, reviewResult, (revised) => {
@@ -73166,7 +73234,8 @@ function emptyReviewExplanation(collectedCharacters) {
     ].join(" ");
 }
 /**
- * Pick the reviewer and, when Jules is primary, fall through if it never replies.
+ * Pick the reviewer and, when Jules is primary, walk the OpenAI-compatible
+ * fallback chain if it doesn't reply.
  *
  * Two ways the OpenAI-compatible endpoint is used, matching the two ways an
  * operator asks for it:
@@ -73175,13 +73244,22 @@ function emptyReviewExplanation(collectedCharacters) {
  *   explicit roster entry: a second workflow job can post its own review.
  * - `reviewer_backend=jules` (the default) still runs Jules, including the
  *   stuck-setup escalation. Only a review that came back empty — Jules timed
- *   out, which is what happened twice on 2026-09-26 — falls through, and only
- *   when `openai_base_url` is set. A Jules error that is not "no review" is
- *   still a Jules error; the fallback is not a retry of a bad answer.
+ *   out, which is what happened on 2026-10-05 (maxi-config#1028, ~7h pearl
+ *   outage) — falls through, and only when at least one fallback endpoint is
+ *   configured. A Jules error that is not "no review" is still a Jules error;
+ *   the fallback is not a retry of a bad answer.
  *
- * A fallback that itself times out returns the original empty Jules result, so
- * the harvested artifact still says the review never arrived rather than
- * inventing a second failure mode.
+ * The fallback chain is ordered: the legacy `openai_*` slot first, then
+ * `openai_fallback_*`. A review from any endpoint in the chain succeeds; only
+ * when all configured endpoints also return no review does the run surface a
+ * distinct "reviewer unavailable" failure rather than the Jules-timeout text.
+ * Without this, a single downed Spark strands every PR whose Jules session
+ * was silent, because the artifact records the Jules timeout even when the
+ * timeout had nothing to do with Jules.
+ *
+ * The fallback attempts themselves never throw: a transport error or an
+ * unparseable reply from one slot is "no review" on that slot, and the next
+ * slot gets a turn. The chain only short-circuits on a real review.
  */
 async function runSelectedReview(input) {
     if (input.backend === "openai") {
@@ -73202,42 +73280,256 @@ async function runSelectedReview(input) {
     if (julesResult.reviewResult || !openAiFallbackConfigured(core/* getInput */.V4)) {
         return julesResult;
     }
-    core/* warning */.$e(`Jules returned no review within ${input.timeoutMinutes} minutes; ` +
-        "falling back to the configured OpenAI-compatible reviewer.");
-    const fallback = await runOpenAiBackend(input.deps, input.prompt, input.timeoutMinutes, {
-        verificationContext: input.julesOptions.verificationContext,
-        retrieval: input.julesOptions.retrieval,
-        onProgress: input.julesOptions.onProgress,
-    });
-    if (!fallback.reviewResult) {
-        core/* warning */.$e("OpenAI-compatible fallback also returned no review; recording the Jules timeout.");
-        return julesResult;
+    const fallback = await runOpenAiFallbackChain(input.deps, input.prompt, input.timeoutMinutes, input.julesOptions, julesResult);
+    if (fallback.reviewResult) {
+        return fallback;
     }
+    // All configured endpoints returned nothing. Surface the failure as
+    // "reviewer unavailable" rather than the Jules-timeout text: the reader on
+    // the PR page should see that no reviewer ran, not that Jules specifically
+    // failed, and a follow-up workflow looking at the artifact should see the
+    // same.
+    //
+    // The session id is the discriminator the artifact builder uses to pick
+    // reviewer-unavailable text over Jules-timeout text; it MUST be the chain
+    // id, not the underlying Jules session.
+    //
+    // `runOpenAiFallbackChain` already aggregates julesResult.rawResponses
+    // and julesResult.validationErrors into its returned arrays (lines
+    // 383/384-386), so the outer merge only needs the chain result.
     return {
-        ...fallback,
-        // Keep Jules's silence in the harvest. The fallback is why a review exists;
-        // it is not a reason to pretend the first reviewer replied.
-        rawResponses: [
-            ...(julesResult.rawResponses ?? []),
-            ...(fallback.rawResponses ?? []),
-        ],
+        reviewResult: null,
+        sessionId: fallback.sessionId,
+        ...(fallback.rawResponses
+            ? { rawResponses: [...(fallback.rawResponses ?? [])] }
+            : {}),
         validationErrors: [
-            `Jules timed out after ${input.timeoutMinutes} minutes; review produced by OpenAI-compatible fallback (${fallback.sessionId}).`,
-            ...(julesResult.validationErrors ?? []),
             ...(fallback.validationErrors ?? []),
+            reviewerUnavailableError(fallback.sessionId, fallback.attempts),
         ],
     };
 }
+/**
+ * Walk the OpenAI-compatible fallback chain in order. Stops on the first
+ * endpoint that returns a review; returns an empty result (plus the
+ * accumulated per-attempt transcripts and error messages) when none do.
+ *
+ * The harvest keeps every attempt's `rawResponses` and `validationErrors`
+ * so the on-call engineer can see why each endpoint in the chain failed —
+ * a generic `fetch failed` from one slot and a 503 from the next are very
+ * different causes.
+ */
+async function runOpenAiFallbackChain(deps, prompt, timeoutMinutes, julesOptions, julesResult) {
+    const configs = resolveOpenAiFallbackConfigs(core/* getInput */.V4, timeoutMinutes);
+    if (configs.length === 0) {
+        // Defensive: openAiFallbackConfigured already returned true above. If the
+        // resolver disagrees, fall back to the legacy single-slot resolution
+        // rather than silently succeeding with no review.
+        core/* warning */.$e("OpenAI-compatible fallback was configured but resolved to zero endpoints; " +
+            "treating the run as reviewer-unavailable.");
+        return emptyFallbackChain("unknown", []);
+    }
+    const attempts = [];
+    const allRawResponses = [...(julesResult.rawResponses ?? [])];
+    const allValidationErrors = [
+        ...(julesResult.validationErrors ?? []),
+    ];
+    for (let i = 0; i < configs.length; i++) {
+        const config = configs[i];
+        const hostLabel = summariseEndpoint(config);
+        const label = configs.length === 1
+            ? "the configured OpenAI-compatible reviewer"
+            : `OpenAI-compatible fallback ${i + 1}/${configs.length} (${hostLabel})`;
+        if (i === 0) {
+            core/* warning */.$e(`Jules returned no review within ${timeoutMinutes} minutes; ` +
+                `trying ${label}.`);
+        }
+        else {
+            core/* warning */.$e(`${attempts[i - 1]} returned no review; trying ${label}.`);
+        }
+        // runOneOpenAiBackend swallows per-slot transport / empty-body / parse
+        // throws into a "no review" result; the chain then advances to the
+        // next configured endpoint rather than crashing the whole job.
+        const result = await runOneOpenAiBackend(deps, prompt, config, julesOptions);
+        attempts.push(label);
+        if (result.reviewResult) {
+            return {
+                ...result,
+                attempts,
+                rawResponses: [...allRawResponses, ...(result.rawResponses ?? [])],
+                validationErrors: [
+                    ...allValidationErrors,
+                    `Jules timed out after ${timeoutMinutes} minutes; review produced by ${label} (${result.sessionId}).`,
+                    ...(result.validationErrors ?? []),
+                ],
+            };
+        }
+        allRawResponses.push(...(result.rawResponses ?? []));
+        if (result.validationErrors?.length) {
+            allValidationErrors.push(`${label} returned no review: ${result.validationErrors.join(" | ")}`);
+        }
+        else {
+            allValidationErrors.push(`${label} returned no review.`);
+        }
+    }
+    return {
+        ...emptyFallbackChain(attempts[attempts.length - 1] ?? "unknown", attempts),
+        rawResponses: allRawResponses,
+        validationErrors: allValidationErrors,
+    };
+}
+function emptyFallbackChain(lastAttempt, attempts) {
+    return {
+        reviewResult: null,
+        sessionId: `openai:all-unavailable:${lastAttempt}`,
+        attempts,
+    };
+}
+function summariseEndpoint(config) {
+    // Logs, status text, and the artifact must NEVER carry the full URL:
+    // userinfo holds credentials, path and query can hold tokens, and the
+    // host alone is enough for a reader to identify which endpoint failed.
+    // On parse failure the input is not safe to echo (the caller may have
+    // pasted a malformed secret into the URL), so return a fixed label.
+    try {
+        const url = new URL(config.baseUrl);
+        if (!url.host)
+            return INVALID_ENDPOINT_LABEL;
+        return url.host;
+    }
+    catch {
+        return INVALID_ENDPOINT_LABEL;
+    }
+}
+const INVALID_ENDPOINT_LABEL = "<invalid-endpoint>";
+/**
+ * Strip the raw baseUrl out of a transport error message before it lands
+ * on a log line, a status description, or the artifact. A 5xx response
+ * from a Spark often echoes the request path (e.g. `/v1/chat/completions`)
+ * and an upstream proxy can echo a full URL with embedded credentials.
+ * Replace any URL-shaped substring with the already-computed `hostLabel`
+ * so the on-call still knows which endpoint failed, but the secret-bearing
+ * payload never reaches a printer.
+ *
+ * Two passes, because one is not enough:
+ *
+ * 1. The literal `rawUrl` is removed by exact match. This is the pass that
+ *    matters for the case the scheme regex cannot see: a baseUrl that never
+ *    parses as a URL at all (no `//`, so no scheme to key off) — e.g.
+ *    `user:pass@host` — which Node's `fetch` still echoes verbatim inside
+ *    its `TypeError: Invalid URL`. There is no scheme in that string for the
+ *    regex to match, so a regex-only implementation leaks the credential.
+ * 2. Any remaining scheme-prefixed URL is replaced wholesale, which catches
+ *    the paths and upstream errors that mention a URL other than ours.
+ *
+ * `rawUrl` is optional so existing callers that have no URL in hand (or
+ * callers deliberately passing a synthetic string) keep compiling; when it
+ * is absent or empty, the exact-match pass is a no-op.
+ */
+function sanitiseTransportError(message, hostLabel, rawUrl) {
+    const withoutExactMatch = rawUrl
+        ? message.split(rawUrl).join(hostLabel)
+        : message;
+    return withoutExactMatch.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s)>'"`]+/gi, hostLabel);
+}
+/**
+ * Human-readable line for the harvested artifact when no reviewer produced
+ * a review. Distinct from the Jules-timeout text: that one reads "Jules
+ * never replied", which is the wrong message when the cause is the whole
+ * fallback chain (and Jules may have replied with an empty body for reasons
+ * unrelated to reviewer availability).
+ */
+function reviewerUnavailableError(lastSessionId, attempts) {
+    const list = attempts.length > 0
+        ? attempts.map((a) => ` - ${a}`).join("\n")
+        : " - (no OpenAI-compatible endpoints were configured)";
+    return [
+        `Reviewer unavailable: Jules returned no review and ${attempts.length} OpenAI-compatible fallback endpoint(s) did not produce one either (last attempt session: ${lastSessionId}). Attempted:`,
+        list,
+        "This is not a verdict on the code. The review gate stays red because nothing was reviewed; the PR was not inspected.",
+    ].join("\n");
+}
+/**
+ * Status-line text for the reviewer-unavailable outcome. Bounded by the 140
+ * char GitHub limit on commit status descriptions; the long-form reason lives
+ * on the artifact via {@link reviewerUnavailableError}.
+ */
+function reviewerUnavailableStatus(attempts) {
+    return truncate(`Reviewer unavailable: ${attempts} fallback endpoint(s) failed to produce a review`, STATUS_DESCRIPTION_MAX);
+}
+/**
+ * Long-form text for the job failure when every reviewer failed. Distinct
+ * from {@link reviewTimeoutExplanation}: that one frames the missing review
+ * as a Jules problem, which is misleading when the cause was the fallback
+ * chain, not Jules.
+ */
+function reviewerUnavailableExplanation(attempts) {
+    return [
+        `Jules returned no review and none of the ${attempts} configured OpenAI-compatible fallback endpoint(s) produced one either.`,
+        "This is a reviewer-infrastructure failure, not a verdict on the code.",
+        "The harvested artifact records every attempt and its failure mode so the on-call has the evidence to triage.",
+    ].join(" ");
+}
 async function runOpenAiBackend(deps, prompt, timeoutMinutes, options) {
-    const config = resolveOpenAiReviewConfig(core/* getInput */.V4, timeoutMinutes);
+    // When the caller picked `reviewer_backend=openai`, the workflow is asking
+    // for the OpenAI-compatible path as the sole reviewer. Pick the first
+    // configured endpoint and surface a missing-config error if none is set.
+    const configs = resolveOpenAiFallbackConfigs(core/* getInput */.V4, timeoutMinutes);
+    const config = configs[0];
+    if (!config) {
+        throw new Error("openai_base_url is required when reviewer_backend is openai " +
+            "(or when it is the configured Jules-timeout fallback). " +
+            "Point it at the vLLM OpenAI server, e.g. http://jasper:8000/v1.");
+    }
+    const result = await runOneOpenAiBackend(deps, prompt, config, options);
+    // Stamp the session id with the chain-exhausted prefix so the run-level
+    // surface (status, setFailed, artifact outcomeReason) renders the
+    // reviewer-unavailable text rather than the misleading Jules-timeout
+    // text. The single-slot case is effectively a chain of length 1.
+    if (result.reviewResult === null) {
+        return {
+            ...result,
+            sessionId: `openai:all-unavailable:${summariseEndpoint(config)}`,
+        };
+    }
+    return result;
+}
+async function runOneOpenAiBackend(deps, prompt, config, options) {
     if (config.apiKey)
         core/* setSecret */.Pq(config.apiKey);
-    core/* info */.pq(`OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m`);
-    return deps.runOpenAiReview(prompt, config, {
-        verificationContext: options.verificationContext,
-        retrieval: options.retrieval,
-        onProgress: options.onProgress,
-    });
+    // Log the host only — the raw baseUrl can carry userinfo, a private
+    // path, or a token query, and those strings would land in the workflow
+    // log that everyone in the org can read. `setSecret` above masks the
+    // api key from the same surface; the URL has no equivalent knob, so the
+    // only safe move is to log the already-redacted label.
+    const hostLabel = summariseEndpoint(config);
+    core/* info */.pq(`OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m endpoint=${hostLabel}`);
+    try {
+        return await deps.runOpenAiReview(prompt, config, {
+            verificationContext: options.verificationContext,
+            retrieval: options.retrieval,
+            onProgress: options.onProgress,
+        });
+    }
+    catch (err) {
+        // A transport error / 5xx / empty body / parse-throw from one slot is
+        // a failed attempt, not a job-ending crash. The chain wrapper advances
+        // to the next endpoint; the single-slot `reviewer_backend=openai` path
+        // surfaces a null review so the run fails closed (no REVIEWED_NO_FINDINGS
+        // for code that was never reviewed). The cause stays on the artifact
+        // with the URL sanitised.
+        const message = err instanceof Error ? err.message : String(err);
+        const safeMessage = sanitiseTransportError(message, hostLabel, config.baseUrl);
+        core/* warning */.$e(`OpenAI-compatible review at ${hostLabel} failed: ${safeMessage}`);
+        return {
+            reviewResult: null,
+            sessionId: `openai:error:${hostLabel}`,
+            rawResponses: [`[error] ${safeMessage}`],
+            validationErrors: [
+                `OpenAI-compatible review at ${hostLabel} failed: ${safeMessage}`,
+            ],
+        };
+    }
 }
 const defaultDeps = {
     fetchPullRequestContext,
@@ -73518,6 +73810,23 @@ async function runReviewPr(overrides = {}) {
             enrichCommentsWithAnchors(reviewResult.newComments, context.files ?? new Map());
         }
         const artifactName = `maxi-review-${prNumber}-${headSha}.json`;
+        const artifactOutcomeReason = (() => {
+            if (outcome === "TIMED_OUT_NO_CONTENT") {
+                // The chain-exhausted case is reviewer-unavailable, distinct from the
+                // bare Jules timeout. `runSelectedReview` tags that session id with
+                // `openai:all-unavailable:`; everything else is the original
+                // Jules-timeout text.
+                const isReviewerUnavailable = typeof sessionId === "string" &&
+                    sessionId.startsWith("openai:all-unavailable:");
+                return isReviewerUnavailable
+                    ? reviewerUnavailableExplanation(countOpenAiFallbackConfigs(core/* getInput */.V4))
+                    : reviewTimeoutExplanation(timeoutMinutes);
+            }
+            if (blankReview) {
+                return emptyReviewExplanation(reviewResult.summary.length);
+            }
+            return undefined;
+        })();
         const artifactContent = buildReviewArtifact({
             repoFullName: `${owner}/${repo}`,
             prNumber,
@@ -73526,11 +73835,7 @@ async function runReviewPr(overrides = {}) {
             outcomeSchema: "maxi.review.v1.review-outcome",
             outcome,
             timeoutMinutes,
-            outcomeReason: outcome === "TIMED_OUT_NO_CONTENT"
-                ? reviewTimeoutExplanation(timeoutMinutes)
-                : blankReview
-                    ? emptyReviewExplanation(reviewResult.summary.length)
-                    : undefined,
+            outcomeReason: artifactOutcomeReason,
             reviewOutputChars,
             runIdentity,
             analyzerFindings,
@@ -73577,10 +73882,24 @@ async function runReviewPr(overrides = {}) {
             throw new Error(`Review completed but could not be recorded: both the artifact upload and the harvestable PR comment failed for ${artifactName}.`);
         }
         if (!reviewResult) {
-            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "failure", reviewTimeoutStatus(timeoutMinutes));
-            core/* warning */.$e(`${reviewTimeoutExplanation(timeoutMinutes)} Recorded a harvestable review artifact.`);
+            // Distinguish the chain-exhausted case from the bare Jules-no-review
+            // case. `runSelectedReview` stamps session IDs with `openai:all-unavailable:`
+            // when the entire fallback chain returned no review; that is the only
+            // path that surfaces the "reviewer unavailable" wording rather than
+            // the Jules-timeout one. Anything else (no fallback configured, the
+            // primary reviewer alone was tried) keeps the original text.
+            const reviewerUnavailable = typeof sessionId === "string" &&
+                sessionId.startsWith("openai:all-unavailable:");
+            const statusDescription = reviewerUnavailable
+                ? reviewerUnavailableStatus(countOpenAiFallbackConfigs(core/* getInput */.V4))
+                : reviewTimeoutStatus(timeoutMinutes);
+            const failureMessage = reviewerUnavailable
+                ? reviewerUnavailableExplanation(countOpenAiFallbackConfigs(core/* getInput */.V4))
+                : reviewTimeoutExplanation(timeoutMinutes);
+            await deps.setStatus(octokit, owner, repo, headSha, statusContext, "failure", statusDescription);
+            core/* warning */.$e(`${failureMessage} Recorded a harvestable review artifact.`);
             await deps.writeJobSummary(0);
-            core/* setFailed */.C1(reviewTimeoutExplanation(timeoutMinutes));
+            core/* setFailed */.C1(failureMessage);
             return;
         }
         const { verdict, summary, resolvedCommentIds, newComments } = reviewResult;

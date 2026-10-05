@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   completeOpenAiChat,
+  countOpenAiFallbackConfigs,
   OpenAiTimeoutError,
   parseOpenAiReview,
   parseReviewerBackend,
+  resolveOpenAiFallbackConfigs,
   resolveOpenAiReviewConfig,
   runOpenAiReview,
 } from "../src/openai-review.js";
@@ -108,6 +110,108 @@ describe("resolveOpenAiReviewConfig", () => {
           ? "0"
           : "";
     expect(resolveOpenAiReviewConfig(get, 30).timeoutMinutes).toBe(8);
+  });
+});
+
+describe("resolveOpenAiFallbackConfigs", () => {
+  it("returns the legacy single-slot list when no fallback is configured", () => {
+    const get = (name: string) =>
+      name === "openai_base_url" ? "http://pearl:8000/v1" : "";
+    const configs = resolveOpenAiFallbackConfigs(get, 15);
+    expect(configs).toEqual([
+      {
+        baseUrl: "http://pearl:8000/v1",
+        model: expect.stringContaining("Qwen3-Coder"),
+        timeoutMinutes: 8,
+      },
+    ]);
+    // countOpenAiFallbackConfigs agrees, so the reviewer-unavailable
+    // status description will print "1 fallback endpoint(s)" in the
+    // single-endpoint case — not "0" or "2".
+    expect(countOpenAiFallbackConfigs(get)).toBe(1);
+  });
+
+  it("appends the fallback slot after the primary, in order", () => {
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      if (name === "openai_fallback_api_key") return "hosted-key";
+      if (name === "openai_fallback_model")
+        return "moonshotai/Kimi-K2-Instruct";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 30);
+    expect(configs).toHaveLength(2);
+    expect(configs[0]).toMatchObject({ baseUrl: "http://pearl:8000/v1" });
+    expect(configs[1]).toMatchObject({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "hosted-key",
+      model: "moonshotai/Kimi-K2-Instruct",
+    });
+    expect(countOpenAiFallbackConfigs(get)).toBe(2);
+  });
+
+  it("skips the fallback slot when only its URL is blank", () => {
+    const get = (name: string) =>
+      name === "openai_base_url" ? "http://pearl:8000/v1" : "";
+    // No openai_fallback_base_url set. The primary is still configured, so
+    // the chain has one entry. Empty fallback inputs alone must not produce
+    // a phantom second slot.
+    const configs = resolveOpenAiFallbackConfigs(get, 30);
+    expect(configs).toHaveLength(1);
+    expect(configs[0].baseUrl).toBe("http://pearl:8000/v1");
+  });
+
+  it("returns an empty list when no endpoint is configured at all", () => {
+    expect(resolveOpenAiFallbackConfigs(() => "", 30)).toEqual([]);
+    expect(countOpenAiFallbackConfigs(() => "")).toBe(0);
+  });
+
+  it("uses the default model when the fallback model input is blank", () => {
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 30);
+    expect(configs[1].model).toContain("Qwen3-Coder");
+    expect(configs[1].apiKey).toBeUndefined();
+  });
+
+  it("caps the per-endpoint timeout at jules_budget / N so the chain fits the hard deadline", () => {
+    // PR #182: with the legacy per-endpoint cap at the full Jules budget,
+    // N endpoints could consume N * julesTimeoutMinutes. The hard deadline
+    // is julesTimeoutMinutes + 20 (the default headroom), so a chain of two
+    // endpoints in a 15-minute Jules slot would terminate during the second
+    // attempt. The chain now divides the budget across the configured
+    // endpoints, so the full chain fits inside the hard deadline. Review
+    // thread: PRRT_kwDOTFepzM6o8Onb.
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      if (name === "openai_timeout_minutes") return "20";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 15);
+    // 20 was capped to 7 (the Jules budget of 15, divided by 2 endpoints).
+    expect(configs[0].timeoutMinutes).toBe(7);
+    expect(configs[1].timeoutMinutes).toBe(7);
+  });
+
+  it("does not divide the budget when only one endpoint is configured", () => {
+    // With one endpoint, the chain IS the budget: a single attempt is
+    // entitled to the full Jules window, so julesTimeoutMinutes / 1 = T.
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_timeout_minutes") return "20";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 15);
+    expect(configs).toHaveLength(1);
+    expect(configs[0].timeoutMinutes).toBe(15);
   });
 });
 
@@ -347,8 +451,13 @@ describe("runOpenAiReview", () => {
     });
     expect(complete).toHaveBeenCalledTimes(2);
     expect(result.rawResponses).toEqual(["not json", "not json"]);
+    // Unparseable output is a FAILED attempt: the run returns no review so
+    // the chain can advance to the next endpoint and the gate fails closed
+    // if every slot is unparseable. A synthetic "no valid comments" review
+    // would be reported as REVIEWED_NO_FINDINGS and lock the gate green
+    // for code that was never actually reviewed.
+    expect(result.reviewResult).toBeNull();
     expect(result.validationErrors).toHaveLength(2);
-    expect(result.reviewResult?.newComments).toEqual([]);
   });
 
   it("returns no review when the endpoint never replies", async () => {
@@ -413,14 +522,15 @@ describe("runOpenAiReview", () => {
     expect(result.validationErrors?.[0]).toMatch(/parse/i);
   });
 
-  it("returns an empty comment review when the repair is still not JSON", async () => {
+  it("fails closed with no review when the repair is still not JSON", async () => {
+    // An unparseable reply is NOT a review: the chain must treat it as a
+    // failed attempt and advance, and a single-slot run must fail the
+    // check rather than post a synthetic "no valid comments" comment that
+    // would otherwise count as REVIEWED_NO_FINDINGS.
     const complete = vi.fn().mockResolvedValue("still not json");
     const result = await runOpenAiReview("prompt", config, { complete });
-    expect(result.reviewResult).toMatchObject({
-      verdict: "comment",
-      newComments: [],
-    });
-    expect(result.reviewResult?.summary).toContain("could not be parsed");
+    expect(result.reviewResult).toBeNull();
+    expect(result.validationErrors?.join("\n")).toMatch(/parse/i);
     expect(complete).toHaveBeenCalledTimes(2);
   });
 

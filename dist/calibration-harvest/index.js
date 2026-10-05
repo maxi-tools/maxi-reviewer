@@ -64445,6 +64445,30 @@ function classifyOutcome(finding) {
     const touched = finding.subsequentTouchedPaths.includes(finding.path);
     if (touched)
         return "accepted";
+    // NO COMMIT COULD HAVE LANDED, so the silence says nothing.
+    //
+    // `dismissed` and `unaddressed` both mean "the author saw this and did not
+    // change the code". That reading requires the author to have been ABLE to
+    // change the code. On a PR that merged with no further commit they were
+    // not, and the strongest case is the one this org generates most: 1,237 of
+    // the 3,039 PRs merged across maxi-tools in the 30 days to 2026-09-21 --
+    // 41% -- are `maxi-config-sync/*` fan-out PRs, whose every file carries the
+    // `# maxi-config-owned ` marker that `check-owned-files.py` refuses to let
+    // a consumer touch. The only moves available are "merge exactly as
+    // generated" or "close".
+    //
+    // Scoring those as not-accepted made a reviewer's rate a function of how
+    // much fan-out traffic the window happened to contain. Worse, the CORRECT
+    // response to a finding there -- fix it at the source in maxi-config and
+    // re-fan -- produced no commit on the consumer PR, so being right and
+    // acting on it scored against the reviewer.
+    //
+    // This is the same principle as the `touchedPathsKnown` clause above, from
+    // #133: an absent observation must not become a verdict. There the paths
+    // could not be read; here there was nothing to read. Both are `unknown`,
+    // counted in `unknownN` and excluded from every accept rate.
+    if (finding.subsequentCommitCount === 0)
+        return "unknown";
     if (finding.threadResolved)
         return "dismissed";
     return "unaddressed";
@@ -64507,30 +64531,431 @@ function isBotReviewer(login) {
     return BOT_REVIEWERS.includes(login);
 }
 
-;// CONCATENATED MODULE: ./src/calibration.ts
-function pathGroupOf(path) {
-    if (!path)
-        return "(unknown)";
-    const slash = path.indexOf("/");
-    return slash === -1 ? path : path.slice(0, slash);
+;// CONCATENATED MODULE: ./src/schema.ts
+function validateAnalyzerFinding(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "finding");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.analyzer-finding", errors);
+    requireString(record, "id", undefined, errors);
+    requireString(record, "tool", undefined, errors);
+    requireString(record, "ruleId", undefined, errors);
+    requireEnum(record, "severity", ["info", "warning", "error"], errors);
+    requireEnum(record, "confidence", ["low", "medium", "high", "unknown"], errors);
+    requireString(record, "message", undefined, errors);
+    requireString(record, "path", undefined, errors);
+    requirePositiveInt(record, "startLine", errors);
+    requirePositiveInt(record, "endLine", errors);
+    if (typeof record.startLine === "number" &&
+        typeof record.endLine === "number" &&
+        Number.isInteger(record.startLine) &&
+        Number.isInteger(record.endLine) &&
+        record.startLine > 0 &&
+        record.endLine > 0 &&
+        record.endLine < record.startLine) {
+        errors.push("endLine must be greater than or equal to startLine");
+    }
+    return { ok: errors.length === 0, value: value, errors };
 }
-function reviewCommentRows(review) {
+function validateJulesReview(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "review");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.jules-review", errors);
+    requireString(record, "summary", undefined, errors);
+    requireEnum(record, "verdict", ["approve", "comment", "block"], errors);
+    if (!Array.isArray(record.resolvedCommentIds)) {
+        errors.push("resolvedCommentIds must be an array");
+    }
+    if (!Array.isArray(record.comments)) {
+        errors.push("comments must be an array");
+    }
+    else {
+        record.comments.forEach((comment, index) => {
+            const item = asRecord(comment, errors, `comments[${index}]`);
+            if (!item)
+                return;
+            requireString(item, "id", undefined, errors);
+            requireString(item, "path", undefined, errors);
+            requirePositiveInt(item, "line", errors, `comments[${index}].`);
+            optionalPositiveInt(item, "startLine", errors, `comments[${index}].`);
+            optionalPositiveInt(item, "endLine", errors, `comments[${index}].`);
+            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
+            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
+            requireString(item, "message", undefined, errors);
+            optionalString(item, "promptForAgents", errors);
+            optionalStringArray(item, "sourceFindingIds", errors);
+            validateSuggestion(item.suggestion, errors, `comments[${index}].suggestion`);
+            validateFix(item.fix, errors, `comments[${index}].fix`);
+        });
+    }
+    return { ok: errors.length === 0, value: value, errors };
+}
+function schema_validateRetrievalRequest(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "retrieval-request");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.retrieval-request", errors);
+    if (!Array.isArray(record.requests)) {
+        errors.push("requests must be an array");
+        return { ok: false, errors };
+    }
+    if (record.requests.length === 0) {
+        errors.push("requests must be a non-empty array");
+    }
+    record.requests.forEach((entry, index) => {
+        const item = asRecord(entry, errors, "requests[" + index + "]");
+        if (!item)
+            return;
+        const prefix = "requests[" + index + "].";
+        if (item.tool === "read_file") {
+            requireString(item, "path", undefined, errors, prefix);
+            optionalPositiveInt(item, "startLine", errors, prefix);
+            optionalPositiveInt(item, "endLine", errors, prefix);
+        }
+        else if (item.tool === "grep") {
+            requireString(item, "pattern", undefined, errors, prefix);
+            optionalStringField(item, "pathGlob", errors, prefix);
+        }
+        else if (item.tool === "list_references") {
+            requireString(item, "symbol", undefined, errors, prefix);
+            optionalStringField(item, "pathGlob", errors, prefix);
+        }
+        else {
+            errors.push(prefix + "tool must be one of read_file, grep, list_references");
+        }
+    });
+    return { ok: errors.length === 0, value, errors };
+}
+function validateReviewArtifact(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "artifact");
+    if (!record)
+        return { ok: false, errors };
+    requireString(record, "schema", "maxi.review.v1.review-artifact", errors);
+    requireString(record, "createdAt", undefined, errors);
+    validateRetention(record.retention, errors);
+    requireString(record, "repoFullName", undefined, errors);
+    requirePositiveInt(record, "prNumber", errors);
+    requireString(record, "headSha", undefined, errors);
+    requireString(record, "baseSha", undefined, errors);
+    if (requireArray(record, "analyzerFindings", errors)) {
+        record.analyzerFindings.forEach((finding, index) => {
+            const result = validateAnalyzerFinding(finding);
+            errors.push(...result.errors.map((error) => `analyzerFindings[${index}].${error}`));
+        });
+    }
+    requireStringArray(record, "rawJulesResponses", errors);
+    if (record.validatedReview === undefined) {
+        errors.push("validatedReview is required");
+    }
+    else if (record.validatedReview !== null) {
+        errors.push(...validateArtifactReview(record.validatedReview));
+    }
+    requireStringArray(record, "validationErrors", errors);
+    optionalString(record, "sessionId", errors);
+    validateReviewOutcomeMetadata(record, errors);
+    return { ok: errors.length === 0, value: value, errors };
+}
+/**
+ * Runtime check for a harvested merge-time thread observation. `path` may be
+ * empty and `line` may be 0 because GraphQL thread payloads use those as
+ * stand-ins for a missing location; requiring a non-empty path / positive
+ * line would drop real harvest rows and change outcome semantics (#17).
+ */
+function validateThreadState(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "thread");
+    if (!record)
+        return { ok: false, errors };
+    if (typeof record.path !== "string") {
+        errors.push("path must be a string");
+    }
+    if (typeof record.line !== "number" || !Number.isInteger(record.line)) {
+        errors.push("line must be an integer");
+    }
+    if (typeof record.resolved !== "boolean") {
+        errors.push("resolved must be a boolean");
+    }
+    return { ok: errors.length === 0, value: value, errors };
+}
+function validateReviewOutcomeMetadata(record, errors) {
+    const fields = [
+        "outcomeSchema",
+        "outcome",
+        "reviewOutputChars",
+        "runIdentity",
+    ];
+    const present = fields.filter((field) => record[field] !== undefined);
+    if (present.length === 0)
+        return;
+    if (present.length !== fields.length) {
+        errors.push("review outcome metadata must be present as a complete set");
+    }
+    requireString(record, "outcomeSchema", "maxi.review.v1.review-outcome", errors);
+    requireEnum(record, "outcome", [
+        "TIMED_OUT_NO_CONTENT",
+        "EMPTY_REVIEW_BODY",
+        "REVIEWED_NO_FINDINGS",
+        "REVIEWED_WITH_FINDINGS",
+    ], errors);
+    if (!Number.isInteger(record.reviewOutputChars) ||
+        record.reviewOutputChars < 0) {
+        errors.push("reviewOutputChars must be a non-negative integer");
+    }
+    const identity = asRecord(record.runIdentity, errors, "runIdentity");
+    if (identity) {
+        requirePositiveInt(identity, "workflowRunId", errors, "runIdentity.");
+        requirePositiveInt(identity, "workflowRunAttempt", errors, "runIdentity.");
+        requireString(identity, "job", undefined, errors, "runIdentity.");
+    }
+    if ((record.outcome === "TIMED_OUT_NO_CONTENT" ||
+        record.outcome === "EMPTY_REVIEW_BODY") &&
+        record.validatedReview !== null) {
+        errors.push(`${String(record.outcome)} requires validatedReview to be null`);
+    }
+    if ((record.outcome === "REVIEWED_NO_FINDINGS" ||
+        record.outcome === "REVIEWED_WITH_FINDINGS") &&
+        (record.validatedReview === null || record.validatedReview === undefined)) {
+        errors.push(`${String(record.outcome)} requires a validatedReview`);
+    }
+    const findingCount = artifactReviewFindingCount(record.validatedReview);
+    if (record.outcome === "REVIEWED_NO_FINDINGS" && findingCount !== 0) {
+        errors.push("REVIEWED_NO_FINDINGS requires zero findings");
+    }
+    if (record.outcome === "REVIEWED_WITH_FINDINGS" && findingCount < 1) {
+        errors.push("REVIEWED_WITH_FINDINGS requires at least one finding");
+    }
+}
+function artifactReviewFindingCount(value) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return 0;
+    }
+    const record = value;
+    if (Array.isArray(record.comments))
+        return record.comments.length;
+    if (Array.isArray(record.newComments))
+        return record.newComments.length;
+    return 0;
+}
+function validateArtifactReview(value) {
+    const errors = [];
+    const record = asRecord(value, errors, "validatedReview");
+    if (!record)
+        return errors;
+    if (record.schema === "maxi.review.v1.jules-review") {
+        const result = validateJulesReview(value);
+        return result.errors.map((error) => `validatedReview.${error}`);
+    }
+    requireString(record, "summary", undefined, errors, "validatedReview.");
+    if (typeof record.verdict !== "string" ||
+        !["approve", "comment", "block"].includes(record.verdict)) {
+        errors.push("validatedReview.verdict must be one of approve, comment, block");
+    }
+    if (!Array.isArray(record.resolvedCommentIds)) {
+        errors.push("validatedReview.resolvedCommentIds must be an array");
+    }
+    if (!Array.isArray(record.newComments)) {
+        errors.push("validatedReview.newComments must be an array");
+    }
+    else {
+        record.newComments.forEach((comment, index) => {
+            const item = asRecord(comment, errors, `validatedReview.newComments[${index}]`);
+            if (!item)
+                return;
+            const prefix = `validatedReview.newComments[${index}].`;
+            requireString(item, "file", undefined, errors, prefix);
+            requirePositiveInt(item, "line", errors, prefix);
+            optionalPositiveInt(item, "startLine", errors, prefix);
+            optionalPositiveInt(item, "endLine", errors, prefix);
+            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
+            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
+            requireString(item, "message", undefined, errors, prefix);
+            validateFix(item.fix, errors, `${prefix}fix`);
+        });
+    }
+    return errors;
+}
+function validateRetention(value, errors) {
+    const retention = asRecord(value, errors, "retention");
+    if (!retention)
+        return;
+    if (retention.harvestableAfterMerge !== true) {
+        errors.push("retention.harvestableAfterMerge must be true");
+    }
+    if (!Array.isArray(retention.channels) ||
+        retention.channels.length !== 2 ||
+        retention.channels[0] !== "github-actions-artifact" ||
+        retention.channels[1] !== "github-pr-comment") {
+        errors.push("retention.channels must be github-actions-artifact, github-pr-comment");
+    }
+    if (retention.commentMarker !== "<!-- maxi-review artifact -->") {
+        errors.push("retention.commentMarker must be <!-- maxi-review artifact -->");
+    }
+}
+function validateSuggestion(value, errors, label) {
+    if (value === undefined)
+        return;
+    const suggestion = asRecord(value, errors, label);
+    if (!suggestion)
+        return;
+    requireString(suggestion, "path", undefined, errors, `${label}.`);
+    requirePositiveInt(suggestion, "startLine", errors, `${label}.`);
+    requirePositiveInt(suggestion, "endLine", errors, `${label}.`);
+    if (Number.isInteger(suggestion.startLine) &&
+        Number.isInteger(suggestion.endLine) &&
+        suggestion.endLine < suggestion.startLine) {
+        errors.push(`${label}.endLine must be greater than or equal to startLine`);
+    }
+    requireStringValue(suggestion, "replacement", errors, `${label}.`);
+}
+function validateFix(value, errors, label) {
+    if (value === undefined)
+        return;
+    const fix = asRecord(value, errors, label);
+    if (!fix)
+        return;
+    if (!Array.isArray(fix.edits)) {
+        errors.push(`${label}.edits must be an array`);
+        return;
+    }
+    if (fix.edits.length === 0) {
+        errors.push(`${label}.edits must be a non-empty array`);
+    }
+    fix.edits.forEach((edit, index) => validateSuggestion(edit, errors, `${label}.edits[${index}]`));
+}
+function asRecord(value, errors, label) {
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        return value;
+    }
+    errors.push(`${label} must be an object`);
+    return undefined;
+}
+function requireString(record, key, exact, errors, prefix = "") {
+    if (typeof record[key] !== "string" || record[key] === "") {
+        errors.push(`${prefix}${key} must be a non-empty string`);
+        return;
+    }
+    if (exact !== undefined && record[key] !== exact) {
+        errors.push(`${prefix}${key} must be ${exact}`);
+    }
+}
+function requireStringValue(record, key, errors, prefix = "") {
+    if (typeof record[key] !== "string") {
+        errors.push(`${prefix}${key} must be a string`);
+    }
+}
+function optionalString(record, key, errors) {
+    if (record[key] !== undefined && typeof record[key] !== "string") {
+        errors.push(`${key} must be a string`);
+    }
+}
+function optionalStringField(record, key, errors, prefix = "") {
+    if (record[key] !== undefined && typeof record[key] !== "string") {
+        errors.push(`${prefix}${key} must be a string`);
+    }
+}
+function optionalStringArray(record, key, errors) {
+    if (record[key] === undefined)
+        return;
+    if (!Array.isArray(record[key])) {
+        errors.push(`${key} must be an array`);
+        return;
+    }
+    record[key].forEach((item, index) => {
+        if (typeof item !== "string" || item === "") {
+            errors.push(`${key}[${index}] must be a non-empty string`);
+        }
+    });
+}
+function requireStringArray(record, key, errors) {
+    if (!Array.isArray(record[key])) {
+        errors.push(`${key} must be an array`);
+        return;
+    }
+    record[key].forEach((item, index) => {
+        if (typeof item !== "string") {
+            errors.push(`${key}[${index}] must be a string`);
+        }
+    });
+}
+function requireArray(record, key, errors) {
+    if (!Array.isArray(record[key])) {
+        errors.push(`${key} must be an array`);
+        return false;
+    }
+    return true;
+}
+function requireEnum(record, key, allowed, errors) {
+    if (typeof record[key] !== "string" ||
+        !allowed.includes(record[key])) {
+        errors.push(`${key} must be one of ${allowed.join(", ")}`);
+    }
+}
+function requirePositiveInt(record, key, errors, prefix = "") {
+    if (!Number.isInteger(record[key]) || record[key] < 1) {
+        errors.push(`${prefix}${key} must be a positive integer`);
+    }
+}
+function optionalPositiveInt(record, key, errors, prefix = "") {
+    if (record[key] !== undefined) {
+        requirePositiveInt(record, key, errors, prefix);
+    }
+}
+
+;// CONCATENATED MODULE: ./src/calibration.ts
+
+/**
+ * The top-level path segment used to bucket a finding for `byPath`. Exported
+ * so callers can bucket paths the same way this module does.
+ *
+ * Strips leading `/` (and repeats of it) before bucketing so a repository
+ * path with a leading slash, e.g. `/src/a.ts`, lands in the same `src`
+ * bucket as `src/a.ts` instead of the meaningless `""` key.
+ */
+function pathGroupOf(path) {
+    const normalized = (path || "").replace(/^\/+/, "");
+    if (!normalized)
+        return "(unknown)";
+    const slash = normalized.indexOf("/");
+    return slash === -1 ? normalized : normalized.slice(0, slash);
+}
+function reviewCommentRows(review, excluded) {
     if (!review || typeof review !== "object")
         return [];
     if (Array.isArray(review.comments)) {
-        return review.comments.map((c) => ({
-            path: c.path || "",
-            line: c.line || 0,
-            severity: String(c.severity || "Unknown"),
-            sourceFindingIds: c.sourceFindingIds,
-        }));
+        return review.comments.flatMap((c, i) => {
+            if (c == null || typeof c !== "object") {
+                excluded?.push(`comments[${i}] must be an object`);
+                return [];
+            }
+            return [
+                {
+                    path: c.path || "",
+                    line: c.line || 0,
+                    severity: String(c.severity || "Unknown"),
+                    sourceFindingIds: c.sourceFindingIds,
+                },
+            ];
+        });
     }
     if (Array.isArray(review.newComments)) {
-        return review.newComments.map((c) => ({
-            path: c.file || "",
-            line: c.line || 0,
-            severity: String(c.severity || "Unknown"),
-        }));
+        return review.newComments.flatMap((c, i) => {
+            if (c == null || typeof c !== "object") {
+                excluded?.push(`newComments[${i}] must be an object`);
+                return [];
+            }
+            return [
+                {
+                    path: c.file || "",
+                    line: c.line || 0,
+                    severity: String(c.severity || "Unknown"),
+                },
+            ];
+        });
     }
     return [];
 }
@@ -64545,16 +64970,21 @@ function ruleFor(ids, analyzerRule) {
     return "code-review";
 }
 /** Extract the findings a review artifact emitted, attributed to a rule. */
-function extractEmittedFindings(artifact) {
+function extractEmittedFindings(artifact, excluded) {
+    if (!artifact || typeof artifact !== "object")
+        return [];
     const analyzerRule = new Map();
-    for (const finding of artifact.analyzerFindings ?? []) {
+    const findings = Array.isArray(artifact.analyzerFindings)
+        ? artifact.analyzerFindings
+        : [];
+    for (const finding of findings) {
         if (finding && typeof finding === "object") {
             const af = finding;
             if (af.id)
                 analyzerRule.set(af.id, af.ruleId || af.tool || "analyzer");
         }
     }
-    return reviewCommentRows(artifact.validatedReview).map((row) => ({
+    return reviewCommentRows(artifact.validatedReview, excluded).map((row) => ({
         rule: ruleFor(row.sourceFindingIds, analyzerRule),
         severity: row.severity,
         path: row.path,
@@ -64568,8 +64998,12 @@ function extractEmittedFindings(artifact) {
  *  - dismissed: no surviving thread (deleted/minimized) for the emitted finding.
  */
 function correlateOutcomes(findings, threads) {
-    return findings.map((finding) => {
-        const match = threads.find((t) => t.path === finding.path && t.line === finding.line);
+    const safeFindings = Array.isArray(findings) ? findings : [];
+    const safeThreads = Array.isArray(threads)
+        ? threads.filter((t) => t != null && typeof t === "object")
+        : [];
+    return safeFindings.map((finding) => {
+        const match = safeThreads.find((t) => t.path === finding.path && t.line === finding.line);
         let outcome;
         if (!match)
             outcome = "dismissed";
@@ -64623,15 +65057,73 @@ function lowPrecisionRules(report, options = {}) {
     const maxAcceptRate = options.maxAcceptRate ?? 0.3;
     return report.byRule.filter((g) => g.accepted + g.dismissed >= minSamples && g.acceptRate <= maxAcceptRate);
 }
+/**
+ * Validated-input boundary for harvested artifacts and thread observations.
+ * Malformed items are counted, not thrown or silently coerced.
+ */
+function ingestCalibration(items) {
+    const excluded = [];
+    if (!Array.isArray(items)) {
+        return {
+            report: aggregateCalibration([]),
+            excluded: [{ index: -1, reason: "items must be an array" }],
+        };
+    }
+    const records = [];
+    items.forEach((item, index) => {
+        if (item == null || typeof item !== "object") {
+            excluded.push({ index, reason: "item must be an object" });
+            return;
+        }
+        const rec = item;
+        if (rec.artifact == null) {
+            excluded.push({ index, reason: "artifact is missing" });
+            return;
+        }
+        const artifactResult = validateReviewArtifact(rec.artifact);
+        if (!artifactResult.ok || !artifactResult.value) {
+            excluded.push({
+                index,
+                reason: `artifact is invalid: ${artifactResult.errors.join("; ")}`,
+            });
+            return;
+        }
+        const artifact = artifactResult.value;
+        const threads = [];
+        if (rec.threads == null) {
+            // Missing threads is "no surviving thread", not a malformed item.
+        }
+        else if (!Array.isArray(rec.threads)) {
+            excluded.push({ index, reason: "threads must be an array" });
+            return;
+        }
+        else {
+            rec.threads.forEach((thread, threadIndex) => {
+                const result = validateThreadState(thread);
+                if (!result.ok || !result.value) {
+                    excluded.push({
+                        index,
+                        reason: `threads[${threadIndex}] is invalid: ${result.errors.join("; ")}`,
+                    });
+                    return;
+                }
+                threads.push(result.value);
+            });
+        }
+        const commentExcluded = [];
+        const findings = extractEmittedFindings(artifact, commentExcluded);
+        for (const reason of commentExcluded) {
+            excluded.push({ index, reason });
+        }
+        if (artifact.outcome !== "REVIEWED_WITH_FINDINGS")
+            return;
+        records.push(...correlateOutcomes(findings, threads));
+    });
+    return { report: aggregateCalibration(records), excluded };
+}
 /** End-to-end: build a calibration report from harvested artifacts + outcomes. */
 function buildCalibrationReport(items) {
-    const records = [];
-    for (const item of items) {
-        if (item.artifact.outcome !== "REVIEWED_WITH_FINDINGS")
-            continue;
-        records.push(...correlateOutcomes(extractEmittedFindings(item.artifact), item.threads));
-    }
-    return aggregateCalibration(records);
+    return ingestCalibration(items).report;
 }
 
 ;// CONCATENATED MODULE: external "node:os"
@@ -69512,12 +70004,22 @@ async function runJulesReview(apiKey, prompt,
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 source, timeoutMinutes, options = {}) {
     const customJules = jules.with({ apiKey });
-    const { session, afterMessage, resumed } = await startReviewSession(customJules, prompt, source, options.previousSessionId);
+    // One wall-clock deadline for the whole review, including session setup,
+    // every SDK await, and every repair/retrieval round below. Each round
+    // previously requested a fresh `timeoutMinutes * 60 * 1000` budget of its
+    // own, so a slow-but-not-hung initial poll plus a repair round could
+    // together run for up to double the configured timeout instead of being
+    // bound by it. session.info() / session.send() were also unbounded, so a
+    // hang there was the same "step 12 hangs with no output" failure as a
+    // hung hydrate()/history().
+    const deadline = Date.now() + timeoutMinutes * 60 * 1000;
+    const remainingBudgetMs = () => Math.max(0, deadline - Date.now());
+    const { session, afterMessage, resumed } = await startReviewSession(customJules, prompt, source, options.previousSessionId, remainingBudgetMs);
     core.info(`Jules session: ${session.id}`);
     if (!afterMessage) {
-        await waitUntilSessionReady(session);
+        await waitUntilSessionReady(session, remainingBudgetMs);
     }
-    let reviewMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, afterMessage, options.onProgress, setupBudgetFor(resumed, options));
+    let reviewMessage = await pollForReview(session, remainingBudgetMs(), afterMessage, options.onProgress, setupBudgetFor(resumed, options));
     core.info(`Collected review (${reviewMessage.length} chars)`);
     if (!reviewMessage) {
         return { reviewResult: null, sessionId: session.id };
@@ -69527,7 +70029,7 @@ source, timeoutMinutes, options = {}) {
             session,
             firstMessage: reviewMessage,
             retrieval: options.retrieval,
-            timeoutMs: timeoutMinutes * 60 * 1000,
+            timeoutMs: remainingBudgetMs(),
             onProgress: options.onProgress,
         });
     }
@@ -69541,8 +70043,8 @@ source, timeoutMinutes, options = {}) {
     catch (err) {
         validationErrors.push(`Failed to parse Jules response: ${errorMessage(err)}`);
         core.warning(`Failed to parse Jules response; requesting same-session JSON repair: ${err}`);
-        await sendSessionMessage(session, buildJsonRepairPrompt(reviewMessage, err));
-        const repairedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, reviewMessage, options.onProgress);
+        await sendSessionMessage(session, buildJsonRepairPrompt(reviewMessage, err), remainingBudgetMs());
+        const repairedMessage = await pollForReview(session, remainingBudgetMs(), reviewMessage, options.onProgress);
         rawResponses.push(repairedMessage);
         try {
             reviewResult = parseJulesResponse(repairedMessage);
@@ -69568,8 +70070,8 @@ source, timeoutMinutes, options = {}) {
     if (formatIssues.length > 0) {
         validationErrors.push(...formatIssues);
         core.warning(`Jules response has ${formatIssues.length} suggested-change formatting issue(s); requesting a same-session revision.`);
-        await sendSessionMessage(session, buildFormatRepairPrompt(reviewResult, formatIssues));
-        const revisedMessage = await pollForReview(session, timeoutMinutes * 60 * 1000, latestReviewMessage, options.onProgress);
+        await sendSessionMessage(session, buildFormatRepairPrompt(reviewResult, formatIssues), remainingBudgetMs());
+        const revisedMessage = await pollForReview(session, remainingBudgetMs(), latestReviewMessage, options.onProgress);
         if (revisedMessage) {
             rawResponses.push(revisedMessage);
             try {
@@ -69594,7 +70096,7 @@ source, timeoutMinutes, options = {}) {
         const verified = await requestStructuredValidationRepair({
             session,
             latestReviewMessage,
-            timeoutMinutes,
+            timeoutMs: remainingBudgetMs(),
             verificationContext: options.verificationContext,
             onProgress: options.onProgress,
         });
@@ -69637,7 +70139,7 @@ async function runRetrievalLoop(input) {
             core.info("Retrieval step " +
                 (step + 1) +
                 ": invalid retrieval-request; returning schema errors for repair.");
-            await sendSessionMessage(session, formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft));
+            await sendSessionMessage(session, formatInvalidRetrievalRequest(retrieval.nonce, parsed.errors, roundsLeft), Math.max(0, deadline - Date.now()));
             const repaired = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
             if (!repaired) {
                 core.warning("Retrieval loop: no agent reply after invalid-request feedback; stopping.");
@@ -69657,7 +70159,7 @@ async function runRetrievalLoop(input) {
                 results.push({ tool: req.tool, ok: false, error: errorMessage(err) });
             }
         }
-        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft));
+        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, results, roundsLeft), Math.max(0, deadline - Date.now()));
         const next = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (!next) {
             core.warning("Retrieval loop: no agent reply after returning results; stopping.");
@@ -69669,7 +70171,7 @@ async function runRetrievalLoop(input) {
     // for the final review so we don't return an unparseable request message.
     if (parseRetrievalRequest(message).kind !== "none") {
         core.info("Retrieval budget exhausted; requesting the final review.");
-        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0));
+        await sendSessionMessage(session, formatRetrievalResults(retrieval.nonce, [], 0), Math.max(0, deadline - Date.now()));
         const finalMessage = await pollForReview(session, Math.max(0, deadline - Date.now()), message, onProgress);
         if (finalMessage)
             return finalMessage;
@@ -69678,14 +70180,14 @@ async function runRetrievalLoop(input) {
 }
 async function startReviewSession(customJules, prompt, 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-source, previousSessionId) {
+source, previousSessionId, remainingBudgetMs) {
     if (previousSessionId) {
         try {
             core.info(`Continuing Jules review session ${previousSessionId}…`);
             const session = customJules.session(previousSessionId);
             await session.info();
             const afterMessage = await latestAgentMessage(session);
-            await sendSessionMessage(session, prompt);
+            await sendSessionMessage(session, prompt, remainingBudgetMs());
             return { session, afterMessage, resumed: true };
         }
         catch (err) {
@@ -69693,7 +70195,7 @@ source, previousSessionId) {
         }
     }
     core.info("Creating Jules review session…");
-    const rawSession = await createReviewSession(customJules, prompt, source);
+    const rawSession = await withTimeout(createReviewSession(customJules, prompt, source), remainingBudgetMs(), "createReviewSession");
     return { session: rawSession, resumed: false };
 }
 async function createReviewSession(customJules, prompt, 
@@ -69755,8 +70257,8 @@ async function requestStructuredValidationRepair(input) {
         return null;
     const validationErrors = issues.map((issue) => `${issue.kind}: ${issue.message}`);
     core.warning(`Jules structured review has ${issues.length} validation issue(s); requesting a same-session revision.`);
-    await sendSessionMessage(input.session, buildReviewRepairPrompt(structuredReview, issues));
-    const revisedMessage = await pollForReview(input.session, input.timeoutMinutes * 60 * 1000, input.latestReviewMessage, input.onProgress);
+    await sendSessionMessage(input.session, buildReviewRepairPrompt(structuredReview, issues), input.timeoutMs);
+    const revisedMessage = await pollForReview(input.session, input.timeoutMs, input.latestReviewMessage, input.onProgress);
     try {
         const revisedStructuredReview = parseJulesReview(revisedMessage);
         const remainingIssues = verifyJulesReview(revisedStructuredReview, input.verificationContext);
@@ -69846,12 +70348,16 @@ function convertStructuredReview(review) {
 function errorMessage(err) {
     return err instanceof Error ? err.message : String(err);
 }
-async function waitUntilSessionReady(session) {
+async function waitUntilSessionReady(session, remainingBudgetMs) {
     const maxAttempts = 20;
     let delay = 2000;
     for (let i = 0; i < maxAttempts; i++) {
+        const remaining = remainingBudgetMs();
+        if (remaining <= 0) {
+            throw new Error("Session did not become ready within timeout.");
+        }
         try {
-            await session.info();
+            await withTimeout(session.info(), remaining, "session.info()");
             core.info(`Session ${session.id} is ready after ${i + 1} attempt(s).`);
             return;
         }
@@ -69864,7 +70370,13 @@ async function waitUntilSessionReady(session) {
                 throw new Error(`Jules session.info() failed: ${msg}`, { cause: err });
             }
             core.info(`Session not yet ready (attempt ${i + 1}/${maxAttempts})…`);
-            await new Promise((r) => setTimeout(r, delay));
+            const sleepMs = Math.min(delay, remainingBudgetMs());
+            if (sleepMs <= 0) {
+                throw new Error("Session did not become ready within timeout.", {
+                    cause: err,
+                });
+            }
+            await new Promise((r) => setTimeout(r, sleepMs));
             delay = Math.min(delay * 1.5, 15000);
         }
     }
@@ -69974,6 +70486,28 @@ function createSetupWatch(session, startedAt, budgetMs) {
         },
     };
 }
+/**
+ * Races `promise` against a timer so a hung network call cannot outlive
+ * `ms`. Without this, `session.info()`/`session.send()`/`session.hydrate()`/
+ * `session.history()` had no timeout of their own and a single hung call
+ * could hold the poll loop (and the runner) well past `deadline`, which is
+ * exactly the "step 12 hangs with no output" failure mode this file exists
+ * to prevent.
+ */
+function withTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${ms}ms`));
+        }, Math.max(0, ms));
+        promise.then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+        }, (err) => {
+            clearTimeout(timer);
+            reject(err);
+        });
+    });
+}
 async function pollForReview(session, timeoutMs, afterMessage, onProgress, 
 // Off unless a caller opts in. Only the first poll of a session is watching
 // for a setup that never finished; by the time a repair or retrieval prompt
@@ -69999,12 +70533,14 @@ setupBudgetMs = 0) {
         // poll hiccup, so it must not land in a catch that resumes waiting.
         await setupWatch.check(attempt);
         try {
-            await session.hydrate();
+            await withTimeout(session.hydrate(), deadline - Date.now(), "session.hydrate()");
             let last = "";
-            for await (const a of session.history()) {
-                if (a.type === "agentMessaged")
-                    last = a.message;
-            }
+            await withTimeout((async () => {
+                for await (const a of session.history()) {
+                    if (a.type === "agentMessaged")
+                        last = a.message;
+                }
+            })(), deadline - Date.now(), "session.history()");
             if (last) {
                 sawAgentOutput = true;
                 if (afterMessage !== undefined && last === afterMessage) {
@@ -70033,16 +70569,19 @@ setupBudgetMs = 0) {
                 core.info(`Review progress callback failed: ${errorMessage(err)}`);
             }
         }
-        await new Promise((r) => setTimeout(r, 20_000));
+        const remaining = deadline - Date.now();
+        if (remaining <= 0)
+            break;
+        await new Promise((r) => setTimeout(r, Math.min(20_000, remaining)));
     }
     return "";
 }
-async function sendSessionMessage(session, message) {
+async function sendSessionMessage(session, message, timeoutMs) {
     const send = session.prompt || session.message || session.sendMessage || session.send;
     if (!send) {
         throw new Error("Jules session does not expose a same-session message method for review repair.");
     }
-    await send.call(session, message);
+    await withTimeout(send.call(session, message), timeoutMs, "session.send()");
 }
 function isAuthError(msg) {
     return /\b(?:401|403)\b/.test(msg);
@@ -70055,337 +70594,6 @@ function wrapPermissionError(err, needed, op) {
             `(original: ${msg})`);
     }
     return err instanceof Error ? err : new Error(msg);
-}
-
-;// CONCATENATED MODULE: ./src/schema.ts
-function validateAnalyzerFinding(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "finding");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.analyzer-finding", errors);
-    requireString(record, "id", undefined, errors);
-    requireString(record, "tool", undefined, errors);
-    requireString(record, "ruleId", undefined, errors);
-    requireEnum(record, "severity", ["info", "warning", "error"], errors);
-    requireEnum(record, "confidence", ["low", "medium", "high", "unknown"], errors);
-    requireString(record, "message", undefined, errors);
-    requireString(record, "path", undefined, errors);
-    requirePositiveInt(record, "startLine", errors);
-    requirePositiveInt(record, "endLine", errors);
-    if (typeof record.startLine === "number" &&
-        typeof record.endLine === "number" &&
-        Number.isInteger(record.startLine) &&
-        Number.isInteger(record.endLine) &&
-        record.startLine > 0 &&
-        record.endLine > 0 &&
-        record.endLine < record.startLine) {
-        errors.push("endLine must be greater than or equal to startLine");
-    }
-    return { ok: errors.length === 0, value: value, errors };
-}
-function validateJulesReview(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "review");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.jules-review", errors);
-    requireString(record, "summary", undefined, errors);
-    requireEnum(record, "verdict", ["approve", "comment", "block"], errors);
-    if (!Array.isArray(record.resolvedCommentIds)) {
-        errors.push("resolvedCommentIds must be an array");
-    }
-    if (!Array.isArray(record.comments)) {
-        errors.push("comments must be an array");
-    }
-    else {
-        record.comments.forEach((comment, index) => {
-            const item = asRecord(comment, errors, `comments[${index}]`);
-            if (!item)
-                return;
-            requireString(item, "id", undefined, errors);
-            requireString(item, "path", undefined, errors);
-            requirePositiveInt(item, "line", errors, `comments[${index}].`);
-            optionalPositiveInt(item, "startLine", errors, `comments[${index}].`);
-            optionalPositiveInt(item, "endLine", errors, `comments[${index}].`);
-            requireEnum(item, "severity", ["Info", "Warning", "High"], errors);
-            requireEnum(item, "confidence", ["Low", "Medium", "High"], errors);
-            requireString(item, "message", undefined, errors);
-            optionalString(item, "promptForAgents", errors);
-            optionalStringArray(item, "sourceFindingIds", errors);
-            validateSuggestion(item.suggestion, errors, `comments[${index}].suggestion`);
-            validateFix(item.fix, errors, `comments[${index}].fix`);
-        });
-    }
-    return { ok: errors.length === 0, value: value, errors };
-}
-function schema_validateRetrievalRequest(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "retrieval-request");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.retrieval-request", errors);
-    if (!Array.isArray(record.requests)) {
-        errors.push("requests must be an array");
-        return { ok: false, errors };
-    }
-    if (record.requests.length === 0) {
-        errors.push("requests must be a non-empty array");
-    }
-    record.requests.forEach((entry, index) => {
-        const item = asRecord(entry, errors, "requests[" + index + "]");
-        if (!item)
-            return;
-        const prefix = "requests[" + index + "].";
-        if (item.tool === "read_file") {
-            requireString(item, "path", undefined, errors, prefix);
-            optionalPositiveInt(item, "startLine", errors, prefix);
-            optionalPositiveInt(item, "endLine", errors, prefix);
-        }
-        else if (item.tool === "grep") {
-            requireString(item, "pattern", undefined, errors, prefix);
-            optionalStringField(item, "pathGlob", errors, prefix);
-        }
-        else if (item.tool === "list_references") {
-            requireString(item, "symbol", undefined, errors, prefix);
-            optionalStringField(item, "pathGlob", errors, prefix);
-        }
-        else {
-            errors.push(prefix + "tool must be one of read_file, grep, list_references");
-        }
-    });
-    return { ok: errors.length === 0, value, errors };
-}
-function validateReviewArtifact(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "artifact");
-    if (!record)
-        return { ok: false, errors };
-    requireString(record, "schema", "maxi.review.v1.review-artifact", errors);
-    requireString(record, "createdAt", undefined, errors);
-    validateRetention(record.retention, errors);
-    requireString(record, "repoFullName", undefined, errors);
-    requirePositiveInt(record, "prNumber", errors);
-    requireString(record, "headSha", undefined, errors);
-    requireString(record, "baseSha", undefined, errors);
-    if (requireArray(record, "analyzerFindings", errors)) {
-        record.analyzerFindings.forEach((finding, index) => {
-            const result = validateAnalyzerFinding(finding);
-            errors.push(...result.errors.map((error) => `analyzerFindings[${index}].${error}`));
-        });
-    }
-    requireStringArray(record, "rawJulesResponses", errors);
-    if (record.validatedReview === undefined) {
-        errors.push("validatedReview is required");
-    }
-    else if (record.validatedReview !== null) {
-        errors.push(...validateArtifactReview(record.validatedReview));
-    }
-    requireStringArray(record, "validationErrors", errors);
-    optionalString(record, "sessionId", errors);
-    validateReviewOutcomeMetadata(record, errors);
-    return { ok: errors.length === 0, value: value, errors };
-}
-function validateReviewOutcomeMetadata(record, errors) {
-    const fields = [
-        "outcomeSchema",
-        "outcome",
-        "reviewOutputChars",
-        "runIdentity",
-    ];
-    const present = fields.filter((field) => record[field] !== undefined);
-    if (present.length === 0)
-        return;
-    if (present.length !== fields.length) {
-        errors.push("review outcome metadata must be present as a complete set");
-    }
-    requireString(record, "outcomeSchema", "maxi.review.v1.review-outcome", errors);
-    requireEnum(record, "outcome", ["TIMED_OUT_NO_CONTENT", "REVIEWED_NO_FINDINGS", "REVIEWED_WITH_FINDINGS"], errors);
-    if (!Number.isInteger(record.reviewOutputChars) ||
-        record.reviewOutputChars < 0) {
-        errors.push("reviewOutputChars must be a non-negative integer");
-    }
-    const identity = asRecord(record.runIdentity, errors, "runIdentity");
-    if (identity) {
-        requirePositiveInt(identity, "workflowRunId", errors, "runIdentity.");
-        requirePositiveInt(identity, "workflowRunAttempt", errors, "runIdentity.");
-        requireString(identity, "job", undefined, errors, "runIdentity.");
-    }
-    if (record.outcome === "TIMED_OUT_NO_CONTENT" &&
-        record.validatedReview !== null) {
-        errors.push("TIMED_OUT_NO_CONTENT requires validatedReview to be null");
-    }
-    if ((record.outcome === "REVIEWED_NO_FINDINGS" ||
-        record.outcome === "REVIEWED_WITH_FINDINGS") &&
-        (record.validatedReview === null || record.validatedReview === undefined)) {
-        errors.push(`${String(record.outcome)} requires a validatedReview`);
-    }
-    const findingCount = artifactReviewFindingCount(record.validatedReview);
-    if (record.outcome === "REVIEWED_NO_FINDINGS" && findingCount !== 0) {
-        errors.push("REVIEWED_NO_FINDINGS requires zero findings");
-    }
-    if (record.outcome === "REVIEWED_WITH_FINDINGS" && findingCount < 1) {
-        errors.push("REVIEWED_WITH_FINDINGS requires at least one finding");
-    }
-}
-function artifactReviewFindingCount(value) {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        return 0;
-    }
-    const record = value;
-    if (Array.isArray(record.comments))
-        return record.comments.length;
-    if (Array.isArray(record.newComments))
-        return record.newComments.length;
-    return 0;
-}
-function validateArtifactReview(value) {
-    const errors = [];
-    const record = asRecord(value, errors, "validatedReview");
-    if (!record)
-        return errors;
-    if (record.schema === "maxi.review.v1.jules-review") {
-        const result = validateJulesReview(value);
-        return result.errors.map((error) => `validatedReview.${error}`);
-    }
-    requireString(record, "summary", undefined, errors, "validatedReview.");
-    if (typeof record.verdict !== "string" ||
-        !["approve", "comment", "block"].includes(record.verdict)) {
-        errors.push("validatedReview.verdict must be one of approve, comment, block");
-    }
-    if (!Array.isArray(record.resolvedCommentIds)) {
-        errors.push("validatedReview.resolvedCommentIds must be an array");
-    }
-    if (!Array.isArray(record.newComments)) {
-        errors.push("validatedReview.newComments must be an array");
-    }
-    return errors;
-}
-function validateRetention(value, errors) {
-    const retention = asRecord(value, errors, "retention");
-    if (!retention)
-        return;
-    if (retention.harvestableAfterMerge !== true) {
-        errors.push("retention.harvestableAfterMerge must be true");
-    }
-    if (!Array.isArray(retention.channels) ||
-        retention.channels.length !== 2 ||
-        retention.channels[0] !== "github-actions-artifact" ||
-        retention.channels[1] !== "github-pr-comment") {
-        errors.push("retention.channels must be github-actions-artifact, github-pr-comment");
-    }
-    if (retention.commentMarker !== "<!-- maxi-review artifact -->") {
-        errors.push("retention.commentMarker must be <!-- maxi-review artifact -->");
-    }
-}
-function validateSuggestion(value, errors, label) {
-    if (value === undefined)
-        return;
-    const suggestion = asRecord(value, errors, label);
-    if (!suggestion)
-        return;
-    requireString(suggestion, "path", undefined, errors, `${label}.`);
-    requirePositiveInt(suggestion, "startLine", errors, `${label}.`);
-    requirePositiveInt(suggestion, "endLine", errors, `${label}.`);
-    if (Number.isInteger(suggestion.startLine) &&
-        Number.isInteger(suggestion.endLine) &&
-        suggestion.endLine < suggestion.startLine) {
-        errors.push(`${label}.endLine must be greater than or equal to startLine`);
-    }
-    requireStringValue(suggestion, "replacement", errors, `${label}.`);
-}
-function validateFix(value, errors, label) {
-    if (value === undefined)
-        return;
-    const fix = asRecord(value, errors, label);
-    if (!fix)
-        return;
-    if (!Array.isArray(fix.edits)) {
-        errors.push(`${label}.edits must be an array`);
-        return;
-    }
-    if (fix.edits.length === 0) {
-        errors.push(`${label}.edits must be a non-empty array`);
-    }
-    fix.edits.forEach((edit, index) => validateSuggestion(edit, errors, `${label}.edits[${index}]`));
-}
-function asRecord(value, errors, label) {
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-        return value;
-    }
-    errors.push(`${label} must be an object`);
-    return undefined;
-}
-function requireString(record, key, exact, errors, prefix = "") {
-    if (typeof record[key] !== "string" || record[key] === "") {
-        errors.push(`${prefix}${key} must be a non-empty string`);
-        return;
-    }
-    if (exact !== undefined && record[key] !== exact) {
-        errors.push(`${prefix}${key} must be ${exact}`);
-    }
-}
-function requireStringValue(record, key, errors, prefix = "") {
-    if (typeof record[key] !== "string") {
-        errors.push(`${prefix}${key} must be a string`);
-    }
-}
-function optionalString(record, key, errors) {
-    if (record[key] !== undefined && typeof record[key] !== "string") {
-        errors.push(`${key} must be a string`);
-    }
-}
-function optionalStringField(record, key, errors, prefix = "") {
-    if (record[key] !== undefined && typeof record[key] !== "string") {
-        errors.push(`${prefix}${key} must be a string`);
-    }
-}
-function optionalStringArray(record, key, errors) {
-    if (record[key] === undefined)
-        return;
-    if (!Array.isArray(record[key])) {
-        errors.push(`${key} must be an array`);
-        return;
-    }
-    record[key].forEach((item, index) => {
-        if (typeof item !== "string" || item === "") {
-            errors.push(`${key}[${index}] must be a non-empty string`);
-        }
-    });
-}
-function requireStringArray(record, key, errors) {
-    if (!Array.isArray(record[key])) {
-        errors.push(`${key} must be an array`);
-        return;
-    }
-    record[key].forEach((item, index) => {
-        if (typeof item !== "string") {
-            errors.push(`${key}[${index}] must be a string`);
-        }
-    });
-}
-function requireArray(record, key, errors) {
-    if (!Array.isArray(record[key])) {
-        errors.push(`${key} must be an array`);
-        return false;
-    }
-    return true;
-}
-function requireEnum(record, key, allowed, errors) {
-    if (typeof record[key] !== "string" ||
-        !allowed.includes(record[key])) {
-        errors.push(`${key} must be one of ${allowed.join(", ")}`);
-    }
-}
-function requirePositiveInt(record, key, errors, prefix = "") {
-    if (!Number.isInteger(record[key]) || record[key] < 1) {
-        errors.push(`${prefix}${key} must be a positive integer`);
-    }
-}
-function optionalPositiveInt(record, key, errors, prefix = "") {
-    if (record[key] !== undefined) {
-        requirePositiveInt(record, key, errors, prefix);
-    }
 }
 
 ;// CONCATENATED MODULE: ./src/review-command.ts
@@ -71505,6 +71713,7 @@ async function harvest(octokit, org, windowDays, options = {}) {
     const calibrationInputs = [];
     let artifactsObserved = 0;
     let degradedPulls = 0;
+    let unamendablePulls = 0;
     let observedPulls = 0;
     let pullIndex = 0;
     for (const pull of pulls) {
@@ -71568,8 +71777,9 @@ async function harvest(octokit, org, windowDays, options = {}) {
         // trip the all-degraded guard and throw.
         function touchedPathsAfterThread(thread) {
             if (!thread.createdAt)
-                return { paths: [], known: false };
+                return { paths: [], known: false, commitCount: 0 };
             const out = [];
+            let commitCount = 0;
             // commits is reverse-chronological; once we see a commit dated
             // before the thread, no later commit is older, so we stop walking.
             for (const c of walk.commits) {
@@ -71583,10 +71793,11 @@ async function harvest(octokit, org, windowDays, options = {}) {
                     // Bailing on `!walk.complete` up front (as this did) threw away
                     // every thread on a large PR, including recent ones whose commits
                     // were all present.
-                    return { paths: out, known: true };
+                    return { paths: out, known: true, commitCount };
                 }
                 if (!c.pathsKnown)
-                    return { paths: [], known: false };
+                    return { paths: [], known: false, commitCount: 0 };
+                commitCount += 1;
                 for (const p of c.paths) {
                     out.push(p);
                 }
@@ -71594,11 +71805,12 @@ async function harvest(octokit, org, windowDays, options = {}) {
             // Ran off the end without closing the slice. If the walk was truncated,
             // a commit after this thread may be among the ones we never fetched.
             return walk.complete
-                ? { paths: out, known: true }
-                : { paths: [], known: false };
+                ? { paths: out, known: true, commitCount }
+                : { paths: [], known: false, commitCount: 0 };
         }
         let knownHere = 0;
         let addedHere = 0;
+        let amendableHere = 0;
         for (const thread of botThreads) {
             const reviewer = thread.firstAuthor;
             if (!reviewer || !isBotReviewer(reviewer))
@@ -71608,6 +71820,8 @@ async function harvest(octokit, org, windowDays, options = {}) {
             addedHere += 1;
             if (touched.known)
                 knownHere += 1;
+            if (touched.known && touched.commitCount > 0)
+                amendableHere += 1;
             findings.push({
                 reviewer: reviewer,
                 repo: `${pull.owner}/${pull.repo}`,
@@ -71617,6 +71831,7 @@ async function harvest(octokit, org, windowDays, options = {}) {
                 threadResolved: thread.isResolved,
                 subsequentTouchedPaths: touched.paths,
                 touchedPathsKnown: touched.known,
+                subsequentCommitCount: touched.commitCount,
             });
         }
         // Degraded means this PR taught us NOTHING -- every finding unknown --
@@ -71624,6 +71839,27 @@ async function harvest(octokit, org, windowDays, options = {}) {
         // answered some threads and not others is partial, not blind.
         if (addedHere > 0 && knownHere === 0)
             degradedPulls += 1;
+        // Counted SEPARATELY from degraded, because they are different facts and
+        // the difference is the whole point. A degraded PR is one we failed to
+        // read. An un-amendable one we read perfectly: it merged with no commit
+        // after its first bot comment, so there was never an opportunity for a
+        // finding to be actioned. Both yield outcome=unknown; only one is a
+        // defect. Reporting them in a single number would make a healthy harvest
+        // of fan-out traffic look like a broken one -- and, worse, would make the
+        // fan-out share invisible, which is how it went unnoticed until the rates
+        // had already decayed.
+        //
+        // `knownHere === addedHere`, not `knownHere > 0`: EVERY finding on the
+        // PR has to be a real observation before the PR as a whole can be called
+        // un-amendable. A PR with one known zero-commit finding and one finding
+        // whose commit walk failed satisfies `knownHere > 0`, but the failed one
+        // may well have had later commits we never saw -- so calling the PR
+        // un-amendable would be a whole-PR verdict drawn from a partial read.
+        // That is the defect this PR exists to fix, one level up, in the counter
+        // added to measure it. Found in review by coderabbitai.
+        if (addedHere > 0 && knownHere === addedHere && amendableHere === 0) {
+            unamendablePulls += 1;
+        }
         // Calibration harvest: pull maxi-reviewer's `review-artifact` comments off
         // this PR, decode them, and feed each into `calibration.ts`. The thread
         // states we already walked above feed the same engine.
@@ -71652,8 +71888,8 @@ async function harvest(octokit, org, windowDays, options = {}) {
             warning(`harvest: artifact fetch failed for ${pull.owner}/${pull.repo}#${pull.number}: ${String(err)}`);
         }
     }
-    const calibration = buildCalibrationReport(calibrationInputs);
-    info(`harvest: calibration report produced ${calibration.byRule.length} rule groups, ${calibration.bySeverity.length} severity groups, ${calibration.byPath.length} path groups from ${artifactsObserved} artifacts`);
+    const { report: calibration, excluded } = ingestCalibration(calibrationInputs);
+    info(`harvest: calibration report produced ${calibration.byRule.length} rule groups, ${calibration.bySeverity.length} severity groups, ${calibration.byPath.length} path groups from ${artifactsObserved} artifacts (${excluded.length} excluded)`);
     // A harvest that could not measure anything must not look like a harvest
     // that measured zero. #133 published a profile asset reading 0% for all
     // seven reviewers while every commit fetch was failing, and the job was
@@ -71671,11 +71907,21 @@ async function harvest(octokit, org, windowDays, options = {}) {
             "Every accept rate would be computed from zero observations, so this is a " +
             "failed harvest, not an empty one. See the warnings above for the cause.");
     }
+    // Info, not a warning: this is the corpus being what it is, not anything
+    // going wrong. It is printed on EVERY run, including at zero, because the
+    // number is only useful as a trend -- a reader comparing two harvests needs
+    // to know how much of each window was measurable before comparing the
+    // rates. 41% of the merged corpus was un-amendable fan-out traffic when
+    // this was written, and nothing said so.
+    info(`harvest: ${unamendablePulls}/${observedPulls} PRs merged or closed with no commit after their ` +
+        "first bot comment; their findings are outcome=unknown because no finding on them " +
+        "could have been actioned (fan-out PRs are un-amendable by construction)");
     return {
         findings,
         calibration,
         artifactsObserved,
         degradedPulls,
+        unamendablePulls,
         observedPulls,
     };
 }
@@ -71699,7 +71945,8 @@ async function runScheduledHarvest(options) {
     // only "6358 samples" cannot tell that every one of them was unusable,
     // which is exactly the state #133 shipped in.
     info(`harvest: ${totalUnknown} finding(s) had an unknown outcome and are excluded from every accept rate ` +
-        `(${result.degradedPulls}/${result.observedPulls} PRs had an incomplete commit walk)`);
+        `(${result.degradedPulls}/${result.observedPulls} PRs had an incomplete commit walk, ` +
+        `${result.unamendablePulls}/${result.observedPulls} had no commit after the first bot comment)`);
     if (totalSamples === 0 && totalUnknown > 0) {
         throw new Error(`harvest: all ${totalUnknown} findings are outcome=unknown, so every accept rate ` +
             "would be 0% over an empty denominator. Refusing to publish a profile that " +
@@ -71738,6 +71985,7 @@ async function runScheduledHarvest(options) {
         calibration: result.calibration,
         artifactsObserved: result.artifactsObserved,
         degradedPulls: result.degradedPulls,
+        unamendablePulls: result.unamendablePulls,
         observedPulls: result.observedPulls,
     };
 }

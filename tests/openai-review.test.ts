@@ -431,8 +431,13 @@ describe("runOpenAiReview", () => {
     });
     expect(complete).toHaveBeenCalledTimes(2);
     expect(result.rawResponses).toEqual(["not json", "not json"]);
+    // Unparseable output is a FAILED attempt: the run returns no review so
+    // the chain can advance to the next endpoint and the gate fails closed
+    // if every slot is unparseable. A synthetic "no valid comments" review
+    // would be reported as REVIEWED_NO_FINDINGS and lock the gate green
+    // for code that was never actually reviewed.
+    expect(result.reviewResult).toBeNull();
     expect(result.validationErrors).toHaveLength(2);
-    expect(result.reviewResult?.newComments).toEqual([]);
   });
 
   it("returns no review when the endpoint never replies", async () => {
@@ -497,14 +502,15 @@ describe("runOpenAiReview", () => {
     expect(result.validationErrors?.[0]).toMatch(/parse/i);
   });
 
-  it("returns an empty comment review when the repair is still not JSON", async () => {
+  it("fails closed with no review when the repair is still not JSON", async () => {
+    // An unparseable reply is NOT a review: the chain must treat it as a
+    // failed attempt and advance, and a single-slot run must fail the
+    // check rather than post a synthetic "no valid comments" comment that
+    // would otherwise count as REVIEWED_NO_FINDINGS.
     const complete = vi.fn().mockResolvedValue("still not json");
     const result = await runOpenAiReview("prompt", config, { complete });
-    expect(result.reviewResult).toMatchObject({
-      verdict: "comment",
-      newComments: [],
-    });
-    expect(result.reviewResult?.summary).toContain("could not be parsed");
+    expect(result.reviewResult).toBeNull();
+    expect(result.validationErrors?.join("\n")).toMatch(/parse/i);
     expect(complete).toHaveBeenCalledTimes(2);
   });
 

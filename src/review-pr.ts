@@ -386,10 +386,11 @@ async function runOpenAiFallbackChain(
   ];
   for (let i = 0; i < configs.length; i++) {
     const config = configs[i];
+    const hostLabel = summariseEndpoint(config);
     const label =
       configs.length === 1
         ? "the configured OpenAI-compatible reviewer"
-        : `OpenAI-compatible fallback ${i + 1}/${configs.length} (${summariseEndpoint(config)})`;
+        : `OpenAI-compatible fallback ${i + 1}/${configs.length} (${hostLabel})`;
     if (i === 0) {
       core.warning(
         `Jules returned no review within ${timeoutMinutes} minutes; ` +
@@ -398,6 +399,9 @@ async function runOpenAiFallbackChain(
     } else {
       core.warning(`${attempts[i - 1]} returned no review; trying ${label}.`);
     }
+    // runOneOpenAiBackend swallows per-slot transport / empty-body / parse
+    // throws into a "no review" result; the chain then advances to the
+    // next configured endpoint rather than crashing the whole job.
     const result = await runOneOpenAiBackend(
       deps,
       prompt,
@@ -445,12 +449,36 @@ function emptyFallbackChain(
 }
 
 function summariseEndpoint(config: OpenAiReviewConfig): string {
+  // Logs, status text, and the artifact must NEVER carry the full URL:
+  // userinfo holds credentials, path and query can hold tokens, and the
+  // host alone is enough for a reader to identify which endpoint failed.
+  // On parse failure the input is not safe to echo (the caller may have
+  // pasted a malformed secret into the URL), so return a fixed label.
   try {
     const url = new URL(config.baseUrl);
-    return `${url.host}${url.pathname === "/" ? "" : url.pathname}`;
+    if (!url.host) return INVALID_ENDPOINT_LABEL;
+    return url.host;
   } catch {
-    return config.baseUrl;
+    return INVALID_ENDPOINT_LABEL;
   }
+}
+
+const INVALID_ENDPOINT_LABEL = "<invalid-endpoint>";
+
+/**
+ * Strip the raw baseUrl out of a transport error message before it lands
+ * on a log line, a status description, or the artifact. A 5xx response
+ * from a Spark often echoes the request path (e.g. `/v1/chat/completions`)
+ * and an upstream proxy can echo a full URL with embedded credentials.
+ * Replace any URL-shaped substring with the already-computed `hostLabel`
+ * so the on-call still knows which endpoint failed, but the secret-bearing
+ * payload never reaches a printer.
+ */
+export function sanitiseTransportError(
+  message: string,
+  hostLabel: string
+): string {
+  return message.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s)>'"`]+/gi, hostLabel);
 }
 
 /**
@@ -519,7 +547,18 @@ async function runOpenAiBackend(
         "Point it at the vLLM OpenAI server, e.g. http://jasper:8000/v1."
     );
   }
-  return runOneOpenAiBackend(deps, prompt, config, options);
+  const result = await runOneOpenAiBackend(deps, prompt, config, options);
+  // Stamp the session id with the chain-exhausted prefix so the run-level
+  // surface (status, setFailed, artifact outcomeReason) renders the
+  // reviewer-unavailable text rather than the misleading Jules-timeout
+  // text. The single-slot case is effectively a chain of length 1.
+  if (result.reviewResult === null) {
+    return {
+      ...result,
+      sessionId: `openai:all-unavailable:${summariseEndpoint(config)}`,
+    };
+  }
+  return result;
 }
 
 async function runOneOpenAiBackend(
@@ -529,14 +568,42 @@ async function runOneOpenAiBackend(
   options: RunJulesReviewOptions
 ): Promise<JulesReviewRunResult> {
   if (config.apiKey) core.setSecret(config.apiKey);
+  // Log the host only — the raw baseUrl can carry userinfo, a private
+  // path, or a token query, and those strings would land in the workflow
+  // log that everyone in the org can read. `setSecret` above masks the
+  // api key from the same surface; the URL has no equivalent knob, so the
+  // only safe move is to log the already-redacted label.
+  const hostLabel = summariseEndpoint(config);
   core.info(
-    `OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m endpoint=${config.baseUrl}`
+    `OpenAI-compatible review: model=${config.model} timeout=${config.timeoutMinutes}m endpoint=${hostLabel}`
   );
-  return deps.runOpenAiReview(prompt, config, {
-    verificationContext: options.verificationContext,
-    retrieval: options.retrieval,
-    onProgress: options.onProgress,
-  });
+  try {
+    return await deps.runOpenAiReview(prompt, config, {
+      verificationContext: options.verificationContext,
+      retrieval: options.retrieval,
+      onProgress: options.onProgress,
+    });
+  } catch (err) {
+    // A transport error / 5xx / empty body / parse-throw from one slot is
+    // a failed attempt, not a job-ending crash. The chain wrapper advances
+    // to the next endpoint; the single-slot `reviewer_backend=openai` path
+    // surfaces a null review so the run fails closed (no REVIEWED_NO_FINDINGS
+    // for code that was never reviewed). The cause stays on the artifact
+    // with the URL sanitised.
+    const message = err instanceof Error ? err.message : String(err);
+    const safeMessage = sanitiseTransportError(message, hostLabel);
+    core.warning(
+      `OpenAI-compatible review at ${hostLabel} failed: ${safeMessage}`
+    );
+    return {
+      reviewResult: null,
+      sessionId: `openai:error:${hostLabel}`,
+      rawResponses: [`[error] ${safeMessage}`],
+      validationErrors: [
+        `OpenAI-compatible review at ${hostLabel} failed: ${safeMessage}`,
+      ],
+    };
+  }
 }
 
 const defaultDeps: ReviewPrDeps = {

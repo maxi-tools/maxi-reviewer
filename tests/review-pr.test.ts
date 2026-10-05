@@ -1008,6 +1008,359 @@ describe("runReviewPr orchestration", () => {
     expect(joined).toContain("503 service unavailable");
   });
 
+  it("advances to the next endpoint when the primary throws a transport error", async () => {
+    // PR #182: a 5xx, a network error, or an empty 200 body from the primary
+    // must NOT short-circuit the chain. The next configured endpoint gets
+    // a turn. Today (2a9e869) the throw escapes `runOneOpenAiBackend` and
+    // kills the whole run, stranding the PR.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      if (name === "openai_fallback_api_key") return "hosted-key";
+      if (name === "openai_fallback_model")
+        return "moonshotai/Kimi-K2-Instruct";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "OpenAI-compatible review endpoint returned 503: service unavailable"
+          )
+        )
+        .mockResolvedValueOnce({
+          reviewResult: {
+            verdict: "comment",
+            summary: "Kimi found an issue.",
+            resolvedCommentIds: [],
+            newComments: [
+              {
+                file: "src/a.ts",
+                line: 1,
+                severity: "Warning",
+                confidence: "High",
+                message: "Hot path unwrap.",
+                promptForAgents: "Return Result.",
+              },
+            ],
+          },
+          sessionId: "openai:moonshotai/Kimi-K2-Instruct",
+        }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(2);
+    expect(deps.runOpenAiReview.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ baseUrl: "http://pearl:8000/v1" })
+    );
+    expect(deps.runOpenAiReview.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        baseUrl: "https://api.example.com/v1",
+        model: "moonshotai/Kimi-K2-Instruct",
+      })
+    );
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("REVIEWED_WITH_FINDINGS");
+  });
+
+  it("advances to the next endpoint when the primary returns an empty 200 body", async () => {
+    // PR #182: a 200 with an empty `choices[0].message.content` must NOT
+    // short-circuit the chain. The next configured endpoint gets a turn.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "OpenAI-compatible review endpoint returned no assistant message."
+          )
+        )
+        .mockResolvedValueOnce({
+          reviewResult: {
+            verdict: "comment",
+            summary: "Fallback review.",
+            resolvedCommentIds: [],
+            newComments: [],
+          },
+          sessionId: "openai:moonshotai/Kimi-K2-Instruct",
+        }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(2);
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  it("advances to the next endpoint when the primary's fetch fails (network error)", async () => {
+    // PR #182: a fetch failure (`ECONNREFUSED`, DNS, etc.) on the primary
+    // must NOT short-circuit the chain. The next configured endpoint
+    // gets a turn.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "OpenAI-compatible review request failed: fetch failed (ECONNREFUSED)"
+          )
+        )
+        .mockResolvedValueOnce({
+          reviewResult: {
+            verdict: "comment",
+            summary: "Fallback review.",
+            resolvedCommentIds: [],
+            newComments: [],
+          },
+          sessionId: "openai:moonshotai/Kimi-K2-Instruct",
+        }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(2);
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with 'reviewer unavailable' when every endpoint returns an unparseable review", async () => {
+    // PR #182: a garbled initial and repair reply on the primary used to
+    // be reported as a synthetic "no valid comments" review and the gate
+    // was locked green (REVIEWED_NO_FINDINGS) for code that was never
+    // actually reviewed. With a second endpoint also garbled, the run
+    // must setFailed with the reviewer-unavailable text and never call
+    // submitReview. The artifact records the parse failure mode.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi
+        .fn()
+        .mockResolvedValueOnce({
+          // Garbled on both turns: the first call returns the
+          // unparseableReview-equivalent null (the chain advances).
+          reviewResult: null,
+          sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+          validationErrors: [
+            "Failed to parse OpenAI-compatible review: Unexpected token",
+            "Failed to parse repaired OpenAI-compatible review: Unexpected token",
+          ],
+        })
+        .mockResolvedValueOnce({
+          reviewResult: null,
+          sessionId: "openai:moonshotai/Kimi-K2-Instruct",
+          validationErrors: [
+            "Failed to parse OpenAI-compatible review: Unexpected token",
+            "Failed to parse repaired OpenAI-compatible review: Unexpected token",
+          ],
+        }),
+    };
+
+    await runReviewPr(deps);
+
+    // Both slots were tried; no review was published.
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(2);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    const failureText = vi
+      .mocked(core.setFailed)
+      .mock.calls.map((call) => call[0] as string)
+      .join("\n");
+    expect(failureText).toMatch(/reviewer-infrastructure failure/);
+    expect(failureText).not.toMatch(/Jules never replied/);
+    // The artifact records TIMED_OUT_NO_CONTENT (no review was ever produced)
+    // and the chain-exhausted session id, distinct from a bare Jules
+    // timeout.
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
+    expect(artifact.sessionId).toMatch(/^openai:all-unavailable:/);
+    // The parse errors are preserved on the artifact so the on-call can
+    // see why each slot was rejected, and the reason is the
+    // reviewer-unavailable text, not the Jules-timeout text.
+    expect(artifact.validationErrors.join("\n")).toMatch(/parse/i);
+    expect(artifact.outcomeReason).toMatch(/reviewer-infrastructure failure/);
+  });
+
+  it("never logs or publishes the full endpoint URL with credentials, path, or query", async () => {
+    // PR #182: a baseUrl of the form
+    //   http://user:pass@host.example:8000/v1/private?token=secret
+    // must never reach a log line, the status description, the comment
+    // body, or the harvestable artifact. The host alone (`host.example:8000`)
+    // is the only endpoint identity that should appear.
+    const sensitiveUrl =
+      "http://user:pass@host.example:8000/v1/private?token=secret";
+    const sensitiveFragments = [
+      "user:pass",
+      "/private",
+      "token=secret",
+      "host.example/v1", // path-included host leakage from the old summary
+    ];
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return sensitiveUrl;
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "comment",
+          summary: "Review produced.",
+          resolvedCommentIds: [],
+          newComments: [],
+        },
+        sessionId: "openai:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+      }),
+    };
+
+    await runReviewPr(deps);
+
+    // Scan every channel the verifier identified: logs, status text,
+    // uploaded artifact, harvested comment.
+    const infoCalls = vi
+      .mocked(core.info)
+      .mock.calls.map((call) => String(call[0] ?? ""));
+    const warningCalls = vi
+      .mocked(core.warning)
+      .mock.calls.map((call) => String(call[0] ?? ""));
+    const errorCalls = vi
+      .mocked(core.error)
+      .mock.calls.map((call) => String(call[0] ?? ""));
+    const failedCalls = vi
+      .mocked(core.setFailed)
+      .mock.calls.map((call) => String(call[0] ?? ""));
+    const statusDescriptions = deps.setStatus.mock.calls.map((call) =>
+      String(call[6] ?? "")
+    );
+    const artifactJson = String(deps.uploadArtifact.mock.calls[0]?.[1] ?? "");
+    const artifactCommentBody = String(
+      deps.recordReviewArtifact.mock.calls[0]?.[5] ?? ""
+    );
+    const collectedText = [
+      ...infoCalls,
+      ...warningCalls,
+      ...errorCalls,
+      ...failedCalls,
+      ...statusDescriptions,
+      artifactJson,
+      artifactCommentBody,
+    ].join("\n");
+
+    for (const fragment of sensitiveFragments) {
+      expect(collectedText, `leak of "${fragment}"`).not.toContain(fragment);
+    }
+    // The host must still be visible: a redacted-only log that names no
+    // endpoint is its own bug. Verify the bare host is present.
+    expect(collectedText).toContain("host.example:8000");
+  });
+
+  it("fails closed when the single-slot openai backend throws on transport", async () => {
+    // The explicit `reviewer_backend=openai` roster entry is a
+    // single-slot path: the run is asking for one endpoint as the sole
+    // reviewer. A transport error from that endpoint must NOT crash the
+    // job; the run must fail the check (no review) rather than report
+    // success for code that was never reviewed.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "30";
+      if (name === "reviewer_backend") return "qwen";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn(),
+      runOpenAiReview: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            "OpenAI-compatible review endpoint returned 503: service unavailable"
+          )
+        ),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(1);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    const failureText = vi
+      .mocked(core.setFailed)
+      .mock.calls.map((call) => call[0] as string)
+      .join("\n");
+    // The Jules-timeout text would be misleading here: the single-slot
+    // openai backend failed, not Jules. The reviewer-unavailable text is
+    // the right description.
+    expect(failureText).not.toMatch(/Jules never replied/);
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
+    expect(artifact.sessionId).toMatch(/^openai:all-unavailable:/);
+    // The 503 is preserved (with the URL sanitised to the host).
+    expect(artifact.validationErrors.join("\n")).toMatch(/503/);
+    expect(artifact.validationErrors.join("\n")).toContain("pearl:8000");
+  });
+
   it("does not block on a finding outside the PR diff", async () => {
     // #91: a 2-line PR got a blocking failure from findings in a file the PR
     // never touched. fail_on=blocking is the default, so this is the path the

@@ -471,12 +471,34 @@ const INVALID_ENDPOINT_LABEL = "<invalid-endpoint>";
  * Replace any URL-shaped substring with the already-computed `hostLabel`
  * so the on-call still knows which endpoint failed, but the secret-bearing
  * payload never reaches a printer.
+ *
+ * Two passes, because one is not enough:
+ *
+ * 1. The literal `rawUrl` is removed by exact match. This is the pass that
+ *    matters for the case the scheme regex cannot see: a baseUrl that never
+ *    parses as a URL at all (no `//`, so no scheme to key off) — e.g.
+ *    `user:pass@host` — which Node's `fetch` still echoes verbatim inside
+ *    its `TypeError: Invalid URL`. There is no scheme in that string for the
+ *    regex to match, so a regex-only implementation leaks the credential.
+ * 2. Any remaining scheme-prefixed URL is replaced wholesale, which catches
+ *    the paths and upstream errors that mention a URL other than ours.
+ *
+ * `rawUrl` is optional so existing callers that have no URL in hand (or
+ * callers deliberately passing a synthetic string) keep compiling; when it
+ * is absent or empty, the exact-match pass is a no-op.
  */
 export function sanitiseTransportError(
   message: string,
-  hostLabel: string
+  hostLabel: string,
+  rawUrl?: string
 ): string {
-  return message.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s)>'"`]+/gi, hostLabel);
+  const withoutExactMatch = rawUrl
+    ? message.split(rawUrl).join(hostLabel)
+    : message;
+  return withoutExactMatch.replace(
+    /[a-z][a-z0-9+.-]*:\/\/[^\s)>'"`]+/gi,
+    hostLabel
+  );
 }
 
 /**
@@ -589,7 +611,11 @@ async function runOneOpenAiBackend(
     // for code that was never reviewed). The cause stays on the artifact
     // with the URL sanitised.
     const message = err instanceof Error ? err.message : String(err);
-    const safeMessage = sanitiseTransportError(message, hostLabel);
+    const safeMessage = sanitiseTransportError(
+      message,
+      hostLabel,
+      config.baseUrl
+    );
     core.warning(
       `OpenAI-compatible review at ${hostLabel} failed: ${safeMessage}`
     );

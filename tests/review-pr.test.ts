@@ -21,6 +21,7 @@ import {
   reviewerUnavailableStatus,
   runAnalyzers,
   runReviewPr,
+  sanitiseTransportError,
   uploadReviewArtifact,
 } from "../src/review-pr.js";
 import { SessionStuckInSetupError } from "../src/jules.js";
@@ -1381,6 +1382,58 @@ describe("runReviewPr orchestration", () => {
     expect(collectedText).toContain("host.example:8000");
   });
 
+  it("never leaks a credential-bearing baseUrl that has no scheme to match on", async () => {
+    // The follow-on gap to the test above. A baseUrl like
+    //   user:pass@host.example
+    // never parses as a URL, so `new URL()` throws (the endpoint label
+    // becomes the fixed invalid-endpoint marker) and, more importantly,
+    // there is no `scheme://` for a URL-shaped regex to key off. Node's
+    // fetch echoes the whole string verbatim inside `TypeError: Invalid URL`,
+    // so a scheme-regex-only sanitiser writes the credential straight into
+    // the artifact and the job log.
+    const schemelessUrl = "user:hunter2@host.example";
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return schemelessUrl;
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      // Exactly what Node's fetch does with an unparseable URL.
+      runOpenAiReview: vi
+        .fn()
+        .mockRejectedValue(
+          new TypeError(`Failed to parse URL from ${schemelessUrl}`)
+        ),
+    };
+
+    await runReviewPr(deps);
+
+    const collectedText = [
+      ...vi.mocked(core.info).mock.calls.map((c) => String(c[0] ?? "")),
+      ...vi.mocked(core.warning).mock.calls.map((c) => String(c[0] ?? "")),
+      ...vi.mocked(core.error).mock.calls.map((c) => String(c[0] ?? "")),
+      ...vi.mocked(core.setFailed).mock.calls.map((c) => String(c[0] ?? "")),
+      ...deps.setStatus.mock.calls.map((c) => String(c[6] ?? "")),
+      String(deps.uploadArtifact.mock.calls[0]?.[1] ?? ""),
+      String(deps.recordReviewArtifact.mock.calls[0]?.[5] ?? ""),
+    ].join("\n");
+
+    expect(collectedText, "credential username leaked").not.toContain(
+      "hunter2"
+    );
+    expect(collectedText, "credential userinfo leaked").not.toContain("user:");
+    // The endpoint identity is still present, as the fixed marker.
+    expect(collectedText).toContain("<invalid-endpoint>");
+  });
+
   it("fails closed when the single-slot openai backend throws on transport", async () => {
     // The explicit `reviewer_backend=openai` roster entry is a
     // single-slot path: the run is asking for one endpoint as the sole
@@ -1613,6 +1666,49 @@ describe("reviewer-unavailable wording", () => {
     expect(errorLine).toContain(
       "no OpenAI-compatible endpoints were configured"
     );
+  });
+});
+
+describe("sanitiseTransportError", () => {
+  it("replaces a scheme-prefixed URL with the host label", () => {
+    const message =
+      "OpenAI-compatible review request failed: 503 from http://pearl:8000/v1/chat/completions";
+    const safe = sanitiseTransportError(message, "pearl:8000");
+    expect(safe).not.toContain("/v1/chat/completions");
+    expect(safe).toContain("pearl:8000");
+  });
+
+  it("strips a schemeless credential-bearing baseUrl that the scheme regex cannot see", () => {
+    // The gap this closes: a baseUrl like `user:pass@host` never parses as a
+    // URL, so there is no `scheme://` for the regex to key off, and Node's
+    // fetch echoes the whole string verbatim inside `TypeError: Invalid URL`.
+    // Without the exact-match pass that credential reaches the artifact.
+    const rawUrl = "user:hunter2@host.example";
+    const message = `Failed to parse URL from ${rawUrl}`;
+    const safe = sanitiseTransportError(message, "<invalid-endpoint>", rawUrl);
+    expect(safe).not.toContain("hunter2");
+    expect(safe).not.toContain("user:");
+    expect(safe).toContain("<invalid-endpoint>");
+  });
+
+  it("strips the exact baseUrl and still catches any other URL in the same message", () => {
+    const rawUrl =
+      "https://user:hunter2@host.example:8000/v1/private?token=abc";
+    const message = `fetch failed for ${rawUrl}; upstream redirected to https://proxy.internal/v2/chat`;
+    const safe = sanitiseTransportError(message, "host.example:8000", rawUrl);
+    expect(safe).not.toContain("hunter2");
+    expect(safe).not.toContain("token=abc");
+    expect(safe).not.toContain("/v1/private");
+    expect(safe).not.toContain("proxy.internal");
+    expect(safe).toContain("host.example:8000");
+  });
+
+  it("is a no-op on the exact-match pass when rawUrl is omitted", () => {
+    // The parameter is optional so existing two-argument callers keep
+    // working; with no URL in hand the scheme pass alone still applies.
+    const message = "503 from https://host.example/v1/chat";
+    const safe = sanitiseTransportError(message, "host.example");
+    expect(safe).toBe("503 from host.example");
   });
 });
 

@@ -71,7 +71,13 @@ export async function runOpenAiReview(
 
   const parsed = await parseWithRepair(run, reply);
   if (!parsed) return finish(run, null);
-  if (parsed.unparseable) return finish(run, parsed.reviewResult);
+  // An unparseable reply is NOT a review. The chain (and the single-slot
+  // openai backend) treat a null result as a failed attempt and advance to
+  // the next endpoint; posting a synthetic "no valid comments" review
+  // would mark the run REVIEWED_NO_FINDINGS and lock the gate green for
+  // code that was never actually reviewed. The parse errors stay on
+  // `validationErrors` so the on-call can see what came back.
+  if (parsed.unparseable) return finish(run, null);
   let { reviewResult } = parsed;
   let current = parsed.reply;
 

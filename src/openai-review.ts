@@ -10,11 +10,13 @@
  */
 export {
   completeOpenAiChat,
+  countOpenAiFallbackConfigs,
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENAI_TIMEOUT_MINUTES,
   openAiFallbackConfigured,
   OpenAiTimeoutError,
   parseReviewerBackend,
+  resolveOpenAiFallbackConfigs,
   resolveOpenAiReviewConfig,
   type OpenAiCompletionRequest,
   type OpenAiMessage,

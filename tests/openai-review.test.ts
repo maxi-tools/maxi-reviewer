@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   completeOpenAiChat,
+  countOpenAiFallbackConfigs,
   OpenAiTimeoutError,
   parseOpenAiReview,
   parseReviewerBackend,
+  resolveOpenAiFallbackConfigs,
   resolveOpenAiReviewConfig,
   runOpenAiReview,
 } from "../src/openai-review.js";
@@ -108,6 +110,88 @@ describe("resolveOpenAiReviewConfig", () => {
           ? "0"
           : "";
     expect(resolveOpenAiReviewConfig(get, 30).timeoutMinutes).toBe(8);
+  });
+});
+
+describe("resolveOpenAiFallbackConfigs", () => {
+  it("returns the legacy single-slot list when no fallback is configured", () => {
+    const get = (name: string) =>
+      name === "openai_base_url" ? "http://pearl:8000/v1" : "";
+    const configs = resolveOpenAiFallbackConfigs(get, 15);
+    expect(configs).toEqual([
+      {
+        baseUrl: "http://pearl:8000/v1",
+        model: expect.stringContaining("Qwen3-Coder"),
+        timeoutMinutes: 8,
+      },
+    ]);
+    // countOpenAiFallbackConfigs agrees, so the reviewer-unavailable
+    // status description will print "1 fallback endpoint(s)" in the
+    // single-endpoint case — not "0" or "2".
+    expect(countOpenAiFallbackConfigs(get)).toBe(1);
+  });
+
+  it("appends the fallback slot after the primary, in order", () => {
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      if (name === "openai_fallback_api_key") return "hosted-key";
+      if (name === "openai_fallback_model")
+        return "moonshotai/Kimi-K2-Instruct";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 30);
+    expect(configs).toHaveLength(2);
+    expect(configs[0]).toMatchObject({ baseUrl: "http://pearl:8000/v1" });
+    expect(configs[1]).toMatchObject({
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "hosted-key",
+      model: "moonshotai/Kimi-K2-Instruct",
+    });
+    expect(countOpenAiFallbackConfigs(get)).toBe(2);
+  });
+
+  it("skips the fallback slot when only its URL is blank", () => {
+    const get = (name: string) =>
+      name === "openai_base_url" ? "http://pearl:8000/v1" : "";
+    // No openai_fallback_base_url set. The primary is still configured, so
+    // the chain has one entry. Empty fallback inputs alone must not produce
+    // a phantom second slot.
+    const configs = resolveOpenAiFallbackConfigs(get, 30);
+    expect(configs).toHaveLength(1);
+    expect(configs[0].baseUrl).toBe("http://pearl:8000/v1");
+  });
+
+  it("returns an empty list when no endpoint is configured at all", () => {
+    expect(resolveOpenAiFallbackConfigs(() => "", 30)).toEqual([]);
+    expect(countOpenAiFallbackConfigs(() => "")).toBe(0);
+  });
+
+  it("uses the default model when the fallback model input is blank", () => {
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 30);
+    expect(configs[1].model).toContain("Qwen3-Coder");
+    expect(configs[1].apiKey).toBeUndefined();
+  });
+
+  it("caps the timeout at the Jules budget so a chain cannot outlast Jules", () => {
+    const get = (name: string) => {
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      if (name === "openai_timeout_minutes") return "20";
+      return "";
+    };
+    const configs = resolveOpenAiFallbackConfigs(get, 15);
+    // 20 was capped to 15 (the Jules budget).
+    expect(configs[0].timeoutMinutes).toBe(15);
+    expect(configs[1].timeoutMinutes).toBe(15);
   });
 });
 

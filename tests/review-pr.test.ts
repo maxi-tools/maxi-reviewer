@@ -16,6 +16,9 @@ import {
   latestReviewArtifactSessionId,
   reviewTimeoutExplanation,
   reviewTimeoutStatus,
+  reviewerUnavailableError,
+  reviewerUnavailableExplanation,
+  reviewerUnavailableStatus,
   runAnalyzers,
   runReviewPr,
   uploadReviewArtifact,
@@ -773,8 +776,8 @@ describe("runReviewPr orchestration", () => {
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
     expect(artifact.outcome).toBe("REVIEWED_WITH_FINDINGS");
     expect(artifact.sessionId).toMatch(/^openai:/);
-    expect(artifact.validationErrors[0]).toContain(
-      "OpenAI-compatible fallback"
+    expect(artifact.validationErrors[0]).toMatch(
+      /review produced by .*openai:Qwen\/Qwen3-Coder-30B-A3B-Instruct/
     );
   });
 
@@ -834,7 +837,7 @@ describe("runReviewPr orchestration", () => {
     expect(deps.setStatus.mock.calls[0][6]).toContain("Qwen is reviewing");
   });
 
-  it("keeps the Jules timeout when the fallback also returns nothing", async () => {
+  it("fails the gate as reviewer-unavailable when every configured fallback returns nothing", async () => {
     vi.spyOn(core, "getInput").mockImplementation((name: string) => {
       if (name === "jules_api_key") return "jules-key";
       if (name === "github_token") return "github-token";
@@ -859,10 +862,150 @@ describe("runReviewPr orchestration", () => {
 
     expect(deps.runOpenAiReview).toHaveBeenCalledTimes(1);
     expect(deps.submitReview).not.toHaveBeenCalled();
-    expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(15));
+    // `setFailed` now carries the reviewer-unavailable text, distinct from
+    // the Jules-timeout text that used to be substituted here. The Jules
+    // timeout framing was misleading once the chain has been walked: the
+    // cause is the chain, and the artifact records which endpoints failed.
+    const failureText = vi
+      .mocked(core.setFailed)
+      .mock.calls.map((call) => call[0] as string)
+      .join("\n");
+    expect(failureText).toMatch(/reviewer-infrastructure failure/);
+    expect(failureText).not.toMatch(/Jules never replied/);
     const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
     expect(artifact.outcome).toBe("TIMED_OUT_NO_CONTENT");
-    expect(artifact.sessionId).toBe("jules-session");
+    expect(artifact.sessionId).toMatch(/^openai:all-unavailable:/);
+    // Every attempt's failure mode is preserved on the artifact so the
+    // on-call can see whether each endpoint timed out, errored, or returned
+    // an unparseable body. With a single configured endpoint we use the
+    // generic label rather than the URL; the failure mode itself is still
+    // surfaced.
+    expect(artifact.validationErrors.join("\n")).toMatch(
+      /OpenAI-compatible .* returned no review/
+    );
+  });
+
+  it("walks the fallback chain to a second endpoint when the first one is down", async () => {
+    // maxi-config#1028: pearl was offline ~7h; without a second endpoint, every
+    // PR whose Jules session was silent for 15 minutes had no review left. The
+    // fallback chain must reach the second slot when the first is unreachable.
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      if (name === "openai_fallback_api_key") return "hosted-key";
+      if (name === "openai_fallback_model")
+        return "moonshotai/Kimi-K2-Instruct";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi
+        .fn()
+        .mockImplementationOnce(async () => ({
+          // pearl: simulate a fetch failure by returning no review with the
+          // timeout-style session id and the validationErrors that the
+          // OpenAI-compatible review path emits when the first turn times out.
+          reviewResult: null,
+          sessionId: "openai:timeout:Qwen3-Coder-Next",
+          validationErrors: [
+            "OpenAI-compatible review produced no reply within 8 minutes.",
+          ],
+        }))
+        .mockResolvedValueOnce({
+          reviewResult: {
+            verdict: "comment",
+            summary: "Kimi found an issue.",
+            resolvedCommentIds: [],
+            newComments: [
+              {
+                file: "src/a.ts",
+                line: 1,
+                severity: "Warning",
+                confidence: "High",
+                message: "Hot path unwrap.",
+                promptForAgents: "Return Result.",
+              },
+            ],
+          },
+          sessionId: "openai:moonshotai/Kimi-K2-Instruct",
+        }),
+    };
+
+    await runReviewPr(deps);
+
+    // Both slots were tried, in order. pearl first, then the hosted endpoint.
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(2);
+    expect(deps.runOpenAiReview.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ baseUrl: "http://pearl:8000/v1" })
+    );
+    expect(deps.runOpenAiReview.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        baseUrl: "https://api.example.com/v1",
+        model: "moonshotai/Kimi-K2-Instruct",
+      })
+    );
+    // The second attempt produced the review, so the gate stays green.
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.outcome).toBe("REVIEWED_WITH_FINDINGS");
+    expect(artifact.sessionId).toBe("openai:moonshotai/Kimi-K2-Instruct");
+  });
+
+  it("records each chain attempt's failure mode on the artifact when the chain exhausts", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "jules-key";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      if (name === "openai_base_url") return "http://pearl:8000/v1";
+      if (name === "openai_fallback_base_url")
+        return "https://api.example.com/v1";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: null,
+        sessionId: "jules-session",
+      }),
+      runOpenAiReview: vi
+        .fn()
+        .mockResolvedValueOnce({
+          reviewResult: null,
+          sessionId: "openai:timeout:Qwen3-Coder-Next",
+          validationErrors: ["fetch failed"],
+        })
+        .mockResolvedValueOnce({
+          reviewResult: null,
+          sessionId: "openai:timeout:moonshotai/Kimi-K2-Instruct",
+          validationErrors: ["503 service unavailable"],
+        }),
+    };
+
+    await runReviewPr(deps);
+
+    expect(deps.runOpenAiReview).toHaveBeenCalledTimes(2);
+    expect(deps.submitReview).not.toHaveBeenCalled();
+    const failureText = vi
+      .mocked(core.setFailed)
+      .mock.calls.map((call) => call[0] as string)
+      .join("\n");
+    expect(failureText).toMatch(/reviewer-infrastructure failure/);
+    const artifact = JSON.parse(deps.uploadArtifact.mock.calls[0][1]);
+    expect(artifact.sessionId).toMatch(/^openai:all-unavailable:/);
+    const joined = artifact.validationErrors.join("\n");
+    expect(joined).toContain("fetch failed");
+    expect(joined).toContain("503 service unavailable");
   });
 
   it("does not block on a finding outside the PR diff", async () => {
@@ -1009,6 +1152,48 @@ describe("review timeout wording", () => {
     for (const minutes of [1, 15, 1440, 35791]) {
       expect(reviewTimeoutStatus(minutes).length).toBeLessThanOrEqual(140);
     }
+  });
+});
+
+describe("reviewer-unavailable wording", () => {
+  it("status line names the failed fallback count and stays under the GitHub 140-char cap", () => {
+    // The whole reason this exists is that the Jules timeout text misleads
+    // the reader when the cause is the chain, not Jules. The status line
+    // must surface "Reviewer unavailable" so the PR page reader sees the
+    // real cause at a glance.
+    for (const attempts of [1, 2, 5]) {
+      const status = reviewerUnavailableStatus(attempts);
+      expect(status).toContain("Reviewer unavailable");
+      expect(status).toContain(String(attempts));
+      expect(status.length).toBeLessThanOrEqual(140);
+    }
+  });
+
+  it("long-form explanation frames it as reviewer-infrastructure, not a code verdict", () => {
+    const explanation = reviewerUnavailableExplanation(2);
+    expect(explanation).toMatch(/no review/);
+    expect(explanation).toMatch(/reviewer-infrastructure failure/);
+    expect(explanation).toMatch(/not a verdict on the code/);
+  });
+
+  it("lists the attempted endpoints in the harvested-artifact line", () => {
+    // The artifact carries the long form so the on-call can see which
+    // endpoints failed without scraping job logs.
+    const errorLine = reviewerUnavailableError("openai:all-unavailable:x", [
+      "OpenAI-compatible fallback 1/2 (pearl:8000/v1)",
+      "OpenAI-compatible fallback 2/2 (api.example.com/v1)",
+    ]);
+    expect(errorLine).toContain("Reviewer unavailable");
+    expect(errorLine).toContain("2 OpenAI-compatible fallback endpoint(s)");
+    expect(errorLine).toContain("pearl:8000/v1");
+    expect(errorLine).toContain("api.example.com/v1");
+  });
+
+  it("says nothing was configured rather than printing zero attempts", () => {
+    const errorLine = reviewerUnavailableError("openai:all-unavailable:x", []);
+    expect(errorLine).toContain(
+      "no OpenAI-compatible endpoints were configured"
+    );
   });
 });
 

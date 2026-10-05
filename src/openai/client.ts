@@ -95,41 +95,108 @@ export function parseReviewerBackend(raw: string | undefined): ReviewerBackend {
 export function openAiFallbackConfigured(
   getInput: (name: string) => string
 ): boolean {
-  return getInput("openai_base_url").trim() !== "";
+  return resolveOpenAiFallbackConfigs(getInput).length > 0;
 }
 
+/**
+ * The ordered list of fallback endpoints to try, in turn, when the primary
+ * reviewer (Jules) returns no review.
+ *
+ * The primary endpoint is the legacy `openai_base_url` slot, preserved verbatim
+ * so an existing workflow that sets just that input keeps working. A second
+ * `openai_fallback_*` triple slots in after it and is tried only when the
+ * first returns nothing. The org already pays for both, per
+ * maxi-config#1028; without the second slot, a single downed Spark strands
+ * every PR whose Jules session was silent for 15 minutes.
+ *
+ * An entry whose URL is empty is skipped, so a workflow that does not want
+ * the second endpoint just leaves the input blank; one whose URL parses but
+ * whose key/model inputs are empty uses the same defaults as the primary.
+ */
+export function resolveOpenAiFallbackConfigs(
+  getInput: (name: string) => string,
+  julesTimeoutMinutes: number = 0
+): OpenAiReviewConfig[] {
+  const timeoutMinutes = resolveTimeoutMinutes(getInput, julesTimeoutMinutes);
+  const slots: Array<{
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  }> = [
+    {
+      baseUrl: normalizeBaseUrl(getInput("openai_base_url")),
+      apiKey: getInput("openai_api_key").trim(),
+      model: getInput("openai_model").trim() || DEFAULT_OPENAI_MODEL,
+    },
+    {
+      baseUrl: normalizeBaseUrl(getInput("openai_fallback_base_url")),
+      apiKey: getInput("openai_fallback_api_key").trim(),
+      model: getInput("openai_fallback_model").trim() || DEFAULT_OPENAI_MODEL,
+    },
+  ];
+  const configured = slots.filter((slot) => slot.baseUrl !== "");
+  return configured.map((slot) => {
+    const config: OpenAiReviewConfig = {
+      baseUrl: slot.baseUrl,
+      model: slot.model,
+      timeoutMinutes,
+    };
+    if (slot.apiKey) config.apiKey = slot.apiKey;
+    return config;
+  });
+}
+
+function resolveTimeoutMinutes(
+  getInput: (name: string) => string,
+  julesTimeoutMinutes: number
+): number {
+  const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
+  // Never wait longer than the review the caller already budgeted. A fallback
+  // that outlives the Jules budget it is replacing holds the runner for a
+  // second full review after the first one already failed to arrive.
+  return Math.min(
+    requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES,
+    Math.max(1, julesTimeoutMinutes)
+  );
+}
+
+/**
+ * @deprecated Kept for callers that still expect a single OpenAI-compatible
+ * config. New code should iterate {@link resolveOpenAiFallbackConfigs} so the
+ * fallback chain is honoured. Returns the first configured entry, or throws
+ * when nothing is configured.
+ */
 export function resolveOpenAiReviewConfig(
   getInput: (name: string) => string,
   julesTimeoutMinutes: number
 ): OpenAiReviewConfig {
-  const baseUrl = normalizeBaseUrl(getInput("openai_base_url"));
-  if (!baseUrl) {
+  const configs = resolveOpenAiFallbackConfigs(getInput, julesTimeoutMinutes);
+  const first = configs[0];
+  if (!first) {
     throw new Error(
       "openai_base_url is required when reviewer_backend is openai " +
         "(or when it is the configured Jules-timeout fallback). " +
         "Point it at the vLLM OpenAI server, e.g. http://jasper:8000/v1."
     );
   }
-  const model = getInput("openai_model").trim() || DEFAULT_OPENAI_MODEL;
-  const key = getInput("openai_api_key").trim();
-  const requested = parsePositiveInt(getInput("openai_timeout_minutes"));
-  // Never wait longer than the review the caller already budgeted. A fallback
-  // that outlives the Jules budget it is replacing holds the runner for a
-  // second full review after the first one already failed to arrive.
-  const timeoutMinutes = Math.min(
-    requested ?? DEFAULT_OPENAI_TIMEOUT_MINUTES,
-    Math.max(1, julesTimeoutMinutes)
-  );
-  return {
-    baseUrl,
-    ...(key ? { apiKey: key } : {}),
-    model,
-    timeoutMinutes,
-  };
+  return first;
 }
 
 function normalizeBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
+}
+
+/**
+ * Count of fallback endpoints currently configured. Used to render the
+ * reviewer-unavailable status description ("Reviewer unavailable: 2
+ * fallback endpoint(s) failed..."). Reads inputs through the standard
+ * `core.getInput` so it picks up the same overrides the rest of the chain
+ * resolver sees.
+ */
+export function countOpenAiFallbackConfigs(
+  getInput: (name: string) => string
+): number {
+  return resolveOpenAiFallbackConfigs(getInput).length;
 }
 
 function parsePositiveInt(raw: string): number | undefined {

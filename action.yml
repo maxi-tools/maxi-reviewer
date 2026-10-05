@@ -48,9 +48,37 @@ inputs:
     default: "Qwen/Qwen3-Coder-30B-A3B-Instruct"
   openai_timeout_minutes:
     description: >-
-      How long to wait for one OpenAI-compatible turn. Default 8. Capped at
-      timeout_minutes so a fallback cannot hold the runner for a second full
-      Jules budget after the first one already expired.
+      How long to wait for one OpenAI-compatible turn on each fallback
+      endpoint in the chain. Default 8. Capped at
+      `timeout_minutes / N` (where N is the number of configured fallback
+      endpoints) so a chain of N attempts cannot outrun the hard deadline
+      (default `timeout_minutes + 20`). With one configured endpoint, the
+      per-attempt cap is the full Jules budget.
+    required: false
+    default: ""
+  openai_fallback_base_url:
+    description: >-
+      Optional second OpenAI-compatible endpoint, tried after the primary
+      `openai_base_url` when Jules returns no review. Any OpenAI-compatible
+      chat-completions server will do; the org already pays for at least
+      one hosted Qwen-coder or kimi endpoint, per maxi-config#1028.
+      Leave empty when no second endpoint is wired up; an empty URL means
+      "no fallback", not "call localhost".
+    required: false
+    default: ""
+  openai_fallback_api_key:
+    description: >-
+      Bearer token for the second OpenAI-compatible server. Leave empty
+      when the server has no API key (a typical vLLM deployment on the
+      private fleet).
+    required: false
+    default: ""
+  openai_fallback_model:
+    description: >-
+      Model id sent as the chat-completions `model` field on the second
+      endpoint. Defaults to the same Qwen3-Coder id the primary uses;
+      set this when the fallback is a different model family (e.g.
+      `moonshotai/Kimi-K2-Instruct` on a hosted kimi endpoint).
     required: false
     default: ""
   github_token:

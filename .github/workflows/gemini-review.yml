@@ -25,10 +25,11 @@
 # one unit in the PR conversation.
 #
 # Auth: needs `GEMINI_API_KEYS` (newline-separated, tried in order) or
-# `GEMINI_API_KEY` in repo or org secrets. A repo with neither gets an
-# inert workflow: nothing runs until somebody types `/gemini-review`, and
-# that run fails loudly at the key check rather than silently reviewing
-# nothing.
+# `GEMINI_API_KEY` in repo or org secrets, plus `GEMINI_REVIEW_APP_ID` and
+# `GEMINI_REVIEW_APP_PRIVATE_KEY` for the gemini-review GitHub App installed
+# on the target repository. The general APP_ID/APP_PRIVATE_KEY identify a
+# different app and cannot satisfy the Gemini reviewer roster. Missing
+# credentials fail the requested run rather than posting as github-actions.
 #
 # Security: untrusted-input fields (workflow_dispatch inputs, step
 # outputs, comment IDs) are NEVER interpolated directly with `${{ }}`
@@ -379,13 +380,31 @@ jobs:
           PY
           fi
 
+      # Mint only after the API review has succeeded, and scope the token to
+      # this repository's PRs. Unlike GITHUB_TOKEN, an App-authored review
+      # emits pull_request_review events and has a stable reviewer identity.
+      - name: Create Gemini Review app token
+        id: gemini-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.GEMINI_REVIEW_APP_ID }}
+          private-key: ${{ secrets.GEMINI_REVIEW_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
       - name: Post review
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.gemini-app-token.outputs.token }}
+          APP_SLUG: ${{ steps.gemini-app-token.outputs.app-slug }}
           PR: ${{ steps.pr.outputs.number }}
           SHA: ${{ steps.meta.outputs.sha }}
         run: |
           set -euo pipefail
+          # An unrelated org App can mint a valid token but would post under
+          # the wrong login, leaving the Gemini roster unsatisfied. Fail closed.
+          if [[ "$APP_SLUG" != "gemini-review" ]]; then
+            echo "Expected gemini-review App, got ${APP_SLUG:-<empty>}" >&2
+            exit 1
+          fi
 
           # Build the create-review payload: top-level body + inline
           # comments in one POST. event=COMMENT means non-blocking

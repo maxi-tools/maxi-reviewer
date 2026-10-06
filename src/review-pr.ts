@@ -891,13 +891,12 @@ export async function runReviewPr(
       ),
     });
 
-    const previousSessionId = await loadPreviousReviewSessionId(
-      deps,
-      octokit,
+    const previousSessionId = await loadPreviousReviewSessionId(deps, octokit, {
       owner,
       repo,
-      prNumber
-    );
+      prNumber,
+      baseSha,
+    });
     const julesOptions = buildJulesReviewOptions(context);
     if (retrievalMode === "auto") {
       julesOptions.retrieval = {
@@ -1521,9 +1520,17 @@ function buildJulesReviewOptions(
 async function loadPreviousReviewSessionId(
   deps: ReviewPrDeps,
   octokit: Octokit,
-  owner: string,
-  repo: string,
-  prNumber: number
+  {
+    owner,
+    repo,
+    prNumber,
+    baseSha,
+  }: {
+    owner: string;
+    repo: string;
+    prNumber: number;
+    baseSha: string;
+  }
 ): Promise<string | undefined> {
   try {
     const comments = await deps.listReviewArtifactComments(
@@ -1532,7 +1539,7 @@ async function loadPreviousReviewSessionId(
       repo,
       prNumber
     );
-    return latestReviewArtifactSessionId(comments);
+    return latestReviewArtifactSessionId(comments, baseSha);
   } catch (err) {
     core.warning(
       `Failed to load previous Maxi review artifact session: ${String(err)}`
@@ -1542,7 +1549,8 @@ async function loadPreviousReviewSessionId(
 }
 
 export function latestReviewArtifactSessionId(
-  comments: string[]
+  comments: string[],
+  currentBaseSha: string
 ): string | undefined {
   for (const body of [...comments].reverse()) {
     const artifact = extractReviewArtifactFromComment(body);
@@ -1557,6 +1565,10 @@ export function latestReviewArtifactSessionId(
       (artifact.rawJulesResponses?.length ?? 0) > 0 ||
       artifact.validatedReview != null;
     if (!responded) continue;
+    // Jules sessions stay pinned to the source they were created against.
+    // When the PR base has moved, resuming a review would use a diff that
+    // no longer exists, and every finding it anchors is unpostable (#88).
+    if (artifact.baseSha !== currentBaseSha) continue;
     return artifact.sessionId;
   }
   return undefined;

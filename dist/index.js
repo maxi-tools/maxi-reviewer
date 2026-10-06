@@ -73748,7 +73748,12 @@ async function runReviewPr(overrides = {}) {
             // context never covers hunks absent from the visible diff payload.
             extractChangedLines(diffText)),
         });
-        const previousSessionId = await loadPreviousReviewSessionId(deps, octokit, owner, repo, prNumber);
+        const previousSessionId = await loadPreviousReviewSessionId(deps, octokit, {
+            owner,
+            repo,
+            prNumber,
+            baseSha,
+        });
         const julesOptions = buildJulesReviewOptions(context);
         if (retrievalMode === "auto") {
             julesOptions.retrieval = {
@@ -74168,17 +74173,17 @@ function buildJulesReviewOptions(context) {
         },
     };
 }
-async function loadPreviousReviewSessionId(deps, octokit, owner, repo, prNumber) {
+async function loadPreviousReviewSessionId(deps, octokit, { owner, repo, prNumber, baseSha, }) {
     try {
         const comments = await deps.listReviewArtifactComments(octokit, owner, repo, prNumber);
-        return latestReviewArtifactSessionId(comments);
+        return latestReviewArtifactSessionId(comments, baseSha);
     }
     catch (err) {
         core/* warning */.$e(`Failed to load previous Maxi review artifact session: ${String(err)}`);
         return undefined;
     }
 }
-function latestReviewArtifactSessionId(comments) {
+function latestReviewArtifactSessionId(comments, currentBaseSha) {
     for (const body of [...comments].reverse()) {
         const artifact = extractReviewArtifactFromComment(body);
         if (!artifact?.sessionId)
@@ -74193,6 +74198,11 @@ function latestReviewArtifactSessionId(comments) {
         const responded = (artifact.rawJulesResponses?.length ?? 0) > 0 ||
             artifact.validatedReview != null;
         if (!responded)
+            continue;
+        // Jules sessions stay pinned to the source they were created against.
+        // When the PR base has moved, resuming a review would use a diff that
+        // no longer exists, and every finding it anchors is unpostable (#88).
+        if (artifact.baseSha !== currentBaseSha)
             continue;
         return artifact.sessionId;
     }

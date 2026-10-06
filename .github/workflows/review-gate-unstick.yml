@@ -93,6 +93,28 @@ jobs:
     runs-on: nas-unstick
     timeout-minutes: 10
     steps:
+      # The fleet gate, same decision every self-hosted job takes (defined once
+      # in .github/scripts/ci_trusted_senders.py and mirrored here by
+      # ci_trusted_senders.py's sweep). This job needs it more than most: the
+      # workflow is fanned out to 49 repositories and accepts
+      # `workflow_dispatch`, so without it anyone with write access to ANY of
+      # those repositories could point this workflow at a topic branch of their
+      # own and run that branch's script on the NAS fleet (Codacy, high risk,
+      # on #4821). `schedule` passes the gate -- the cron is the point of the
+      # job -- and a dispatch is admitted only from a trusted sender.
+      # `merge_group` was added by the maxi-core merge-queue pilot (#4875):
+      # a merge-group ref is assembled by GitHub from PRs already admitted to
+      # the queue, so it is trusted the way `push` is, and only its
+      # `checks_requested` action is admitted. Ported here so the next
+      # sync-maxi-review.sh fan-out does not revert the pilot's copy.
+      - name: trust gate
+        if: ${{ github.actor != 'dependabot[bot]' && !(github.event_name == 'push' || github.event_name == 'schedule' || ((github.event.sender.id == 874012 || github.event.sender.id == 264883562) && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))) || (github.event_name == 'merge_group' && github.event.action == 'checks_requested')) }}
+        env:
+          SENDER_LOGIN: ${{ github.event.sender.login }}
+        run: |
+          echo "::error::Untrusted sender (${SENDER_LOGIN}): this job only runs code pushed by trusted senders on self-hosted runners. Push a commit as a trusted sender or re-run via workflow_dispatch."
+          exit 1
+
       - name: Ask stale Review Gate verdicts again
         # Explicit because the script below opens with `set -uo pipefail`, and
         # `pipefail` is not in POSIX sh. On a GitHub-hosted runner the default

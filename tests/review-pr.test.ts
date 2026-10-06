@@ -33,6 +33,7 @@ function artifactComment(input: {
   headSha: string;
   sessionId?: string;
   outcome?: "EMPTY_REVIEW_BODY";
+  baseSha?: string;
 }): string {
   const encoded = Buffer.from(
     JSON.stringify({
@@ -46,7 +47,7 @@ function artifactComment(input: {
       repoFullName: "maxi/example",
       prNumber: 7,
       headSha: input.headSha,
-      baseSha: "base-sha",
+      baseSha: input.baseSha ?? "base-sha",
       analyzerFindings: [],
       rawJulesResponses: input.outcome ? ["partial response"] : [],
       validatedReview: input.outcome
@@ -570,6 +571,24 @@ describe("runReviewPr orchestration", () => {
         onProgress: expect.any(Function),
       }
     );
+  });
+
+  it("starts a fresh Jules session when the PR base SHA has moved", async () => {
+    const deps = {
+      ...completedReviewDeps(),
+      listReviewArtifactComments: vi.fn().mockResolvedValue([
+        artifactComment({
+          headSha: "previous-head",
+          sessionId: "stale-session",
+          baseSha: "old-base",
+        }),
+      ]),
+    };
+
+    await runReviewPr(deps);
+
+    const options = deps.runJulesReview.mock.calls[0][4];
+    expect(options).not.toHaveProperty("previousSessionId");
   });
 
   it("reports a stuck session as its own failure, not as a timeout", async () => {
@@ -1926,14 +1945,17 @@ describe("empty review body is never a passing check", () => {
 describe("empty review artifact session resumption", () => {
   it("skips a blank-body session with raw responses and reuses the last valid session", () => {
     expect(
-      latestReviewArtifactSessionId([
-        artifactComment({ headSha: "older", sessionId: "valid-session" }),
-        artifactComment({
-          headSha: "newer",
-          sessionId: "empty-session",
-          outcome: "EMPTY_REVIEW_BODY",
-        }),
-      ])
+      latestReviewArtifactSessionId(
+        [
+          artifactComment({ headSha: "older", sessionId: "valid-session" }),
+          artifactComment({
+            headSha: "newer",
+            sessionId: "empty-session",
+            outcome: "EMPTY_REVIEW_BODY",
+          }),
+        ],
+        "base-sha"
+      )
     ).toBe("valid-session");
   });
 });

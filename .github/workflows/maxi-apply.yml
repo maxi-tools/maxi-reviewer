@@ -171,10 +171,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          # The only author whose suggestion blocks this lane applies.
+          TRUSTED_REVIEWER: maxi-reviewer[bot]
         run: |
+          set -euo pipefail
+          # Content provenance. The authorization gate above decides who may
+          # TYPE `/maxi apply`; it says nothing about who wrote the comments
+          # this step collects. apply-suggestions.mjs keys off an HTML marker
+          # in the body, and a marker is text any commenter can write -- so
+          # without this filter an outside contributor could plant a marked
+          # suggestion and have a maintainer's `/maxi apply` push it.
+          #
+          # The filter is on the AUTHOR, never the marker, and it runs here so
+          # an untrusted body never reaches the parser. `author_association`
+          # is no help: the reviewer app's is NONE, the same as an outsider's.
+          # This is the REST endpoint, which spells an App's login with the
+          # `[bot]` suffix; brackets are illegal in a user login, so that
+          # spelling is unspoofable. The bare slug `maxi-reviewer` is NOT
+          # accepted -- it is an ordinary login anyone could register.
           gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
-            --jq '.[]' | jq -s '.' > "$RUNNER_TEMP/maxi-review-comments.json"
+            --jq '.[]' \
+            | jq -s --arg trusted "$TRUSTED_REVIEWER" \
+              '[.[] | select(.user.login == $trusted and .user.type == "Bot")]' \
+            > "$RUNNER_TEMP/maxi-review-comments.json"
 
       - name: Apply structured Jules suggestions
         run: |

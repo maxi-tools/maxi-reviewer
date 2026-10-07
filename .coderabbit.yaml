@@ -172,12 +172,18 @@ reviews:
         a script that swallows a failure and exits 0 turns a CI gate into a
         no-op. Flag any bare `except:`, any discarded subprocess return code,
         and any check that can pass by doing no work.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
     - path: "**/*.sh"
       instructions: |
         Require `set -euo pipefail` or an explicit comment justifying its
         absence. Flag unquoted expansions and any command substitution whose
         failure is discarded — a guard that reads an empty value and then
         succeeds is worse than no guard.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
     - path: ".github/workflows/**"
       instructions: |
         Focus on gates that report success without doing work: a job whose `if:`
@@ -203,6 +209,9 @@ reviews:
       instructions: |
         Review prose for accuracy against the code it describes, not for style.
         Do not suggest rewording, heading changes or formatting preferences.
+
+        ESCAPE HATCH: raise a suspected P1 regardless of lane, and say you are
+        raising it out-of-lane.
 
   auto_review:
     enabled: true

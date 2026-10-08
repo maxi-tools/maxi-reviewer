@@ -112,20 +112,22 @@ jobs:
     # fan-out PR is gate-red with no push that can fix it.
     # `ci/fanout-pin` is the SECOND producer on these consumers:
     # maxi-tools/ci's fanout-ci-pin.yml advances the pinned `uses:` sha, one
-    # branch per consumer. Same App, and suppressed here for the same reason
-    # -- nine reviewers reading a one-line sha change 49 times per tip. It
-    # was not enrolled when it shipped, and the measured consequence was 49
-    # PRs no reviewer would touch and no gate would clear
-    # (maxi-config#784). Both halves still required, together.
+    # branch per consumer. Same App. It WAS suppressed here for the same reason
+    # as `maxi-config-sync/*` -- nine reviewers reading a one-line sha change 49
+    # times per tip -- and the measured consequence of that suppression was 49
+    # PRs no reviewer would touch and no gate would clear (maxi-config#784).
+    # The prefix shape no longer matches it: `ci/fanout-pin` is one branch name
+    # per consumer, not a namespace, so the workflow drops it from the
+    # `head_ref !=` clause and lets the author check alone gate it. Only the
+    # auth bot can push those branches, and the auth bot's identity is what
+    # prevents an attacker-chosen branch name from naming its way past the
+    # review lane.
     if: >
       github.event_name != 'merge_group' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        (
-          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
-          github.head_ref != 'ci/fanout-pin'
-        ) ||
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
       )
     # NOT gated on CI_ENFORCEMENT_MODE or `run-maxi-review`. It was, and
@@ -560,10 +562,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        (
-          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
-          github.head_ref != 'ci/fanout-pin'
-        ) ||
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
       )
     # Serialise per PR, and do not cancel. Two events on the same pull request
@@ -714,8 +713,18 @@ jobs:
           # tests/test_fanout_identity_is_one_copy.py. Duplicated rather than imported:
           # this file is what the workflow checks out, and select-roster.py is not on
           # that checkout's path. The test is the thing that keeps the two honest.
+          #
+          # The set is just the namespace today: `ci/fanout-pin` used to live
+          # here too, on the rationale that the deterministic scan was a
+          # review of a no-op. The rationale was wrong for the review the gate
+          # counts -- a deterministic COMMENTED review is exactly what
+          # closes `review-gate/non-author-review` on a clean PR, and on a
+          # ci/fanout-pin branch the deterministic scan IS the only review
+          # these PRs can get without paying for an AI pass. Dropping it lets
+          # the author half (the auth bot, who alone can push the branch)
+          # gate the lane, matching the workflow `if:` above.
           FANOUT_BRANCH_PREFIXES = ("maxi-config-sync/",)
-          FANOUT_BRANCH_NAMES = ("ci/fanout-pin",)
+          FANOUT_BRANCH_NAMES = ()
           FANOUT_AUTHORS = frozenset({"maxi-tools-auth", "maxi-tools-auth[bot]"})
 
           # Dependabot runs get the Dependabot secrets scope, which holds no app key, so
@@ -1080,10 +1089,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        (
-          startsWith(github.head_ref, 'maxi-config-sync/') == false &&
-          github.head_ref != 'ci/fanout-pin'
-        ) ||
+        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
         github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
       ) &&
       (

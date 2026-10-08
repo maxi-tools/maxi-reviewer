@@ -20,17 +20,125 @@ on:
 
 # No workflow-level concurrency group.
 #
-# A workflow-level group is PR-wide and cancels the whole run, so it takes the
-# `review` job with it; a job-level `cancel-in-progress: false` cannot override
-# a cancellation issued at the workflow level. Because `review` also excludes
-# `synchronize`, the replacement run starts no review, and the PR ends with no
-# completed AI review -- indistinguishable on the PR face from a review that
-# ran and found nothing (cubic, P1 on #621).
+# A workflow-level group is PR-wide and cancels the whole run, including runs
+# whose `review` job is not eligible (a `labeled` event for some other label),
+# so a run that reviews nothing could cancel the one that does (cubic, P1 on
+# #621). Cancellation is declared per job instead, keyed so that only runs
+# that would actually review the PR compete: see `review` below.
 #
-# Cancellation belongs to the cheap half only, so it is declared per job:
-# lint-gate cancels, review does not.
+# FAN-OUT PULL REQUESTS ARE ATTESTED, NOT REVIEWED. `fanout-attest` runs first
+# on a PR whose branch AND author say it is a fan-out, proves the diff is a
+# byte-for-byte copy of already-reviewed upstream content, and posts the
+# `advisory: maxi reviewer` context as success naming that upstream commit.
+# Every other job here then skips. When the proof fails -- a hand edit, a
+# conflict resolution, a deletion, a missing marker -- the PR is reviewed like
+# any other. maxi-review/fanout-attest.py documents what counts as proof.
 
 jobs:
+  # The fan-out answer, settled before anything else spends a runner.
+  #
+  # Runs ONLY when both halves of the fan-out identity hold -- the branch is a
+  # fan-out branch AND the author is the distributor App (ci/fanout-identity.toml).
+  # Neither half alone: a branch name is chosen by whoever pushes it, and the
+  # App also opens ordinary producer PRs, which must be reviewed. Titles are
+  # never read; a title is free text.
+  #
+  # Identity only gets the PR INTO this job. What makes it skip review is the
+  # proof in maxi-review/fanout-attest.py: the producer's marker names an
+  # upstream commit on that repository's default branch, and every changed
+  # file is that commit's content byte for byte (or, for ci/fanout-pin, only
+  # the `uses:` sha moves, to the marker tip). Proven, it posts the
+  # `advisory: maxi reviewer` context as SUCCESS on the head, describing the
+  # upstream commit and PR whose review covers the content -- so the required
+  # context is present and says truthfully why. Not proven, it says `review`
+  # and the PR is reviewed like any other.
+  #
+  # Runs maxi-config's own script from maxi-config's default branch, never
+  # code from the pull request: nothing is checked out from the PR, so the
+  # self-hosted trust question (who may run PR code on the fleet) does not
+  # arise here. The same-repository condition holds anyway, as on every job
+  # in this file.
+  #
+  # Cancels per PR: a newer push supersedes this head, and the script also
+  # refuses to post when the head moves under it (`superseded`).
+  fanout-attest:
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == 'maxi-tools-auth[bot]' &&
+      (
+        startsWith(github.head_ref, 'maxi-config-sync/') ||
+        github.head_ref == 'ci/fanout-pin'
+      )
+    concurrency:
+      group: maxi-review-attest-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      verdict: ${{ steps.attest.outputs.verdict }}
+    steps:
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          owner: maxi-tools
+          repositories: |
+            maxi-config
+            ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-pull-requests: read
+          permission-statuses: write
+
+      - name: Fetch the attestation script
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: maxi-tools/maxi-config
+          path: .maxi-config
+          sparse-checkout: maxi-review
+          persist-credentials: false
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Attest the fan-out, or hand it to review
+        id: attest
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
+          decision="$RUNNER_TEMP/fanout-attest.json"
+          python3 .maxi-config/maxi-review/fanout-attest.py \
+            --repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER" \
+            --head-sha "$HEAD_SHA" --out "$decision"
+          verdict=$(jq -r '.verdict' "$decision")
+          case "$verdict" in
+            attested)
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+                -f state=success \
+                -f context='advisory: maxi reviewer' \
+                -f description="$(jq -r '.description' "$decision")" \
+                -f target_url="$(jq -r '.target_url' "$decision")" >/dev/null
+              echo "posted 'advisory: maxi reviewer' success on ${HEAD_SHA}"
+              ;;
+            review|superseded) ;;
+            *)
+              echo "::error::fanout-attest.py returned verdict '${verdict}'"
+              exit 1
+              ;;
+          esac
+          echo "verdict=${verdict}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Fan-out attestation: ${verdict}"
+            echo
+            jq -r '.reason' "$decision"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint-gate:
     # Superseded lint verdicts are worthless and restarting is cheap, so this
     # half keeps the cancel-on-push behaviour the workflow-level group used to
@@ -39,11 +147,12 @@ jobs:
     # Keyed on the ACTION as well as the PR, so a run only ever cancels work
     # doing the same job. With one group per PR, a `synchronize` run cancelled
     # the lint-gate of an `opened`/`reopened`/`ready_for_review`/`labeled` run;
-    # that run's `review` then failed its `needs: lint-gate` + `success()`
-    # gate, and the `synchronize` run skips `review` by design -- so the review
+    # that run's `review` then failed its lint-gate-success gate, and at the
+    # time the `synchronize` run skipped `review` by design -- so the review
     # vanished with nothing replacing it. Same disappearance as the
     # workflow-level group produced, reached by a different path
-    # (CodeRabbit, Major on #621).
+    # (CodeRabbit, Major on #621). `review` now runs on `synchronize` too, but
+    # keying on the action still keeps an unrelated event from cancelling it.
     #
     # Two pushes in a row still cancel each other, which is the point: both are
     # `synchronize`, so they are competing attempts at one task.
@@ -54,33 +163,20 @@ jobs:
     # private maxi-lint scanner. It checks changed files only and fails solely
     # on deny-level deterministic findings.
     #
-    # NOT maxi-config's own fan-out. Every branch the distributor pushes is
-    # named maxi-config-sync/<manifest> (scripts/sync-maxi-review.sh), and what
-    # it carries is a byte-for-byte copy of a payload already reviewed on the
-    # maxi-config PR that changed it -- including this very file. The fan-out
-    # reaches ~31 repos, so without this the org re-derives one verdict
-    # thirty-one times per change, on the same self-hosted lane the repos' real
-    # CI is queued on.
+    # NOT on a fan-out pull request that `fanout-attest` proved to be a
+    # byte-for-byte copy of reviewed upstream content. The distributor reaches
+    # ~40 repos per change, so without this the org re-derives one verdict
+    # forty times on the same self-hosted lane the repos' real CI is queued
+    # on. A fan-out PR the attestation could NOT prove (a hand edit, a
+    # conflict resolution) runs this job like any other PR: `fanout-attest`
+    # says `review`, and nothing below can tell it from a producer PR.
     #
-    # `github.head_ref` and not `github.event.pull_request.head.ref`: they
-    # agree on pull_request events, and head_ref is the spelling every other
-    # branch guard in this fleet already uses (`startsWith(github.head_ref,
-    # 'salvage/') == false`), so a reader recognises the shape.
-    #
-    # THE AUTHOR IS CHECKED TOO, and the condition is the De Morgan of "skip
-    # when it is the fan-out": run unless the branch prefix AND the identity
-    # both say fan-out. A head ref is chosen by whoever pushes the branch, so
-    # the prefix alone would let anyone opt out of the org's review lanes by
-    # naming a branch. This matches pr_review_gate.py, which gates its bypass
-    # on the same pair -- and the two must not disagree, or the gate and the
-    # reviewers it counts would classify the same PR differently.
-    #
-    # Spelled `maxi-tools-auth[bot]` WITH the suffix, unlike the Python gate's
-    # bare slug. `github.event.*` is the raw webhook payload, i.e. REST shape,
-    # and REST spells a Bot actor with the suffix -- confirmed on a live
-    # fan-out PR (maxi-kvm#24: `user.login = "maxi-tools-auth[bot]"`, `type =
-    # "Bot"`), where the same actor reads as `maxi-tools-auth` over GraphQL.
-    # The two literals differ because the two APIs differ, not by accident.
+    # `!cancelled()` because `fanout-attest` is SKIPPED on every ordinary PR,
+    # and GitHub skips a job whose need was skipped unless its `if` names a
+    # status function. A FAILED attestation stops this job too: an
+    # attestation that could not run is not evidence the PR needs a review,
+    # and reviewing on a guess spends exactly the quota this exists to save.
+    # The failure is visible as a red `fanout-attest`, which a rerun clears.
     #
     # NOR A DEPENDABOT RUN, for a different reason: it cannot work at all.
     # `secrets.APP_ID` / `APP_PRIVATE_KEY` are ordinary Actions secrets, and a
@@ -104,38 +200,25 @@ jobs:
     # push is Dependabot's too. It does NOT waive the unresolved-threads
     # condition, which stays measurable via the human-push case above.
     #
-    # This exclusion is only half of the change. `review-gate`'s
-    # non-author-review leg counts DISTINCT NON-AUTHOR reviewers, and on a
-    # fan-out PR those reviewers were maxi-reviewer and CodeRabbit -- exactly
-    # what is being suppressed. maxi-config's pr_review_gate.py therefore
-    # bypasses the same branch prefix, and MUST be deployed first, or every
-    # fan-out PR is gate-red with no push that can fix it.
-    # `ci/fanout-pin` is the SECOND producer on these consumers:
-    # maxi-tools/ci's fanout-ci-pin.yml advances the pinned `uses:` sha, one
-    # branch per consumer. Same App. It WAS suppressed here for the same reason
-    # as `maxi-config-sync/*` -- nine reviewers reading a one-line sha change 49
-    # times per tip -- and the measured consequence of that suppression was 49
-    # PRs no reviewer would touch and no gate would clear (maxi-config#784).
-    # The prefix shape no longer matches it: `ci/fanout-pin` is one branch name
-    # per consumer, not a namespace, so the workflow drops it from the
-    # `head_ref !=` clause and lets the author check alone gate it. Only the
-    # auth bot can push those branches, and the auth bot's identity is what
-    # prevents an attacker-chosen branch name from naming its way past the
-    # review lane.
+    # pr_review_gate.py bypasses its non-author-review leg on the same fan-out
+    # identity (ci/fanout-identity.toml), so an attested fan-out PR is not
+    # stranded red for want of the reviewers this suppresses.
+    needs: fanout-attest
     if: >
+      !cancelled() &&
       github.event_name != 'merge_group' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
-        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
+        needs.fanout-attest.result == 'skipped' ||
+        needs.fanout-attest.outputs.verdict == 'review'
       )
     # NOT gated on CI_ENFORCEMENT_MODE or `run-maxi-review`. It was, and
     # that is what left a non-strict repo with no review at all: the label
     # this condition required is applied by the roster step, which lives in
     # `review`, which requires the label, so nothing could ever start. The
     # scan is cheap and it is a merge gate, so it runs on every in-scope PR.
-    # The expensive half keeps the condition; see `review` below.
+    # `review` dropped the condition too; see there.
     # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted
     # jobs are rejected before a runner is assigned -- zero steps, no log, ~3s
     # to "failure" -- so this gate reported every PR broken without scanning a
@@ -516,12 +599,12 @@ jobs:
   # and a posted review is evidence that the deterministic scan ran, not that a
   # reviewer was happy with the change.
   #
-  # It runs where `review` does not. `review` excludes `synchronize` and
-  # requires strict mode or a label, so a PR opened before its lint passed is
-  # never reviewed -- the fix lands as `synchronize`, which skips the review,
-  # and the PR ends with none. This job has neither exclusion. It runs on the
-  # first push whose lint succeeds and then stops: one review per PR, because
-  # re-reviewing every push is the cost `review` was changed to stop paying.
+  # It was written when `review` excluded `synchronize` and required strict
+  # mode or a label, so a PR opened before its lint passed was never reviewed.
+  # `review` now runs on every non-draft head, but this job stays: it posts
+  # without a model call, so the gate's non-author-review leg does not wait
+  # on the AI reviewer's latency or availability. It runs on the first push
+  # whose lint succeeds and then stops: one review per PR.
   #
   # Posted with the Maxi Review app token, so the author is
   # `maxi-reviewer[bot]` -- the login the roster asks for and the gate
@@ -546,18 +629,26 @@ jobs:
   # maxi-review/post-deterministic-review.py, which is what it tests.
   guaranteed-review:
     needs: lint-gate
-    # Same scoping as lint-gate, restated rather than inherited. `success()`
-    # already skips this when lint-gate was skipped, but the condition a reader
-    # checks to answer "why was this not reviewed" should hold on its own.
+    # Same scoping as lint-gate, restated rather than inherited. Requiring
+    # lint-gate's success already skips this when lint-gate was skipped, but
+    # the condition a reader checks to answer "why was this not reviewed"
+    # should hold on its own.
     #
     # No `always()` and no `continue-on-error`. This job posts a review that
     # says the scan was clean when it finds nothing, so it must only run when
     # the scan actually succeeded. A failed lint-gate is a failed scan, and a
     # review posted over it would tell the gate a reviewer looked. The next
     # push reruns lint-gate, and this job posts then.
+    #
+    # `!cancelled() && needs.lint-gate.result == 'success'` and not a bare
+    # `success()`: the implicit success() looks at EVERY upstream job, and
+    # `fanout-attest` -- lint-gate's own need -- is skipped on every ordinary
+    # PR, which would skip this job on exactly the PRs it exists for. Naming
+    # lint-gate's result says the same thing about the one need that matters.
     if: >
       github.event_name != 'merge_group' &&
-      success() &&
+      !cancelled() &&
+      needs.lint-gate.result == 'success' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
@@ -1046,55 +1137,72 @@ jobs:
 
   review:
     needs: lint-gate
-    # Serialize reviews of the same PR without cancelling one in flight.
-    # Every new head needs its own completed review: a skipped synchronize
-    # leaves the required `review` check SKIPPED on the head (maxi-config#997).
-    # The lint-gate still runs first and blocks review on deterministic failure.
+    # Every non-draft head gets its own finished review. A prior review
+    # cannot certify code added in a later push, and a verifier reads the
+    # `advisory: maxi reviewer` context AT THE HEAD: a head with no context is
+    # rejected as unreviewed, and no edit to the code can fix that. Measured
+    # 2026-10-08 over 14 days: 473 of 874 verifier rejects named a missing
+    # reviewer result at the head, 436 of them on ordinary producer PRs.
+    #
+    # Cancel per PR, so rapid pushes review only the newest head instead of
+    # queueing a full AI review behind each superseded one. The cancelled run
+    # leaves its context pending on a head nobody will merge; the new head gets
+    # its own.
+    #
+    # Only runs that WOULD review compete for the group. A `labeled` event for
+    # any label other than `run-maxi-review` starts a run whose review is
+    # skipped below; without the run-id suffix its group entry would cancel a
+    # review in flight on the same head and replace it with nothing. The
+    # suffix gives those runs a group of their own, which cancels nothing.
+    # The suffix condition and the `if:` below must describe the same events.
+    #
+    # The roster step in this job adds `run-maxi-review` itself (the lever for
+    # claude-review and qwen-coder-local), but with the workflow's own
+    # GITHUB_TOKEN -- observed as `github-actions[bot]` on voicemaci#171 --
+    # and events made with that token start no workflow run, so a review does
+    # not summon a second one.
+    #
+    # `|| github.ref` keeps queue entries apart, as on guaranteed-review.
     concurrency:
-      group: maxi-review-ai-${{ github.event.pull_request.number }}
-      cancel-in-progress: false
-    # Same fan-out exclusion as lint-gate, restated rather than inherited:
-    # `always()` here means a SKIPPED lint-gate does not skip this job, so
-    # excluding only lint-gate would leave the AI reviewer -- the expensive
-    # half -- running on all ~31 copies anyway.
-    # `success()`, NOT `always()`. Under `always()` a FAILED lint-gate did not
-    # stop this job, so a PR that could not pass deterministic maxi-lint still
-    # spent a full AI review: the expensive half ran precisely when the cheap
-    # half had already found the answer. `needs: lint-gate` was ordering
-    # without gating.
+      group: maxi-review-ai-${{ github.event.pull_request.number || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'run-maxi-review') && format('-inert-{0}', github.run_id) || '' }}
+      cancel-in-progress: true
+    # `!cancelled() && needs.lint-gate.result == 'success'`, NOT `always()`.
+    # Under `always()` a FAILED lint-gate did not stop this job, so a PR that
+    # could not pass deterministic maxi-lint still spent a full AI review: the
+    # expensive half ran precisely when the cheap half had already found the
+    # answer. Nor a bare `success()`: that looks at every upstream job, and
+    # `fanout-attest` is skipped on every ordinary PR. Naming lint-gate's
+    # result gates on the scan and nothing else.
     #
-    # The fan-out exclusion below is now redundant on the skip path, since a
-    # skipped lint-gate no longer satisfies `success()`. It stays anyway: it is
-    # the condition a reader checks to answer "why was the fan-out not
-    # reviewed", and it should hold on its own terms if lint-gate's exclusion
-    # ever changes.
+    # Fan-out PRs: an attested one never gets here, because lint-gate skips on
+    # it, so the review is skipped through lint-gate -- that is the quota
+    # guarantee, and tests/test_fanout_review_quota.py pins it by evaluating
+    # these conditions. A fan-out PR the attestation could NOT prove is
+    # reviewed like any other PR, deliberately: its diff is not the reviewed
+    # upstream content, so nothing upstream covers it.
     #
-    # Do not exclude `synchronize`: review is a required check on each head.
-    # A prior review cannot certify code added in a later push. The label
-    # remains an opt-in for non-strict repositories, not a substitute for
-    # reviewing the current head.
+    # No CI_ENFORCEMENT_MODE condition and no label requirement. Both used to
+    # gate this job, and every repository carrying this file is `strict`, so
+    # the condition decided nothing except in a repository that would then
+    # get no review at all. `run-maxi-review` stays as an opt-in FORCE:
+    # adding it re-runs the review on the current head -- after a reviewer
+    # timeout, say -- without a push. It is never the only path.
     #
     # `github.event.pull_request.draft == false` is the other half of "spend
     # the AI budget when the PR is ready, not before". A draft is not a merge
     # candidate, so a review started while one is still draft is spent before
-    # anyone can act on it -- and `synchronize` on a draft used to start one
-    # anyway, since neither `success()` nor the fan-out/dependabot exclusions
-    # say anything about draft state. `ready_for_review` is already a trigger
-    # type; marking a PR ready starts a review without a label. Later pushes
-    # re-review the changed head because this job is a required check.
+    # anyone can act on it. `ready_for_review` is a trigger type; marking a PR
+    # ready starts a review on its head.
     if: >
       github.event_name != 'merge_group' &&
-      success() &&
+      !cancelled() &&
+      needs.lint-gate.result == 'success' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]' &&
       (
-        startsWith(github.head_ref, 'maxi-config-sync/') == false ||
-        github.event.pull_request.user.login != 'maxi-tools-auth[bot]'
-      ) &&
-      (
-        vars.CI_ENFORCEMENT_MODE == 'strict' ||
-        contains(github.event.pull_request.labels.*.name, 'run-maxi-review')
+        github.event.action != 'labeled' ||
+        github.event.label.name == 'run-maxi-review'
       )
     continue-on-error: true
     # Was ubuntu-latest. With the org's Actions allowance exhausted, hosted

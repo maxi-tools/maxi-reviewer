@@ -125,7 +125,7 @@ jobs:
     # Review threads and reviewer rosters exist on a pull request, not on the
     # queue's synthetic merge-group ref. A skipped job is a successful check.
     if: github.event_name != 'merge_group'
-    uses: maxi-tools/ci/.github/workflows/review-gate-reusable.yml@14f387b4144a783899e91c5f4a2da83b315560bb  # maxi-tools/ci main
+    uses: maxi-tools/ci/.github/workflows/review-gate-reusable.yml@11bde5c1ac3b7e15dc38c40cfd3c5d3a2c8329b2  # maxi-tools/ci main
     # `pull-requests: write` is granted here because the `dedupe` job (added
     # in maxi-tools/ci#9) needs it: it posts a duplicate-of reply and resolves
     # the thread for review-bot comments that land on the same lines in the

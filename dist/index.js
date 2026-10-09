@@ -73269,14 +73269,29 @@ async function runSelectedReview(input) {
             onProgress: input.julesOptions.onProgress,
         });
     }
-    const julesResult = await runReviewWithSetupEscalation({
+    const reviewOnJules = (apiKey, options) => runReviewWithSetupEscalation({
         run: input.deps.runJulesReview,
-        attempts: planAttempts(input.apiKey, input.fallbackApiKey),
+        attempts: planAttempts(apiKey, input.fallbackApiKey),
         prompt: input.prompt,
         source: input.source,
         timeoutMinutes: input.timeoutMinutes,
-        options: input.julesOptions,
+        options,
     });
+    let julesResult = await reviewOnJules(input.apiKey, input.julesOptions);
+    if (!julesResult.reviewResult) {
+        // No response is an infrastructure timeout, not a code verdict. Do not
+        // resume the silent session: give a fresh one a chance, using the other
+        // account when configured. A real verdict (including block) never retries.
+        const nextKey = input.fallbackApiKey && input.fallbackApiKey !== input.apiKey
+            ? input.fallbackApiKey
+            : input.apiKey;
+        core/* warning */.$e(`Jules session ${julesResult.sessionId} returned no review; retrying a fresh session after 1s backoff.`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        julesResult = await reviewOnJules(nextKey, {
+            ...input.julesOptions,
+            previousSessionId: undefined,
+        });
+    }
     if (julesResult.reviewResult || !openAiFallbackConfigured(core/* getInput */.V4)) {
         return julesResult;
     }

@@ -740,16 +740,45 @@ export async function runReviewPr(
 
   const octokit = github.getOctokit(token);
 
+  // Fork pull_request tokens can be read-only even when statuses:write is
+  // requested. A skipped review must not fail just because its status cannot
+  // be published; report the limitation rather than attempting the review.
+  const publishSkippedStatus = async (description: string): Promise<void> => {
+    try {
+      await deps.setStatus(
+        octokit,
+        owner,
+        repo,
+        headSha,
+        statusContext,
+        "success",
+        description
+      );
+    } catch (err) {
+      const permissionError = deps.wrapPermissionError(
+        err,
+        "statuses:write",
+        "createCommitStatus"
+      );
+      core.warning(
+        `Could not publish skipped status: ${String(permissionError)}`
+      );
+    }
+  };
+
   if (isDraft && skipDrafts) {
     core.info("Skipping draft PR.");
+    await publishSkippedStatus("skipped: draft");
     return;
   }
   if (isFork && skipForks) {
     core.info("Skipping fork PR (skip_forks=true).");
+    await publishSkippedStatus("skipped: fork");
     return;
   }
   if (labels.includes(bypassLabel)) {
     core.info(`Bypass label "${bypassLabel}" present — skipping review.`);
+    await publishSkippedStatus(`skipped: bypass label (${bypassLabel})`);
     return;
   }
 

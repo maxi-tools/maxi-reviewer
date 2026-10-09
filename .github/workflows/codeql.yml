@@ -86,6 +86,9 @@ name: CodeQL
 on:
   pull_request:
     branches: [main]
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   push:
     branches: [main]
   schedule:
@@ -134,6 +137,11 @@ jobs:
     # statement about who wrote the tree, so it is pinned to the owner by
     # numeric id -- ci/review-trusted-actors.toml pins 874012, and an id
     # cannot be reassigned the way a login can.
+    # `merge_group` has no PR-head repository field: its ref is assembled by
+    # GitHub from PRs already admitted to the merge queue. Its action is still
+    # checked explicitly below, before checkout or any workflow step; every
+    # other event keeps the original same-repository PR and owner-only dispatch
+    # gates.
     if: >-
       (
         github.event_name != 'pull_request' ||
@@ -142,6 +150,10 @@ jobs:
       (
         github.event_name != 'workflow_dispatch' ||
         github.event.sender.id == 874012
+      ) &&
+      (
+        github.event_name != 'merge_group' ||
+        github.event.action == 'checks_requested'
       )
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 5
@@ -264,10 +276,8 @@ jobs:
   analyze:
     name: 'check: codeql ${{ matrix.language }} [linux-x64]'
     needs: detect
-    # Same guard as `detect`, restated rather than inherited: a reader of the
-    # job that runs the extractors should not have to trace `needs` to learn
-    # what keeps fork code -- and branch content dispatched by someone else --
-    # off the fleet.
+    # Same queue admission and trusted-event gate as `detect`, restated so the
+    # extractor job cannot lose the guard through a later refactor.
     if: >-
       (
         github.event_name != 'pull_request' ||
@@ -276,6 +286,10 @@ jobs:
       (
         github.event_name != 'workflow_dispatch' ||
         github.event.sender.id == 874012
+      ) &&
+      (
+        github.event_name != 'merge_group' ||
+        github.event.action == 'checks_requested'
       )
     runs-on: [self-hosted, Linux, X64]
     # Default setup's slowest analyzer was rust at ~3.2 min on a hosted
@@ -356,7 +370,7 @@ jobs:
           GIT_CONFIG_GLOBAL="$gitconfig" cargo fetch
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -371,7 +385,7 @@ jobs:
           ram: 16384
 
       - name: Analyze
-        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           # One category per language so the four uploads for one commit are
           # kept apart in code scanning instead of overwriting each other.

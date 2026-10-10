@@ -214,7 +214,13 @@ reviews:
         raising it out-of-lane.
 
   auto_review:
-    enabled: true
+    # Off: CodeRabbit reviews only when asked. A PR comment of
+    # `@coderabbitai review` (or `full review`) still runs a review, and every
+    # other `@coderabbitai` command still works with auto review off
+    # (docs.coderabbit.ai/guides/commands, "Manually request code reviews").
+    # The keys below are kept, so setting this back to true restores the
+    # previous automatic behaviour exactly.
+    enabled: false
     # Drafts are not merge candidates, and reviewing them consumes the rate
     # limit that then denies review to PRs which are ready.
     drafts: false

@@ -1135,6 +1135,154 @@ jobs:
           fi
           echo "posted a maxi-reviewer review"
 
+  # Which OTHER review bots this pull request warrants. Every one of them is
+  # mention-only (or API-only): they review nothing unless maxi-reviewer asks.
+  # When `review` starts, this job selects by measured rules (calibration
+  # LEDGER C-2026-10-08-01) and, only when a reviewer is borderline AND a
+  # tie-breaker model is selected in reviewer-dispatch.prompt.toml [tiebreak]
+  # (off by default), makes ONE call to that model. It posts a
+  # "review started" comment that mentions exactly the selected reviewers --
+  # nobody when nothing is worth calling; a failed tie-breaker adds nobody.
+  # See maxi-review/reviewer-dispatch.py for what the model is shown
+  # (metadata and numeric aggregates, never code) and
+  # maxi-review/reviewer-registry.toml for who can be called.
+  #
+  # Runs exactly when `review` runs: the same `needs` and the same `if`, so a
+  # fan-out pull request that `fanout-attest` proved gets no comment and no
+  # mention (lint-gate skips, so this skips), and a draft gets none either.
+  # tests/test_reviewer_dispatch_workflow.py evaluates the two guards against
+  # each other so they cannot drift apart.
+  #
+  # Reads the GitHub API and maxi-config's own files only. Nothing is checked
+  # out from the pull request, so the self-hosted trust gate is not in play.
+  #
+  # continue-on-error: the dispatch is advisory. A failure here must not hold
+  # a merge; it is recorded in the job summary and the decision artifact.
+  reviewer-dispatch:
+    needs: lint-gate
+    concurrency:
+      group: maxi-review-dispatch-${{ github.event.pull_request.number || github.ref }}${{ (github.event.action == 'labeled' && github.event.label.name != 'run-maxi-review') && format('-inert-{0}', github.run_id) || '' }}
+      cancel-in-progress: true
+    if: >
+      github.event_name != 'merge_group' &&
+      !cancelled() &&
+      needs.lint-gate.result == 'success' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      (
+        github.event.action != 'labeled' ||
+        github.event.label.name == 'run-maxi-review'
+      )
+    continue-on-error: true
+    runs-on: [self-hosted, Linux]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Create Maxi Review app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.MAXI_REVIEW_APP_CLIENT_ID }}
+          private-key: ${{ secrets.MAXI_REVIEW_APP_PRIVATE_KEY }}
+          owner: maxi-tools
+          repositories: |
+            maxi-config
+            ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-issues: write
+          # write, not read: the kickoff is an issue comment on a pull
+          # request. Under read the POST failed on #1082 (cause not captured
+          # then; the script now records gh's stderr in post_error).
+          permission-pull-requests: write
+
+      - name: Fetch the dispatch script and registry
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: maxi-tools/maxi-config
+          # maxi-config's main, named explicitly: with no ref, checkout of the
+          # CURRENT repository takes the event's ref, so on a maxi-config pull
+          # request it would run the PR's own dispatcher (observed on #1082).
+          # The e2e sandbox sets the repository variable to a maxi-config
+          # branch to exercise an unmerged dispatcher; only repository admins
+          # can set it.
+          ref: ${{ vars.MAXI_REVIEW_DISPATCH_REF || 'main' }}
+          path: .maxi-config
+          sparse-checkout: maxi-review
+          persist-credentials: false
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Select reviewers and post the kickoff comment
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          OPENCODE_ZEN_API_KEY: ${{ secrets.OPENCODE_ZEN_API_KEY }}
+          CODACY_API_TOKEN: ${{ secrets.CODACY_API_TOKEN }}
+          # Unset in production. The e2e suite points it at a dead address to
+          # prove the fail-closed path; an override never receives the key.
+          REVIEWER_DISPATCH_ENDPOINT: ${{ vars.REVIEWER_DISPATCH_ENDPOINT }}
+          DISPATCH_REF: ${{ vars.MAXI_REVIEW_DISPATCH_REF }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:$PATH"
+          # Only true while the dispatcher has not reached the ref yet: the PR
+          # that introduces it runs its own workflow copy before the script
+          # exists on maxi-config main. Say so instead of going red.
+          if [[ ! -f .maxi-config/maxi-review/reviewer-dispatch.py ]]; then
+            echo "::notice::reviewer-dispatch.py is not on maxi-config@${DISPATCH_REF:-main} yet; no dispatch"
+            echo "### Reviewer dispatch: not deployed on maxi-config@${DISPATCH_REF:-main}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 .maxi-config/maxi-review/reviewer-dispatch.py \
+            --repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER" --head-sha "$HEAD_SHA" \
+            --out "$RUNNER_TEMP/reviewer-dispatch.json" \
+            --summary "$GITHUB_STEP_SUMMARY" --post
+
+      # The job is continue-on-error, so a failed token mint, checkout or
+      # dispatch would otherwise read as a quiet green. Say it in the summary
+      # and leave a decision file that records the failure.
+      - name: Record a dispatch that did not run
+        if: ${{ failure() }}
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/reviewer-dispatch.json"
+          # No decision file means the dispatcher did not finish. It may have
+          # failed before doing anything, or after triggering Codacy or posting
+          # the kickoff, so the outcome is INDETERMINATE: mention and posted are
+          # null (unknown), never an empty list or false that would contradict
+          # a request that did go out. The PR's comments are the record.
+          if [[ ! -s "$out" ]]; then
+            jq -n --arg repo "$GITHUB_REPOSITORY" --argjson pr "$PR_NUMBER" --arg sha "$HEAD_SHA" \
+              '{schema: 3, repo: $repo, pr: $pr, head_sha: $sha, status: "indeterminate",
+                reason: "the dispatch job did not finish; check the PR for a kickoff comment",
+                mention: null, posted: null}' \
+              > "$out"
+          fi
+          {
+            echo "### Reviewer dispatch: FAILED"
+            echo
+            echo "A step before or during dispatch failed (see the step log). Whether a kickoff comment or a"
+            echo "Codacy trigger went out first is not known from here: check the PR."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::reviewer dispatch did not finish; its outcome is indeterminate"
+
+      - name: Upload the dispatch decision
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reviewer-dispatch-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reviewer-dispatch.json
+          if-no-files-found: warn
+          # No retention-days: the org caps artifacts at 3 days, and asking for
+          # more only adds a warning. The durable copy of the decision is the
+          # record embedded in the kickoff comment.
+
   review:
     needs: lint-gate
     # Every non-draft head gets its own finished review. A prior review
@@ -1846,7 +1994,7 @@ jobs:
         # number moving with it. Whenever `timeout_minutes` moves, this does:
         # timeout_minutes + 25.
         timeout-minutes: 40
-        uses: maxi-tools/maxi-reviewer@512f5b3a10e2b2866e882df9069f95fd12fd6614
+        uses: maxi-tools/maxi-reviewer@1c5e1d8dece75f724cc95a35c0908579ca6d8d80
         with:
           # Which account, chosen by the step above. The KEY itself is read
           # straight from `secrets` here rather than passed through a step

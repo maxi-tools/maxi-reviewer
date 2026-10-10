@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.3.0...v1.4.0) (2026-10-10)
+
+
+### Features
+
+* **reviewer:** chain the OpenAI-compatible fallback and surface 'reviewer unavailable' ([2a9e869](https://github.com/maxi-tools/maxi-reviewer/commit/2a9e869d2def2704bb389791ee5daa4d0eb78e44))
+* **reviewer:** chain the OpenAI-compatible fallback and surface "reviewer unavailable" ([b2113ad](https://github.com/maxi-tools/maxi-reviewer/commit/b2113adb2cdb07f10d83c9ad13045377235a67bf))
+
+
+### Bug Fixes
+
+* align CodeQL action versions ([783749b](https://github.com/maxi-tools/maxi-reviewer/commit/783749bee43794c593b5bd04b3a538eb90ded40e))
+* **ci:** pin codeql init to v4.38.2 to match analyze ([d7df1ea](https://github.com/maxi-tools/maxi-reviewer/commit/d7df1ea373cc7b579add1afe649403f356dc8531))
+* **reviewer:** budget the whole fallback chain, stop double-recording Jules data ([d4835be](https://github.com/maxi-tools/maxi-reviewer/commit/d4835be6de079876f6873e4443c4f0009a4c3018))
+* **reviewer:** chain must advance on failure, fail closed on garbled reviews, never log credentials ([af83c2b](https://github.com/maxi-tools/maxi-reviewer/commit/af83c2b7cc67f90ba37a3f0f9b62e0b11643743e))
+* **reviewer:** strip the raw baseUrl from transport errors, not just scheme-shaped URLs ([76a35ad](https://github.com/maxi-tools/maxi-reviewer/commit/76a35adbc67608e736ac6eff1d0a632025b82878))
+* start a fresh Jules session when the PR base SHA has moved ([23f938c](https://github.com/maxi-tools/maxi-reviewer/commit/23f938c58eed7154157dfa1e4ab54f360b94a91e))
+
 ## [1.3.0](https://github.com/maxi-tools/maxi-reviewer/compare/v1.2.0...v1.3.0) (2026-10-02)
 
 

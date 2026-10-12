@@ -63,6 +63,15 @@ jobs:
     # the fleet execute that branch's agent configuration beside the org token
     # this job holds. Pinned to the owner by numeric id, the identity
     # ci/review-trusted-actors.toml already uses.
+    #
+    # maxi-reviewer[bot] is the fourth trusted commenter: it is the identity
+    # that posts the "review started" comment when the reviewer dispatch
+    # (maxi-config maxi-review/reviewer-dispatch.py) picks Gemini for a pull
+    # request. A GitHub App's comments carry author_association NONE, so the
+    # three association checks never admit it. The login is matched together
+    # with type Bot: a `[bot]` login is reserved for Apps, and no user account
+    # can take it. Nothing here checks out pull request code, so admitting the
+    # App changes who can REQUEST a review, not what runs.
     if: >-
       (github.event_name == 'workflow_dispatch' &&
        github.event.sender.id == 874012) ||
@@ -71,7 +80,9 @@ jobs:
        contains(github.event.comment.body, '/gemini-review') &&
        (github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR'))
+        github.event.comment.author_association == 'COLLABORATOR' ||
+        (github.event.comment.user.login == 'maxi-reviewer[bot]' &&
+         github.event.comment.user.type == 'Bot')))
     # Linux, not macOS -- agent workflow driven by an API, nothing Darwin-specific.
     # Measured 2026-08-24: macOS 9/9 busy, Linux X64 10/10 idle. The same
     # class of work (Maxi Review / Fix / Apply) already runs on that lane

@@ -272,6 +272,15 @@ describe("index.ts", () => {
     );
     await loadIndex();
     expect(mockInfo).toHaveBeenCalledWith("Skipping draft PR.");
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "success",
+      "skipped: draft"
+    );
   });
 
   it("skips fork PR if skip_forks is true", async () => {
@@ -283,6 +292,15 @@ describe("index.ts", () => {
     await loadIndex();
     expect(mockInfo).toHaveBeenCalledWith(
       "Skipping fork PR (skip_forks=true)."
+    );
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "success",
+      "skipped: fork"
     );
   });
 
@@ -300,6 +318,76 @@ describe("index.ts", () => {
     await loadIndex();
     expect(mockInfo).toHaveBeenCalledWith(
       'Bypass label "skip-review" present — skipping review.'
+    );
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "success",
+      "skipped: bypass label (skip-review)"
+    );
+  });
+
+  it.each([
+    ["draft", "skip_drafts"],
+    ["fork", "skip_forks"],
+    ["bypass", "bypass_label"],
+  ])(
+    "keeps the %s skip successful if the status token is read-only",
+    async (kind, input) => {
+      if (kind === "draft") {
+        (github as any).context.payload.pull_request.draft = true;
+      } else if (kind === "fork") {
+        (github as any).context.payload.pull_request.head.repo.full_name =
+          "fork/repo";
+      } else {
+        (github as any).context.payload.pull_request.labels = [
+          { name: "skip-review" },
+        ];
+        mockGetInput.mockImplementation((name: string) => {
+          if (name === input) return "skip-review";
+          if (name === "github_token") return "t";
+          if (name === "fail_on") return "any";
+          if (name === "jules_api_key") return "k";
+          return "";
+        });
+      }
+      mockGetBooleanInput.mockImplementation((name: string) => name === input);
+      mockGithubHelper.setStatus.mockRejectedValueOnce(
+        new Error("403 Forbidden")
+      );
+      await loadIndex();
+      expect(mockJulesHelper.wrapPermissionError).toHaveBeenCalledWith(
+        expect.any(Error),
+        "statuses:write",
+        "createCommitStatus"
+      );
+      expect(mockWarning).toHaveBeenCalledWith(
+        expect.stringContaining("Could not publish skipped status")
+      );
+      expect(mockSetFailed).not.toHaveBeenCalled();
+      expect(mockGithubHelper.fetchDiff).not.toHaveBeenCalled();
+    }
+  );
+
+  it("reviews when a bypass label is removed", async () => {
+    (github as any).context.payload.action = "unlabeled";
+    (github as any).context.payload.label = { name: "skip-review" };
+    await loadIndex();
+    await vi.waitFor(
+      () => expect(mockGithubHelper.fetchDiff).toHaveBeenCalled(),
+      SETTLE_OPTIONS
+    );
+    expect(mockGithubHelper.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "owner",
+      "repo",
+      "headSHA",
+      expect.anything(),
+      "pending",
+      expect.anything()
     );
   });
 

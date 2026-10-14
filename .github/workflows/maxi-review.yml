@@ -16,7 +16,8 @@ on:
   merge_group:
     types: [checks_requested]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    # Removing a bypass label must replace its green skipped status with a real review.
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
 # No workflow-level concurrency group.
 #

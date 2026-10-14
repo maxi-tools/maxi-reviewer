@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://maxi.tools/schemas/maxi.review.v1.jules-review.schema.json",
+  "$id": "https://github.com/maxi-tools/maxi-reviewer/blob/main/schemas/jules-review.schema.json",
   "title": "Maxi Jules Review",
   "type": "object",
   "additionalProperties": false,

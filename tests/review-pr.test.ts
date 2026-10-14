@@ -726,6 +726,82 @@ describe("runReviewPr orchestration", () => {
     expect(core.setFailed).toHaveBeenCalledWith(reviewTimeoutExplanation(30));
   });
 
+  it("retries a timed-out Jules review with a fresh session and the alternate account", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "primary";
+      if (name === "jules_api_key_fallback") return "alternate";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "never";
+      if (name === "timeout_minutes") return "15";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi
+        .fn()
+        .mockResolvedValueOnce({ reviewResult: null, sessionId: "silent" })
+        .mockResolvedValueOnce({
+          reviewResult: {
+            verdict: "approve",
+            summary: "Reviewed on retry.",
+            resolvedCommentIds: [],
+            newComments: [],
+          },
+          sessionId: "fresh",
+        }),
+    };
+    await runReviewPr(deps);
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(2);
+    expect(deps.runJulesReview.mock.calls[0][0]).toBe("primary");
+    expect(deps.runJulesReview.mock.calls[1][0]).toBe("alternate");
+    expect(
+      deps.runJulesReview.mock.calls[1][4].previousSessionId
+    ).toBeUndefined();
+    expect(deps.submitReview).toHaveBeenCalled();
+    expect(core.setFailed).not.toHaveBeenCalled();
+  }, 10000);
+
+  it("does not retry a genuine blocking verdict and still fails the gate", async () => {
+    vi.spyOn(core, "getInput").mockImplementation((name: string) => {
+      if (name === "jules_api_key") return "primary";
+      if (name === "github_token") return "github-token";
+      if (name === "fail_on") return "blocking";
+      return "";
+    });
+    const deps = {
+      ...completedReviewDeps(),
+      runJulesReview: vi.fn().mockResolvedValue({
+        reviewResult: {
+          verdict: "block",
+          summary: "Needs fix.",
+          resolvedCommentIds: [],
+          newComments: [
+            {
+              file: "src/a.ts",
+              line: 1,
+              severity: "High",
+              confidence: "High",
+              message: "Broken path.",
+              promptForAgents: "Fix the path.",
+            },
+          ],
+        },
+        sessionId: "verdict",
+      }),
+    };
+    await runReviewPr(deps);
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(1);
+    expect(deps.setStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      "maxi",
+      "example",
+      "head-sha",
+      "",
+      "failure",
+      "Blocking issues found"
+    );
+  });
+
   it("falls back to the OpenAI-compatible reviewer when Jules returns no review", async () => {
     vi.spyOn(core, "getInput").mockImplementation((name: string) => {
       if (name === "jules_api_key") return "jules-key";
@@ -767,7 +843,7 @@ describe("runReviewPr orchestration", () => {
 
     await runReviewPr(deps);
 
-    expect(deps.runJulesReview).toHaveBeenCalledTimes(1);
+    expect(deps.runJulesReview).toHaveBeenCalledTimes(2);
     expect(deps.runOpenAiReview).toHaveBeenCalledWith(
       "review this diff",
       expect.objectContaining({

@@ -1126,10 +1126,16 @@ jobs:
 
           # Read it back. A 2xx from the POST is not evidence the review
           # exists -- the gate reads the reviews list, so that is what is
-          # checked.
-          if ! gh api --paginate \
-              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --jq '.[].user.login' \
-              | grep -qx 'maxi-reviewer\[bot\]'; then
+          # checked. Do not pipe the gh call into `grep -q` here: under
+          # `set -o pipefail`, grep exits on the first match and the
+          # upstream gh write to stdout gets SIGPIPE, so a successful
+          # self-check would spuriously fail the step (voicemaci#140).
+          # Materialise gh's output into a variable, then grep a
+          # here-string; grep reads from a fixed buffer and never closes
+          # a writer's pipe.
+          reviewers="$(gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" --jq '.[].user.login')"
+          if ! grep -qx 'maxi-reviewer\[bot\]' <<<"$reviewers"; then
             echo "::error::the review POST succeeded but no maxi-reviewer review is on the pull request"
             exit 1
           fi

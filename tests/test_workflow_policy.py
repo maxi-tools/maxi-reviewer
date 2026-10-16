@@ -215,6 +215,40 @@ def install_commands(step: list[str]) -> list[tuple[str, str]]:
 
 
 class WorkflowPolicyTests(unittest.TestCase):
+    def test_issue_17_only_trusted_pr_senders_reach_the_fleet(self) -> None:
+        text = (ROOT / ".github/workflows/issue-17-regression.yml").read_text()
+        expression = text.split("    if: >-\n", 1)[1].split("    runs-on:", 1)[0]
+        self.assertEqual(
+            ["[self-hosted, Linux, X64]"],
+            re.findall(r"^    runs-on: (.+)$", text, re.MULTILINE),
+        )
+        # Evaluate the checked-in predicate, including negative same-repo and
+        # fork cases, rather than testing a separate model of the trust gate.
+        for event in ("push", "pull_request", "workflow_dispatch"):
+            for same_repo in (True, False):
+                for sender_id, login, trusted in (
+                    (874012, "renamed-owner", True),
+                    (264883562, "maxi-tools-auth[bot]", True),
+                    (49699333, "dependabot[bot]", False),
+                    (123, "other-writer", False),
+                    (123, "874012", False),
+                ):
+                    with self.subTest(event=event, same_repo=same_repo, login=login):
+                        evaluated = expression
+                        for key, value in {
+                            "github.event_name": event,
+                            "github.event.pull_request.head.repo.full_name": "org/repo" if same_repo else "fork/repo",
+                            "github.repository": "org/repo",
+                            "github.event.sender.id": sender_id,
+                            "github.event.sender.login": login,
+                        }.items():
+                            evaluated = evaluated.replace(key, repr(value))
+                        evaluated = evaluated.replace("&&", " and ").replace("||", " or ")
+                        self.assertEqual(
+                            event == "push" or (event == "pull_request" and same_repo and trusted),
+                            eval(" ".join(evaluated.split()), {"__builtins__": {}}),
+                        )
+
     def test_trusted_ci_uses_self_hosted_and_forks_use_isolation(self) -> None:
         text = CI_WORKFLOW.read_text(encoding="utf-8")
 

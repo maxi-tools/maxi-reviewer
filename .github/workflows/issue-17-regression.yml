@@ -17,59 +17,14 @@ permissions:
 
 jobs:
   verify:
-    # Same routing as self-test.yml, and for the same reason: this job checks
-    # out the pull request head, installs dependencies and runs the test
-    # suite, i.e. it executes the PR's own code. Same-repo pull requests go
-    # to the fleet; fork pull requests and untrusted actors are SKIPPED --
-    # they fail fast, never fall back to a hosted runner, because the
-    # billing window 2026-10-16 00:00-02:50Z showed 9 GitHub-hosted minutes
-    # from this exact fallback path (five dependabot pull_request runs plus
-    # a dependabot dynamic run), and the policy is zero hosted minutes in
-    # this repository.
-    #
-    # An `if:` skip rather than a `runs-on` expression that falls back to
-    # `ubuntu-latest`: the previous form evaluated the same trust check at
-    # scheduler time but then handed the job to a hosted VM when the check
-    # failed, which is exactly the cost the policy has to remove. The skip
-    # has the same shape -- the dependency to the fleet, not to a hosted
-    # VM, is the only arrangement this gate accepts.
-    #
-    # Pushes to `main` (added by #90) get the same X64 fleet lane as
-    # same-repo pull requests: `github.event_name != 'pull_request'`
-    # short-circuits the same-repo fork guard, because there is no
-    # `github.event.pull_request` on a push event for that comparison to
-    # read from. Branch protection makes that safe -- a non-owner cannot
-    # push `main` here, so the only push event that reaches this job is one
-    # whose contents the owner has already accepted.
-    #
-    # X64, unlike ci.yml's ARM64 lane. On [self-hosted, Linux, ARM64] this
-    # job's "Verify checked-in dist" step failed: ncc rebuilt dist/index.js as
-    # 646 lines of `eval("require")("@actions/exec")` externals instead of the
-    # 58941-line bundle that is committed, so the diff gate tripped. The same
-    # step is green on x86_64, which is what the checked-in bundle was built
-    # on, so the lane is pinned to the architecture the artifact came from
-    # rather than to whichever box is free.
-    #
-    # Dependabot is excluded by name, not covered by the comparison above.
-    # Its branches live in THIS repository, so the same-repo test is true for
-    # them, and the payload of a dependabot pull request is a third-party
-    # version bump whose package lifecycle scripts this job then runs. That is
-    # code from outside the owner's control on a persistent box, which is the
-    # one thing this migration must not do. self-test.yml already screens the
-    # same actor for the same reason. Dependabot does not push to `main` --
-    # its pull requests, like all of its writes, go through the merge queue --
-    # so the dependabot ban still gates only pull_request events.
-    #
-    # This job is safe to route on a repository comparison alone, unlike
-    # self-test.yml next door, because it holds NO credential: its permissions
-    # are `contents: read`, it references no `secrets.*`, and the checkout
-    # below no longer persists a token. maxi-core#3913 drew that line -- a fork
-    # guard is enough for a job that builds pull-request code with nothing in
-    # scope to steal.
-    if: |
-      github.actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+    # PR code runs only for the owner's numeric identity or the trusted app,
+    # from this repository. Reject other senders before allocating a runner;
+    # never fall back to hosted capacity. Pushes target protected main only.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event.sender.id == 874012 || github.event.sender.login == 'maxi-tools-auth[bot]'))
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
     steps:
@@ -80,9 +35,8 @@ jobs:
           # GITHUB_TOKEN into .git/config -- on a persistent runner, readable
           # by the dependency lifecycle scripts the next step executes. Nothing
           # here pushes or fetches a private sibling, so the credential has no
-          # purpose; dropping it is what leaves this job with no credential in
-          # scope at all, which is the premise the `if:` skip above
-          # relies on. ci.yml and self-test.yml already do this.
+          # purpose; disable persistence as defense in depth alongside the
+          # trusted-sender gate. ci.yml and self-test.yml already do this.
           persist-credentials: false
       - name: Setup Node.js
         uses: actions/setup-node@v7

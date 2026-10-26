@@ -196,6 +196,12 @@ This is the part nobody skips in the article and everybody skips in
 practice. It is also the precondition `maxi-review.yml` itself names for
 moving maxi-reviewer from advisory to blocking.
 
+- **Start from Martian's open-source harness.** Code Review Bench
+  (`withmartian/code-review-benchmark`, MIT) ships 50 PRs with 173
+  curated golden comments, a judge prompt, and a scoring pipeline that any
+  tool can be run through in an afternoon. That is the baseline instrument;
+  the incident corpus below is the private, held-out second set. See
+  [`2026-10-26-martian-code-review-bench.md`](2026-10-26-martian-code-review-bench.md).
 - **Corpus**: across maxi-tools, collect PRs that were reverted, PRs whose
   title or body says fix-forward, and the incidents already cited in
   CLAUDE.md and code comments (maxi-kvm#85 wrong block, maxi-libs#247
@@ -353,7 +359,7 @@ Anthropic's internal figures and not reproducible from outside.
 |---|---|---|---|
 | 0 | Correctness-only default, severity remap, Nit cap, evidence citation rule, `rules/` install-path fix, `ci_signal: auto` by default | maxi-reviewer; Claude prompt in maxi-config | days |
 | 1 | Verify stage with cross-model scoring and "why flagged" details; drop <80 | maxi-reviewer | 1–2 weeks |
-| 2 | Incident corpus (20–30 cases) and replay harness; nightly run; eval-gated prompt changes | maxi-reviewer | 1–2 weeks, plus engineer time to confirm bugs |
+| 2 | Baseline on Martian's offline harness (Jules and Qwen as separate tools), then the incident corpus (20–30 cases) as the held-out set; nightly run; eval-gated prompt changes | maxi-reviewer | an afternoon for the baseline; 1–2 weeks for the corpus, plus engineer time to confirm bugs |
 | 3 | Severity counts on the status/check run; `fail_on: blocking` for Important once eval precision supports it; Review Gate requires no open Important | maxi-reviewer, receiver, maxi-config | days after phase 2 |
 | 4 | Fingerprint dedupe, three-round cap, delta-only wording | maxi-reviewer | days |
 | 5 | REVIEW.md/CLAUDE.md inputs from base, protected-branch rule for weakening instructions | maxi-reviewer | days |
